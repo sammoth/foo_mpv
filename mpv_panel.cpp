@@ -67,7 +67,7 @@ namespace {
 		DECLARE_WND_CLASS_EX(L"mpv_dui", CS_HREDRAW | CS_VREDRAW, 0)
 
 		BEGIN_MSG_MAP(CMpvWindow)
-			MSG_WM_DESTROY(on_wm_destroy);
+			MSG_WM_DESTROY(kill_mpv)
 		END_MSG_MAP()
 
 		CMpvWindow(ui_element_config::ptr config,ui_element_instance_callback_ptr p_callback)
@@ -81,8 +81,77 @@ namespace {
 		{
 			Create(parent, 0, 0, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0);
 
-			DWORD err = GetLastError();
+			start_mpv();
+		}
 
+		void on_playback_starting(play_control::t_track_command p_command,bool p_paused) {
+		}
+		void on_playback_new_track(metadb_handle_ptr p_track) {
+			_mpv_set_option_string(mpv, "start", "none");
+			play_path(p_track->get_path());
+		}
+		void on_playback_stop(play_control::t_stop_reason p_reason) {
+			stop();
+		}
+		void on_playback_seek(double p_time) {
+			seek(p_time);
+		}
+		void on_playback_pause(bool p_state) {
+			pause(p_state);
+		}
+		void on_playback_edited(metadb_handle_ptr p_track) {
+			// path changed?
+		}
+		void on_playback_time(double p_time) {
+			sync_maybe();
+		}
+
+		HWND get_wnd() {return m_hWnd;}
+
+		void set_configuration(ui_element_config::ptr config) {m_config = config;}
+		ui_element_config::ptr get_configuration() {return m_config;}
+		static GUID g_get_guid() {
+			return guid_mpv_panel;
+		}
+		static GUID g_get_subclass() {return ui_element_subclass_utility;}
+		static void g_get_name(pfc::string_base & out) {out = "mpv";}
+		static ui_element_config::ptr g_get_default_configuration() {return ui_element_config::g_create_empty(g_get_guid());}
+		static const char * g_get_description() {return "mpv";}
+		void notify(const GUID& p_what, t_size p_param1, const void* p_param2, t_size p_param2size)
+		{
+			if (p_what == ui_element_notify_visibility_changed)
+			{
+				if (p_param1 == 1 && mpv == NULL)
+				{
+					start_mpv();
+				}
+				else if (p_param1 == 0 && mpv != NULL)
+				{
+					kill_mpv();
+				}
+			}
+		};
+
+
+
+
+	private:
+		ui_element_config::ptr m_config;
+		mpv_handle* mpv;
+
+		timer _timer;
+
+		void kill_mpv() {
+			if (mpv != NULL)
+			{
+				mpv_handle* temp = mpv;
+				mpv = NULL;
+				_mpv_terminate_destroy(temp);
+			}
+		};
+
+		void start_mpv()
+		{
 			pfc::string_formatter path;
 			path.add_filename(core_api::get_profile_path());
 			path.add_filename("mpv");
@@ -159,61 +228,11 @@ namespace {
 			}
 		}
 
-		void on_playback_starting(play_control::t_track_command p_command,bool p_paused) {
-		}
-		void on_playback_new_track(metadb_handle_ptr p_track) {
-			_mpv_set_option_string(mpv, "start", "none");
-			play_path(p_track->get_path());
-		}
-		void on_playback_stop(play_control::t_stop_reason p_reason) {
-			stop();
-		}
-		void on_playback_seek(double p_time) {
-			seek(p_time);
-		}
-		void on_playback_pause(bool p_state) {
-			pause(p_state);
-		}
-		void on_playback_edited(metadb_handle_ptr p_track) {
-			// path changed?
-		}
-		void on_playback_time(double p_time) {
-			sync_maybe();
-		}
-
-		HWND get_wnd() {return m_hWnd;}
-
-		void set_configuration(ui_element_config::ptr config) {m_config = config;}
-		ui_element_config::ptr get_configuration() {return m_config;}
-		static GUID g_get_guid() {
-			return guid_mpv_panel;
-		}
-		static GUID g_get_subclass() {return ui_element_subclass_utility;}
-		static void g_get_name(pfc::string_base & out) {out = "mpv";}
-		static ui_element_config::ptr g_get_default_configuration() {return ui_element_config::g_create_empty(g_get_guid());}
-		static const char * g_get_description() {return "mpv";}
-	
-
-
-
-
-	private:
-		ui_element_config::ptr m_config;
-		mpv_handle* mpv;
-
-		timer _timer;
-
-		void on_wm_destroy() {
-			if (mpv != NULL)
-			{
-				mpv_handle* temp = mpv;
-				mpv = NULL;
-				_mpv_terminate_destroy(temp);
-			}
-		};
-
 		void play_path(const char* metadb_path)
 		{
+			if (mpv == NULL)
+				return;
+
 			pfc::string8 filename;
 			filename.add_filename(metadb_path);
 			if (filename.has_prefix("\\file://"))
@@ -235,17 +254,26 @@ namespace {
 
 		void stop()
 		{
+			if (mpv == NULL)
+				return;
+
 			_mpv_command_string(mpv, "stop");
 			_timer.seek(0);
 		}
 
 		void pause(bool state)
 		{
+			if (mpv == NULL)
+				return;
+
 			_mpv_set_property_string(mpv, "pause", state ? "yes" : "no");
 		}
 
 		void seek(double time)
 		{
+			if (mpv == NULL)
+				return;
+
 			std::stringstream time_sstring;
 			time_sstring.setf(std::ios::fixed);
 			time_sstring.precision(15);
@@ -262,6 +290,9 @@ namespace {
 
 		void sync_maybe()
 		{
+			if (mpv == NULL)
+				return;
+
 			double mpv_time = -1.0;
 			if (_mpv_get_property(mpv, "audio-pts", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
 				return;
