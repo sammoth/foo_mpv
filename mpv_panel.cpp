@@ -166,6 +166,9 @@ namespace {
 			path.add_filename("mpv.log");
 			_mpv_set_option_string(mpv, "log-file", path.c_str());
 
+			// no display for music for now
+			_mpv_set_option_string(mpv, "audio-display", "no");
+
 			// everything syncs to foobar
 			_mpv_set_option_string(mpv, "video-sync", "audio");
 			_mpv_set_option_string(mpv, "untimed", "no");
@@ -193,7 +196,6 @@ namespace {
 
 			// load the next file a while in advance
 			_mpv_set_option_string(mpv, "ao-null-buffer", "5");
-			_mpv_set_option_string(mpv, "demuxer-readahead-secs", "0");
 
 			// marked experimental, maybe unnecessary with gapless
 			_mpv_set_option_string(mpv, "prefetch-playlist", "yes");
