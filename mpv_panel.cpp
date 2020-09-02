@@ -1,13 +1,9 @@
 #include "stdafx.h"
 #include "mpv.h"
 
-#include <windows.h>
-#include <libPPUI/win32_op.h>
 #include <helpers/BumpableElem.h>
 
 #include <sstream>
-
-#pragma comment(lib, "mpv/mpv.lib")
 
 namespace {
 	using namespace foo_mpv_h;

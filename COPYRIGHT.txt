@@ -1,0 +1,3 @@
+Some parts taken from foobar2000 1.5 SDK:
+Copyright (c) 2001-2019, Peter Pawlowski
+All rights reserved.
