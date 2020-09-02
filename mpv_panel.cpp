@@ -50,10 +50,15 @@ namespace {
 
 		double correction_factor()
 		{
-			if (average_count < 1 || abs(mm_average_desync) < 0.1)
+			if (average_count < 1 || abs(mm_average_desync) < 0.08)
 				return 1.0;
 
 			return mm_average_desync > 0 ? 1.01 : 0.99;
+		}
+
+		bool should_sync()
+		{
+			return average_count > 3;
 		}
 	};
 
@@ -264,20 +269,20 @@ namespace {
 
 			_timer.record_desync(fb_time - mpv_time);
 
-			std::stringstream msg;
-			msg << "video delay: " << _timer.get_desync();
-
-			if (abs(_timer.get_desync()) > 0.2)
+			if (_timer.should_sync())
 			{
-				// hard sync
-				seek(playback_control::get()->playback_get_position());
-				console::info("mpv: A/V resynced");
-			}
-			else
-			{
-				// soft sync
-				double scale = _timer.correction_factor();
-				_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &scale);
+				if (abs(_timer.get_desync()) > 0.4)
+				{
+					// hard sync
+					seek(playback_control::get()->playback_get_position());
+					console::info("mpv: A/V resynced");
+				}
+				else
+				{
+					// soft sync
+					double scale = _timer.correction_factor();
+					_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &scale);
+				}
 			}
 		}
 
