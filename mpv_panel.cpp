@@ -278,14 +278,7 @@ namespace {
 				// soft sync
 				double scale = _timer.correction_factor();
 				_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &scale);
-
-				double speed = -1.0;
-				if (_mpv_get_property(mpv, "speed", MPV_FORMAT_DOUBLE, &speed) < 0)
-					return;
-
-				console::info(std::to_string(speed).append(" current speed").c_str());
 			}
-			console::info(msg.str().c_str());
 		}
 
 
