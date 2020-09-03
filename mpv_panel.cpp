@@ -8,59 +8,26 @@
 namespace {
 	using namespace foo_mpv_h;
 
+	static const GUID guid_cfg_mpv_branch =
+	{ 0xa8d3b2ca, 0xa9a, 0x4efc, { 0xa4, 0x33, 0x32, 0x4d, 0x76, 0xcc, 0x8a, 0x33 } };
+	static const GUID guid_cfg_mpv_max_drift =
+	{ 0xa799d117, 0x7e68, 0x4d1e, { 0x9d, 0xc2, 0xe8, 0x16, 0x1e, 0xf1, 0xf5, 0xfe } };
+	static const GUID guid_cfg_mpv_hard_sync =
+	{ 0x240d9ab0, 0xb58d, 0x4565, { 0x9e, 0xc0, 0x6b, 0x27, 0x99, 0xcd, 0x2d, 0xed } };
+	static const GUID guid_cfg_mpv_logging =
+	{ 0x8b74d741, 0x232a, 0x46d5, { 0xa7, 0xee, 0x4, 0x89, 0xb1, 0x47, 0x43, 0xf0 } };
+	static const GUID guid_cfg_mpv_native_logging =
+	{ 0x3411741c, 0x239, 0x441d, { 0x8a, 0x8e, 0x99, 0x83, 0x2a, 0xda, 0xe7, 0xd0 } };
+
+
+	static advconfig_branch_factory g_mpv_branch("mpv", guid_cfg_mpv_branch, advconfig_branch::guid_branch_playback, 0);
+	static advconfig_integer_factory cfg_mpv_max_drift("Permitted timing drift (ms)", guid_cfg_mpv_max_drift, guid_cfg_mpv_branch, 0, 20, 0, 1000, 0);
+	static advconfig_integer_factory cfg_mpv_hard_sync("Hard sync threshold (ms)", guid_cfg_mpv_hard_sync, guid_cfg_mpv_branch, 0, 2000, 0, 10000, 0);
+	static advconfig_checkbox_factory cfg_mpv_logging("Enable verbose console logging", guid_cfg_mpv_logging, guid_cfg_mpv_branch, 0, false);
+	static advconfig_checkbox_factory cfg_mpv_native_logging("Enable mpv log file", guid_cfg_mpv_native_logging, guid_cfg_mpv_branch, 0, false);
+
 	static const GUID guid_mpv_panel =
 	{ 0x777a523a, 0x1ed, 0x48b9, { 0xb9, 0x1, 0xda, 0xb1, 0xbe, 0x31, 0x7c, 0xa4 } };
-
-	class timer {
-		double last_seek;
-		double mm_average_desync;
-		int average_count;
-
-	public:
-		timer() : last_seek(0), mm_average_desync(0), average_count(0) {};
-
-		double get_last_seek()
-		{
-			return last_seek;
-		}
-
-		double get_desync()
-		{
-			return mm_average_desync;
-		}
-
-		void seek(double seek)
-		{
-			last_seek = seek;
-			mm_average_desync = 0;
-			average_count = 0;
-		}
-
-		void record_desync(double desync)
-		{
-			if (average_count == 0)
-			{
-				mm_average_desync = desync;
-				average_count++;
-			}
-
-			mm_average_desync = (mm_average_desync * (average_count - 1) + desync) / average_count;
-			average_count = min(5, average_count + 1);
-		}
-
-		double correction_factor()
-		{
-			if (average_count < 1 || abs(mm_average_desync) < 0.08)
-				return 1.0;
-
-			return mm_average_desync > 0 ? 1.01 : 0.99;
-		}
-
-		bool should_sync()
-		{
-			return average_count > 3;
-		}
-	};
 
 	struct CMpvWindow : public ui_element_instance, CWindowImpl<CMpvWindow>, play_callback_impl_base {
 	public:
@@ -70,24 +37,32 @@ namespace {
 			MSG_WM_DESTROY(kill_mpv)
 		END_MSG_MAP()
 
-		CMpvWindow(ui_element_config::ptr config,ui_element_instance_callback_ptr p_callback)
-		: m_callback(p_callback), m_config(config), _timer()
+		CMpvWindow(ui_element_config::ptr config, ui_element_instance_callback_ptr p_callback)
+			: m_callback(p_callback), m_config(config)
 		{
 			if (!load_mpv())
-				throw exception_messagebox("Could not load mpv");
+			{
+				console::error("Could not load mpv-1.dll");
+				throw exception_messagebox("Could not load mpv-1.dll");
+			}
 		}
 
 		void initialize_window(HWND parent)
 		{
 			Create(parent, 0, 0, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0);
 
+
 			start_mpv();
 		}
 
-		void on_playback_starting(play_control::t_track_command p_command,bool p_paused) {
+		void on_playback_starting(play_control::t_track_command p_command, bool p_paused) {
 		}
 		void on_playback_new_track(metadb_handle_ptr p_track) {
-			_mpv_set_option_string(mpv, "start", "none");
+			if (mpv != NULL)
+			{
+				_mpv_set_option_string(mpv, "start", "none");
+			}
+
 			play_path(p_track->get_path());
 		}
 		void on_playback_stop(play_control::t_stop_reason p_reason) {
@@ -100,34 +75,31 @@ namespace {
 			pause(p_state);
 		}
 		void on_playback_edited(metadb_handle_ptr p_track) {
-			// path changed?
 		}
 		void on_playback_time(double p_time) {
-			sync_maybe();
+			sync();
 		}
 
-		HWND get_wnd() {return m_hWnd;}
+		HWND get_wnd() { return m_hWnd; }
 
-		void set_configuration(ui_element_config::ptr config) {m_config = config;}
-		ui_element_config::ptr get_configuration() {return m_config;}
+		void set_configuration(ui_element_config::ptr config) { m_config = config; }
+		ui_element_config::ptr get_configuration() { return m_config; }
 		static GUID g_get_guid() {
 			return guid_mpv_panel;
 		}
-		static GUID g_get_subclass() {return ui_element_subclass_utility;}
-		static void g_get_name(pfc::string_base & out) {out = "mpv";}
-		static ui_element_config::ptr g_get_default_configuration() {return ui_element_config::g_create_empty(g_get_guid());}
-		static const char * g_get_description() {return "mpv";}
+		static GUID g_get_subclass() { return ui_element_subclass_utility; }
+		static void g_get_name(pfc::string_base& out) { out = "mpv"; }
+		static ui_element_config::ptr g_get_default_configuration() { return ui_element_config::g_create_empty(g_get_guid()); }
+		static const char* g_get_description() { return "mpv"; }
 		void notify(const GUID& p_what, t_size p_param1, const void* p_param2, t_size p_param2size)
 		{
 			if (p_what == ui_element_notify_visibility_changed)
 			{
 				if (p_param1 == 1 && mpv == NULL)
 				{
-					start_mpv();
 				}
 				else if (p_param1 == 0 && mpv != NULL)
 				{
-					kill_mpv();
 				}
 			}
 		};
@@ -137,16 +109,14 @@ namespace {
 
 	private:
 		ui_element_config::ptr m_config;
-		mpv_handle* mpv;
-
-		timer _timer;
+		mpv_handle* mpv = NULL;
 
 		void kill_mpv() {
 			if (mpv != NULL)
 			{
 				mpv_handle* temp = mpv;
 				mpv = NULL;
-				_mpv_terminate_destroy(temp);
+				_mpv_destroy(temp);
 			}
 		};
 
@@ -161,12 +131,21 @@ namespace {
 			int64_t wid = (intptr_t)(m_hWnd);
 			_mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &wid);
 
+			_mpv_set_option_string(mpv, "load-scripts", "no");
+			_mpv_set_option_string(mpv, "ytdl", "no");
+			_mpv_set_option_string(mpv, "load-stats-overlay", "no");
+			_mpv_set_option_string(mpv, "load-osd-console", "no");
+
 			_mpv_set_option_string(mpv, "config", "yes");
 			_mpv_set_option_string(mpv, "config-dir", path.c_str());
-			path.add_filename("mpv.log");
-			_mpv_set_option_string(mpv, "log-file", path.c_str());
+			
+			if (cfg_mpv_native_logging.get())
+			{
+				path.add_filename("mpv.log");
+				_mpv_set_option_string(mpv, "log-file", path.c_str());
+			}
 
-			// no display for music for now
+			// no display for music
 			_mpv_set_option_string(mpv, "audio-display", "no");
 
 			// everything syncs to foobar
@@ -177,30 +156,14 @@ namespace {
 			_mpv_set_option_string(mpv, "hr-seek-framedrop", "yes");
 
 			// foobar plays the audio
-			_mpv_set_option_string(mpv, "ao", "null");
+			_mpv_set_option_string(mpv, "audio", "no");
 
-			// seamless track change
-			_mpv_set_option_string(mpv, "gapless-audio", "yes");
-
-			// start timing audio immediately to keep in sync
+			// start timing immediately to keep in sync
 			_mpv_set_option_string(mpv, "no-initial-audio-sync", "yes");
-
-			// audio processing should use minimal cpu
-			_mpv_set_option_string(mpv, "audio-resample-linear", "yes");
-			_mpv_set_option_string(mpv, "audio-pitch-correction", "no");
 
 			// keep the renderer initialised
 			_mpv_set_option_string(mpv, "force-window", "yes");
-			_mpv_set_option_string(mpv, "keep-open", "yes");
 			_mpv_set_option_string(mpv, "idle", "yes");
-
-			// load the next file a while in advance
-			_mpv_set_option_string(mpv, "ao-null-buffer", "5");
-
-			// marked experimental, maybe unnecessary with gapless
-			_mpv_set_option_string(mpv, "prefetch-playlist", "yes");
-
-			_mpv_set_option_string(mpv, "video-latency-hacks", "yes");
 
 			double start_time = 0;
 			if (playback_control::get()->is_playing())
@@ -225,8 +188,6 @@ namespace {
 				metadb_handle_ptr handle;
 				playback_control::get()->get_now_playing(handle);
 				play_path(handle->get_path());
-
-				_timer.seek(start_time);
 			}
 		}
 
@@ -245,13 +206,20 @@ namespace {
 					return;
 
 				const char* cmd[] = { "loadfile", filename.c_str(), NULL };
-				if (_mpv_command(mpv, cmd) < 0)
+				if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get())
 				{
-					console::error("mpv: error loading file");
+					std::stringstream msg;
+					msg << "mpv: Error loading item '" << filename << "'";
+					console::error(msg.str().c_str());
 				}
 			}
+			else if (cfg_mpv_logging.get())
+			{
+				std::stringstream msg;
+				msg << "mpv: Skipping loading item '" << filename << "' because it is not a local file";
+				console::error(msg.str().c_str());
+			}
 
-			_timer.seek(0);
 		}
 
 		void stop()
@@ -259,8 +227,10 @@ namespace {
 			if (mpv == NULL)
 				return;
 
-			_mpv_command_string(mpv, "stop");
-			_timer.seek(0);
+			if (_mpv_command_string(mpv, "stop") < 0 && cfg_mpv_logging.get())
+			{
+				console::error("mpv: Error stopping video");
+			}
 		}
 
 		void pause(bool state)
@@ -268,7 +238,10 @@ namespace {
 			if (mpv == NULL)
 				return;
 
-			_mpv_set_property_string(mpv, "pause", state ? "yes" : "no");
+			if (_mpv_set_property_string(mpv, "pause", state ? "yes" : "no") < 0 && cfg_mpv_logging.get())
+			{
+				console::error("mpv: Error pausing");
+			}
 		}
 
 		void seek(double time)
@@ -279,43 +252,60 @@ namespace {
 			std::stringstream time_sstring;
 			time_sstring.setf(std::ios::fixed);
 			time_sstring.precision(15);
-			time_sstring << (time);
+			time_sstring << time;
 			std::string time_string = time_sstring.str();
 			const char* cmd[] = { "seek", time_string.c_str(), "absolute+exact", NULL };
-			if (_mpv_command(mpv, cmd) < 0)
+			if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get())
 			{
-				console::error("mpv: error seeking");
+				console::error("mpv: Error seeking");
 			}
-
-			_timer.seek(time);
 		}
 
-		void sync_maybe()
+		void sync()
 		{
 			if (mpv == NULL)
 				return;
 
 			double mpv_time = -1.0;
-			if (_mpv_get_property(mpv, "audio-pts", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
+			if (_mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
 				return;
-			double fb_time = playback_control::get()->playback_get_position();
 
-			_timer.record_desync(fb_time - mpv_time);
+			double desync = playback_control::get()->playback_get_position() - mpv_time;
+			double new_speed = 1.0;
 
-			if (_timer.should_sync())
+			if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get())
 			{
-				if (abs(_timer.get_desync()) > 0.4)
+				// hard sync
+				seek(playback_control::get()->playback_get_position());
+				if (cfg_mpv_logging.get())
 				{
-					// hard sync
-					seek(playback_control::get()->playback_get_position());
-					console::info("mpv: A/V resynced");
+					console::info("mpv: A/V sync");
 				}
-				else
+			}
+			else
+			{
+				// soft sync
+				if (abs(desync) > 0.001 * cfg_mpv_max_drift.get())
 				{
-					// soft sync
-					double scale = _timer.correction_factor();
-					_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &scale);
+					// aim to correct mpv internal timer in 1 second, then let mpv catch up the video
+					new_speed = min(max(1.0 + desync, 0.01), 100.0);
 				}
+			}
+
+			if (cfg_mpv_logging.get())
+			{
+				std::stringstream msg;
+				msg.setf(std::ios::fixed);
+				msg.setf(std::ios::showpos);
+				msg.precision(10);
+				msg << "mpv: Video offset " << desync << "; setting mpv speed to " << new_speed;
+
+				console::info(msg.str().c_str());
+			}
+
+			if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 && cfg_mpv_logging.get())
+			{
+				console::error("mpv: Error setting speed");
 			}
 		}
 
