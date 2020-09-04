@@ -1,9 +1,35 @@
 #pragma once
+#include "stdafx.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <sstream>
 
-namespace foo_mpv_h {
+namespace {
+	static const GUID guid_cfg_mpv_branch =
+	{ 0xa8d3b2ca, 0xa9a, 0x4efc, { 0xa4, 0x33, 0x32, 0x4d, 0x76, 0xcc, 0x8a, 0x33 } };
+	static const GUID guid_cfg_mpv_max_drift =
+	{ 0xa799d117, 0x7e68, 0x4d1e, { 0x9d, 0xc2, 0xe8, 0x16, 0x1e, 0xf1, 0xf5, 0xfe } };
+	static const GUID guid_cfg_mpv_hard_sync =
+	{ 0x240d9ab0, 0xb58d, 0x4565, { 0x9e, 0xc0, 0x6b, 0x27, 0x99, 0xcd, 0x2d, 0xed } };
+	static const GUID guid_cfg_mpv_logging =
+	{ 0x8b74d741, 0x232a, 0x46d5, { 0xa7, 0xee, 0x4, 0x89, 0xb1, 0x47, 0x43, 0xf0 } };
+	static const GUID guid_cfg_mpv_native_logging =
+	{ 0x3411741c, 0x239, 0x441d, { 0x8a, 0x8e, 0x99, 0x83, 0x2a, 0xda, 0xe7, 0xd0 } };
+	static const GUID guid_cfg_mpv_stop_hidden =
+	{ 0x9de7e631, 0x64f8, 0x4047, { 0x88, 0x39, 0x8f, 0x4a, 0x50, 0xa0, 0xb7, 0x2f } };
+}
+
+static advconfig_branch_factory g_mpv_branch("Mpv", guid_cfg_mpv_branch, advconfig_branch::guid_branch_playback, 0);
+static advconfig_integer_factory cfg_mpv_max_drift("Permitted timing drift (ms)", guid_cfg_mpv_max_drift, guid_cfg_mpv_branch, 0, 20, 0, 1000, 0);
+static advconfig_integer_factory cfg_mpv_hard_sync("Hard sync threshold (ms)", guid_cfg_mpv_hard_sync, guid_cfg_mpv_branch, 0, 2000, 0, 10000, 0);
+static advconfig_checkbox_factory cfg_mpv_logging("Enable verbose console logging", guid_cfg_mpv_logging, guid_cfg_mpv_branch, 0, false);
+static advconfig_checkbox_factory cfg_mpv_native_logging("Enable mpv log file", guid_cfg_mpv_native_logging, guid_cfg_mpv_branch, 0, false);
+static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden", guid_cfg_mpv_stop_hidden, guid_cfg_mpv_branch, 0, true);
+
+
+class mpv_player
+{
+	bool load_mpv();
 	typedef unsigned long(__cdecl* mpv_client_api_version)();
 	typedef struct mpv_handle mpv_handle;
 	typedef enum mpv_error {
@@ -30,29 +56,17 @@ namespace foo_mpv_h {
 		MPV_ERROR_GENERIC = -20
 	} mpv_error;
 	typedef const char* (__cdecl* mpv_error_string)(int error);
-	mpv_error_string _mpv_error_string;
 	typedef void(__cdecl* mpv_free)(void* data);
-	mpv_free _mpv_free;
 	typedef const char* (__cdecl* mpv_client_name)(mpv_handle* ctx);
-	mpv_client_name _mpv_client_name;
 	typedef int64_t(__cdecl* mpv_client_id)(mpv_handle* ctx);
-	mpv_client_id _mpv_client_id;
 	typedef mpv_handle* (__cdecl* mpv_create)(void);
-	mpv_create _mpv_create;
 	typedef int(__cdecl* mpv_initialize)(mpv_handle* ctx);
-	mpv_initialize _mpv_initialize;
 	typedef void(__cdecl* mpv_destroy)(mpv_handle* ctx);
-	mpv_destroy _mpv_destroy;
 	typedef void(__cdecl* mpv_terminate_destroy)(mpv_handle* ctx);
-	mpv_terminate_destroy _mpv_terminate_destroy;
 	typedef mpv_handle* (__cdecl* mpv_create_client)(mpv_handle* ctx, const char* name);
-	mpv_create_client _mpv_create_client;
 	typedef mpv_handle* (__cdecl* mpv_create_weak_client)(mpv_handle* ctx, const char* name);
-	mpv_create_weak_client _mpv_create_weak_client;
 	typedef int(__cdecl* mpv_load_config_file)(mpv_handle* ctx, const char* filename);
-	mpv_load_config_file _mpv_load_config_file;
 	typedef int64_t(__cdecl* mpv_get_time_us)(mpv_handle* ctx);
-	mpv_get_time_us _mpv_get_time_us;
 	typedef enum mpv_format {
 		MPV_FORMAT_NONE = 0,
 		MPV_FORMAT_STRING = 1,
@@ -86,51 +100,32 @@ namespace foo_mpv_h {
 		size_t size;
 	} mpv_byte_array;
 	typedef void(__cdecl* mpv_free_node_contents)(mpv_node* node);
-	mpv_free_node_contents _mpv_free_node_contents;
 	typedef int(__cdecl* mpv_set_option)(mpv_handle* ctx, const char* name, mpv_format format,
 		void* data);
-	mpv_set_option _mpv_set_option;
 	typedef int(__cdecl* mpv_set_option_string)(mpv_handle* ctx, const char* name, const char* data);
-	mpv_set_option_string _mpv_set_option_string;
 	typedef int(__cdecl* mpv_command)(mpv_handle* ctx, const char** args);
-	mpv_command _mpv_command;
 	typedef int(__cdecl* mpv_command_node)(mpv_handle* ctx, mpv_node* args, mpv_node* result);
-	mpv_command_node _mpv_command_node;
 	typedef int(__cdecl* mpv_command_ret)(mpv_handle* ctx, const char** args, mpv_node* result);
-	mpv_command_ret _mpv_command_ret;
 	typedef int(__cdecl* mpv_command_string)(mpv_handle* ctx, const char* args);
-	mpv_command_string _mpv_command_string;
 	typedef int(__cdecl* mpv_command_async)(mpv_handle* ctx, uint64_t reply_userdata,
 		const char** args);
-	mpv_command_async _mpv_command_async;
 	typedef int(__cdecl* mpv_command_node_async)(mpv_handle* ctx, uint64_t reply_userdata,
 		mpv_node* args);
-	mpv_command_node_async _mpv_command_node_async;
 	typedef void(__cdecl* mpv_abort_async_command)(mpv_handle* ctx, uint64_t reply_userdata);
-	mpv_abort_async_command _mpv_abort_async_command;
 	typedef int(__cdecl* mpv_set_property)(mpv_handle* ctx, const char* name, mpv_format format,
 		void* data);
-	mpv_set_property _mpv_set_property;
 	typedef int(__cdecl* mpv_set_property_string)(mpv_handle* ctx, const char* name, const char* data);
-	mpv_set_property_string _mpv_set_property_string;
 	typedef int(__cdecl* mpv_set_property_async)(mpv_handle* ctx, uint64_t reply_userdata,
 		const char* name, mpv_format format, void* data);
-	mpv_set_property_async _mpv_set_property_async;
 	typedef int(__cdecl* mpv_get_property)(mpv_handle* ctx, const char* name, mpv_format format,
 		void* data);
-	mpv_get_property _mpv_get_property;
 	typedef char* (__cdecl* mpv_get_property_string)(mpv_handle* ctx, const char* name);
-	mpv_get_property_string _mpv_get_property_string;
 	typedef char* (__cdecl* mpv_get_property_osd_string)(mpv_handle* ctx, const char* name);
-	mpv_get_property_osd_string _mpv_get_property_osd_string;
 	typedef int(__cdecl* mpv_get_property_async)(mpv_handle* ctx, uint64_t reply_userdata,
 		const char* name, mpv_format format);
-	mpv_get_property_async _mpv_get_property_async;
 	typedef int(__cdecl* mpv_observe_property)(mpv_handle* mpv, uint64_t reply_userdata,
 		const char* name, mpv_format format);
-	mpv_observe_property _mpv_observe_property;
 	typedef int(__cdecl* mpv_unobserve_property)(mpv_handle* mpv, uint64_t registered_reply_userdata);
-	mpv_unobserve_property _mpv_unobserve_property;
 	typedef enum mpv_event_id {
 		MPV_EVENT_NONE = 0,
 		MPV_EVENT_SHUTDOWN = 1,
@@ -151,7 +146,6 @@ namespace foo_mpv_h {
 		MPV_EVENT_HOOK = 25,
 	} mpv_event_id;
 	typedef const char* (__cdecl* mpv_event_name)(mpv_event_id event);
-	mpv_event_name _mpv_event_name;
 	typedef struct mpv_event_property {
 		const char* name;
 		mpv_format format;
@@ -209,84 +203,71 @@ namespace foo_mpv_h {
 		void* data;
 	} mpv_event;
 	typedef int(__cdecl* mpv_event_to_node)(mpv_node* dst, mpv_event* src);
-	mpv_event_to_node _mpv_event_to_node;
 	typedef int(__cdecl* mpv_request_event)(mpv_handle* ctx, mpv_event_id event, int enable);
-	mpv_request_event _mpv_request_event;
 	typedef int(__cdecl* mpv_request_log_messages)(mpv_handle* ctx, const char* min_level);
-	mpv_request_log_messages _mpv_request_log_messages;
 	typedef mpv_event* (__cdecl* mpv_wait_event)(mpv_handle* ctx, double timeout);
-	mpv_wait_event _mpv_wait_event;
 	typedef void(__cdecl* mpv_wakeup)(mpv_handle* ctx);
-	mpv_wakeup _mpv_wakeup;
 	typedef void(__cdecl* mpv_set_wakeup_callback)(mpv_handle* ctx, void (*cb)(void* d), void* d);
-	mpv_set_wakeup_callback _mpv_set_wakeup_callback;
 	typedef void(__cdecl* mpv_wait_async_requests)(mpv_handle* ctx);
-	mpv_wait_async_requests _mpv_wait_async_requests;
 	typedef int(__cdecl* mpv_hook_add)(mpv_handle* ctx, uint64_t reply_userdata,
 		const char* name, int priority);
-	mpv_hook_add _mpv_hook_add;
 	typedef int(__cdecl* mpv_hook_continue)(mpv_handle* ctx, uint64_t id);
+	mpv_error_string _mpv_error_string;
+	mpv_free _mpv_free;
+	mpv_client_name _mpv_client_name;
+	mpv_client_id _mpv_client_id;
+	mpv_create _mpv_create;
+	mpv_initialize _mpv_initialize;
+	mpv_destroy _mpv_destroy;
+	mpv_terminate_destroy _mpv_terminate_destroy;
+	mpv_create_client _mpv_create_client;
+	mpv_create_weak_client _mpv_create_weak_client;
+	mpv_load_config_file _mpv_load_config_file;
+	mpv_get_time_us _mpv_get_time_us;
+	mpv_free_node_contents _mpv_free_node_contents;
+	mpv_set_option _mpv_set_option;
+	mpv_set_option_string _mpv_set_option_string;
+	mpv_command _mpv_command;
+	mpv_command_node _mpv_command_node;
+	mpv_command_ret _mpv_command_ret;
+	mpv_command_string _mpv_command_string;
+	mpv_command_async _mpv_command_async;
+	mpv_command_node_async _mpv_command_node_async;
+	mpv_abort_async_command _mpv_abort_async_command;
+	mpv_set_property _mpv_set_property;
+	mpv_set_property_string _mpv_set_property_string;
+	mpv_set_property_async _mpv_set_property_async;
+	mpv_get_property _mpv_get_property;
+	mpv_get_property_string _mpv_get_property_string;
+	mpv_get_property_osd_string _mpv_get_property_osd_string;
+	mpv_get_property_async _mpv_get_property_async;
+	mpv_observe_property _mpv_observe_property;
+	mpv_unobserve_property _mpv_unobserve_property;
+	mpv_event_name _mpv_event_name;
+	mpv_event_to_node _mpv_event_to_node;
+	mpv_request_event _mpv_request_event;
+	mpv_request_log_messages _mpv_request_log_messages;
+	mpv_wait_event _mpv_wait_event;
+	mpv_wakeup _mpv_wakeup;
+	mpv_set_wakeup_callback _mpv_set_wakeup_callback;
+	mpv_wait_async_requests _mpv_wait_async_requests;
+	mpv_hook_add _mpv_hook_add;
 	mpv_hook_continue _mpv_hook_continue;
 
-	bool load_mpv()
-	{
-		HMODULE dll;
-		pfc::string_formatter path = core_api::get_my_full_path();
-		path.truncate(path.scan_filename());
-		std::wstringstream wpath_mpv;
-		wpath_mpv << path << "mpv\\mpv-1.dll";
-		dll = LoadLibraryExW(wpath_mpv.str().c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
-		if (dll == NULL)
-		{
-			std::stringstream error;
-			error << "Could not load mpv-1.dll: error code " << GetLastError();
-			console::error(error.str().c_str());
-			return false;
-		}
+	mpv_handle* mpv;
+	bool running;
+	HWND wid;
 
-		_mpv_error_string = (mpv_error_string)GetProcAddress(dll, "mpv_error_string");
-		_mpv_free = (mpv_free)GetProcAddress(dll, "mpv_free");
-		_mpv_client_name = (mpv_client_name)GetProcAddress(dll, "mpv_client_name");
-		_mpv_client_id = (mpv_client_id)GetProcAddress(dll, "mpv_client_id");
-		_mpv_create = (mpv_create)GetProcAddress(dll, "mpv_create");
-		_mpv_initialize = (mpv_initialize)GetProcAddress(dll, "mpv_initialize");
-		_mpv_destroy = (mpv_destroy)GetProcAddress(dll, "mpv_destroy");
-		_mpv_terminate_destroy = (mpv_terminate_destroy)GetProcAddress(dll, "mpv_terminate_destroy");
-		_mpv_create_client = (mpv_create_client)GetProcAddress(dll, "mpv_create_client");
-		_mpv_create_weak_client = (mpv_create_weak_client)GetProcAddress(dll, "mpv_create_weak_client");
-		_mpv_load_config_file = (mpv_load_config_file)GetProcAddress(dll, "mpv_load_config_file");
-		_mpv_get_time_us = (mpv_get_time_us)GetProcAddress(dll, "mpv_get_time_us");
-		_mpv_free_node_contents = (mpv_free_node_contents)GetProcAddress(dll, "mpv_free_node_contents");
-		_mpv_set_option = (mpv_set_option)GetProcAddress(dll, "mpv_set_option");
-		_mpv_set_option_string = (mpv_set_option_string)GetProcAddress(dll, "mpv_set_option_string");
-		_mpv_command = (mpv_command)GetProcAddress(dll, "mpv_command");
-		_mpv_command_node = (mpv_command_node)GetProcAddress(dll, "mpv_command_node");
-		_mpv_command_ret = (mpv_command_ret)GetProcAddress(dll, "mpv_command_ret");
-		_mpv_command_string = (mpv_command_string)GetProcAddress(dll, "mpv_command_string");
-		_mpv_command_async = (mpv_command_async)GetProcAddress(dll, "mpv_command_async");
-		_mpv_command_node_async = (mpv_command_node_async)GetProcAddress(dll, "mpv_command_node_async");
-		_mpv_abort_async_command = (mpv_abort_async_command)GetProcAddress(dll, "mpv_abort_async_command");
-		_mpv_set_property = (mpv_set_property)GetProcAddress(dll, "mpv_set_property");
-		_mpv_set_property_string = (mpv_set_property_string)GetProcAddress(dll, "mpv_set_property_string");
-		_mpv_set_property_async = (mpv_set_property_async)GetProcAddress(dll, "mpv_set_property_async");
-		_mpv_get_property = (mpv_get_property)GetProcAddress(dll, "mpv_get_property");
-		_mpv_get_property_string = (mpv_get_property_string)GetProcAddress(dll, "mpv_get_property_string");
-		_mpv_get_property_osd_string = (mpv_get_property_osd_string)GetProcAddress(dll, "mpv_get_property_osd_string");
-		_mpv_get_property_async = (mpv_get_property_async)GetProcAddress(dll, "mpv_get_property_async");
-		_mpv_observe_property = (mpv_observe_property)GetProcAddress(dll, "mpv_observe_property");
-		_mpv_unobserve_property = (mpv_unobserve_property)GetProcAddress(dll, "mpv_unobserve_property");
-		_mpv_event_name = (mpv_event_name)GetProcAddress(dll, "mpv_event_name");
-		_mpv_event_to_node = (mpv_event_to_node)GetProcAddress(dll, "mpv_event_to_node");
-		_mpv_request_event = (mpv_request_event)GetProcAddress(dll, "mpv_request_event");
-		_mpv_request_log_messages = (mpv_request_log_messages)GetProcAddress(dll, "mpv_request_log_messages");
-		_mpv_wait_event = (mpv_wait_event)GetProcAddress(dll, "mpv_wait_event");
-		_mpv_wakeup = (mpv_wakeup)GetProcAddress(dll, "mpv_wakeup");
-		_mpv_set_wakeup_callback = (mpv_set_wakeup_callback)GetProcAddress(dll, "mpv_set_wakeup_callback");
-		_mpv_wait_async_requests = (mpv_wait_async_requests)GetProcAddress(dll, "mpv_wait_async_requests");
-		_mpv_hook_add = (mpv_hook_add)GetProcAddress(dll, "mpv_hook_add");
-		_mpv_hook_continue = (mpv_hook_continue)GetProcAddress(dll, "mpv_hook_continue");
+public:
+	mpv_player();
 
-		return true;
-	}
-}
-
+	void kill_mpv();
+	void disable();
+	void set_mpv_wid(HWND wnd);
+	void start();
+	void play_path(const char* metadb_path);
+	void stop();
+	void pause(bool state);
+	void seek(double time);
+	void sync();
+};

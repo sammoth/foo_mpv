@@ -116,6 +116,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="libmpv.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mpv_panel.cpp" />
     <ClCompile Include="stdafx.cpp">
@@ -124,7 +125,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="mpv.h" />
+    <ClInclude Include="libmpv.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
   <ItemGroup>

@@ -24,12 +24,15 @@
     <ClCompile Include="mpv_panel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="libmpv.cpp">
+      <Filter>Header Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="mpv.h">
+    <ClInclude Include="libmpv.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
