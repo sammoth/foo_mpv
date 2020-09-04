@@ -6,7 +6,8 @@
 
 #include <sstream>
 
-class mpv_player {
+namespace mpv {
+class mpv_player : play_callback_impl_base {
   bool load_mpv();
   typedef unsigned long(__cdecl* mpv_client_api_version)();
   typedef struct mpv_handle mpv_handle;
@@ -260,22 +261,69 @@ class mpv_player {
 
   bool enabled;
   double time_base;
-  double last_seek;
+  double last_sync_seek;
+
+  bool mpv_loaded;
+
+  void on_playback_starting(play_control::t_track_command p_command,
+                            bool p_paused);
+  void on_playback_new_track(metadb_handle_ptr p_track);
+  void on_playback_stop(play_control::t_stop_reason p_reason);
+  void on_playback_seek(double p_time);
+  void on_playback_pause(bool p_state);
+  void on_playback_time(double p_time);
 
  public:
   mpv_player();
 
-  void set_mpv_wid(HWND wnd);
-  void init();
-  void terminate();
+  void mpv_set_wid(HWND wnd);
+  void mpv_init();
+  void mpv_terminate();
 
-  void enable();
-  void disable();
+  void mpv_enable();
+  void mpv_disable();
 
-  void play(metadb_handle_ptr metadb);
-  void stop();
-  void pause(bool state);
+  void mpv_play(metadb_handle_ptr metadb);
+  void mpv_stop();
+  void mpv_pause(bool state);
   // seek to specified time in the playing subsong
-  void seek(double time);
-  void sync();
+  void mpv_seek(double time);
+  void mpv_sync();
 };
+
+struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
+  DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
+                       CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
+
+  BEGIN_MSG_MAP_EX(CMpvWindow)
+  MSG_WM_CREATE(on_create)
+  MSG_WM_ERASEBKGND(on_erase_bg)
+  MSG_WM_DESTROY(on_destroy)
+  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_KEYDOWN(on_keydown)
+  END_MSG_MAP()
+
+  HWND parent_;
+  BOOL on_erase_bg(CDCHandle dc);
+  void on_keydown(UINT, WPARAM, LPARAM);
+
+  bool fullscreen_ = false;
+  LONG x_;
+  LONG y_;
+  LONG saved_style;
+  LONG saved_ex_style;
+  void toggle_fullscreen();
+
+  void on_destroy();
+
+  LRESULT on_create(LPCREATESTRUCT lpcreate);
+
+  HWND get_wnd();
+
+ public:
+  CMpvWindow(HWND parent);
+  void on_double_click(UINT, CPoint);
+
+  void MaybeResize(LONG x, LONG y);
+};
+}  // namespace mpv

@@ -1,6 +1,9 @@
 #include "stdafx.h"
 // PCH ^
+#include "helpers/win32_misc.h"
 #include "libmpv.h"
+
+namespace mpv {
 
 static const GUID guid_cfg_mpv_branch = {
     0xa8d3b2ca,
@@ -17,11 +20,11 @@ static const GUID guid_cfg_mpv_hard_sync = {
     0xb58d,
     0x4565,
     {0x9e, 0xc0, 0x6b, 0x27, 0x99, 0xcd, 0x2d, 0xed}};
-static const GUID guid_cfg_mpv_hard_sync_interval
-    = {0x79009e9f,
-       0x11f0,
-       0x4518,
-       {0x9e, 0x75, 0xe1, 0x26, 0x99, 0xa8, 0x65, 0xcb}};
+static const GUID guid_cfg_mpv_hard_sync_interval = {
+    0x79009e9f,
+    0x11f0,
+    0x4518,
+    {0x9e, 0x75, 0xe1, 0x26, 0x99, 0xa8, 0x65, 0xcb}};
 
 static const GUID guid_cfg_mpv_logging = {
     0x8b74d741,
@@ -39,7 +42,6 @@ static const GUID guid_cfg_mpv_stop_hidden = {
     0x4047,
     {0x88, 0x39, 0x8f, 0x4a, 0x50, 0xa0, 0xb7, 0x2f}};
 
-
 static advconfig_branch_factory g_mpv_branch(
     "mpv", guid_cfg_mpv_branch, advconfig_branch::guid_branch_playback, 0);
 static advconfig_integer_factory cfg_mpv_max_drift(
@@ -47,12 +49,11 @@ static advconfig_integer_factory cfg_mpv_max_drift(
     0, 20, 0, 1000, 0);
 static advconfig_integer_factory cfg_mpv_hard_sync("Hard sync threshold (ms)",
                                                    guid_cfg_mpv_hard_sync,
-                                                   guid_cfg_mpv_branch, 0, 2000,
+                                                   guid_cfg_mpv_branch, 0, 500,
                                                    0, 10000, 0);
-static advconfig_integer_factory cfg_mpv_hard_sync_interval("Minimum time between hard syncs (seconds)",
-                                                   guid_cfg_mpv_hard_sync_interval,
-                                                   guid_cfg_mpv_branch, 0, 5,
-                                                   0, 30, 0);
+static advconfig_integer_factory cfg_mpv_hard_sync_interval(
+    "Minimum time between hard syncs (seconds)",
+    guid_cfg_mpv_hard_sync_interval, guid_cfg_mpv_branch, 0, 7, 0, 30, 0);
 static advconfig_checkbox_factory cfg_mpv_logging(
     "Enable verbose console logging", guid_cfg_mpv_logging, guid_cfg_mpv_branch,
     0, false);
@@ -65,12 +66,12 @@ static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
                                                       true);
 
 mpv_player::mpv_player() : wid(NULL), enabled(false), mpv(NULL), time_base(0) {
-  if (!load_mpv()) {
-    console::error("Could not load mpv-1.dll");
-  }
+  mpv_loaded = load_mpv();
 }
 
-void mpv_player::init() {
+void mpv_player::mpv_init() {
+  if (!mpv_loaded) return;
+
   if (mpv == NULL && wid != NULL) {
     pfc::string_formatter path;
     path.add_filename(core_api::get_profile_path());
@@ -121,7 +122,9 @@ void mpv_player::init() {
   }
 }
 
-void mpv_player::terminate() {
+void mpv_player::mpv_terminate() {
+  if (!mpv_loaded) return;
+
   enabled = false;
 
   if (mpv != NULL) {
@@ -131,30 +134,48 @@ void mpv_player::terminate() {
   }
 };
 
-void mpv_player::enable() {
+void mpv_player::mpv_enable() {
+  if (!mpv_loaded) return;
+
   bool starting = !enabled;
   enabled = true;
 
   if (starting && playback_control::get()->is_playing()) {
     metadb_handle_ptr handle;
     playback_control::get()->get_now_playing(handle);
-    play(handle);
+    mpv_play(handle);
   }
 }
 
-void mpv_player::disable() {
+void mpv_player::mpv_disable() {
+  if (!mpv_loaded) return;
+
   if (cfg_mpv_stop_hidden) {
-    stop();
+    mpv_stop();
     enabled = false;
   }
 }
 
-void mpv_player::set_mpv_wid(HWND wnd) { wid = wnd; }
+void mpv_player::mpv_set_wid(HWND wnd) { wid = wnd; }
 
-void mpv_player::play(metadb_handle_ptr metadb) {
+void mpv_player::on_playback_starting(play_control::t_track_command p_command,
+                                      bool p_paused) {}
+void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
+  mpv_play(p_track);
+}
+void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
+  mpv_stop();
+}
+void mpv_player::on_playback_seek(double p_time) { mpv_seek(p_time); }
+void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
+void mpv_player::on_playback_time(double p_time) { mpv_sync(); }
+
+void mpv_player::mpv_play(metadb_handle_ptr metadb) {
+  if (!mpv_loaded) return;
+
   if (!enabled) return;
 
-  if (mpv == NULL) init();
+  if (mpv == NULL) mpv_init();
 
   pfc::string8 filename;
   filename.add_filename(metadb->get_path());
@@ -165,7 +186,7 @@ void mpv_player::play(metadb_handle_ptr metadb) {
 
     time_base = 0.0;
     if (metadb->get_subsong_index() > 1) {
-      for (int s = 0; s < metadb->get_subsong_index(); s++) {
+      for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
         playable_location_impl tmp = metadb->get_location();
         tmp.set_subsong(s);
         metadb_handle_ptr subsong = metadb::get()->handle_create(tmp);
@@ -196,18 +217,30 @@ void mpv_player::play(metadb_handle_ptr metadb) {
     console::error(msg.str().c_str());
   }
 
-  last_seek = 0;
+  // allow one hard seek to adjust after difference in seeking speed between
+  // fb/mpv
+  last_sync_seek = -999;
 }
 
-void mpv_player::stop() {
+void mpv_player::mpv_stop() {
+  if (!mpv_loaded) return;
+
   if (mpv == NULL || !enabled) return;
 
   if (_mpv_command_string(mpv, "stop") < 0 && cfg_mpv_logging.get()) {
     console::error("mpv: Error stopping video");
   }
+
+  // when foobar is stopped it's also unpaused
+  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
+      cfg_mpv_logging.get()) {
+    console::error("mpv: Error pausing");
+  }
 }
 
-void mpv_player::pause(bool state) {
+void mpv_player::mpv_pause(bool state) {
+  if (!mpv_loaded) return;
+
   if (mpv == NULL || !enabled) return;
 
   if (_mpv_set_property_string(mpv, "pause", state ? "yes" : "no") < 0 &&
@@ -216,7 +249,9 @@ void mpv_player::pause(bool state) {
   }
 }
 
-void mpv_player::seek(double time) {
+void mpv_player::mpv_seek(double time) {
+  if (!mpv_loaded) return;
+
   if (mpv == NULL || !enabled) return;
 
   std::stringstream time_sstring;
@@ -225,14 +260,23 @@ void mpv_player::seek(double time) {
   time_sstring << time_base + time;
   std::string time_string = time_sstring.str();
   const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
-  if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get()) {
-    console::error("mpv: Error seeking");
+  if (_mpv_command(mpv, cmd) < 0) {
+    Sleep(10);  // one more time
+    if (_mpv_command(mpv, cmd) < 0) {
+      if (cfg_mpv_logging.get()) {
+        console::error("mpv: Error seeking");
+      }
+    }
   }
 
-  last_seek = time;
+  // allow one hard seek to adjust after difference in seeking speed between
+  // fb/mpv
+  last_sync_seek = -999;
 }
 
-void mpv_player::sync() {
+void mpv_player::mpv_sync() {
+  if (!mpv_loaded) return;
+
   if (mpv == NULL || !enabled) return;
 
   double mpv_time = -1.0;
@@ -243,9 +287,11 @@ void mpv_player::sync() {
   double desync = time_base + fb_time - mpv_time;
   double new_speed = 1.0;
 
-  if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get() && (fb_time - last_seek) > cfg_mpv_hard_sync_interval.get()) {
+  if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get() &&
+      (fb_time - last_sync_seek) > cfg_mpv_hard_sync_interval.get()) {
     // hard sync
-    seek(fb_time);
+    mpv_seek(fb_time);
+    last_sync_seek = fb_time;
     if (cfg_mpv_logging.get()) {
       console::info("mpv: A/V sync");
     }
@@ -256,22 +302,22 @@ void mpv_player::sync() {
       // the video
       new_speed = min(max(1.0 + desync, 0.01), 100.0);
     }
-  }
 
-  if (cfg_mpv_logging.get()) {
-    std::stringstream msg;
-    msg.setf(std::ios::fixed);
-    msg.setf(std::ios::showpos);
-    msg.precision(10);
-    msg << "mpv: Video offset " << desync << "; setting mpv speed to "
-        << new_speed;
+    if (cfg_mpv_logging.get()) {
+      std::stringstream msg;
+      msg.setf(std::ios::fixed);
+      msg.setf(std::ios::showpos);
+      msg.precision(10);
+      msg << "mpv: Video offset " << desync << "; setting mpv speed to "
+          << new_speed;
 
-    console::info(msg.str().c_str());
-  }
+      console::info(msg.str().c_str());
+    }
 
-  if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 &&
-      cfg_mpv_logging.get()) {
-    console::error("mpv: Error setting speed");
+    if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 &&
+        cfg_mpv_logging.get()) {
+      console::error("mpv: Error setting speed");
+    }
   }
 }
 
@@ -357,3 +403,79 @@ bool mpv_player::load_mpv() {
 
   return true;
 }
+
+CMpvWindow::CMpvWindow(HWND parent) : parent_(parent) {
+  HWND wid;
+  WIN32_OP(wid = Create(parent, 0, 0, WS_CHILD, 0));
+  mpv_set_wid(wid);
+}
+
+BOOL CMpvWindow::on_erase_bg(CDCHandle dc) {
+  CRect rc;
+  WIN32_OP_D(GetClientRect(&rc));
+  CBrush brush;
+  WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
+  WIN32_OP_D(dc.FillRect(&rc, brush));
+  return TRUE;
+}
+
+void CMpvWindow::MaybeResize(LONG x, LONG y) {
+  x_ = x;
+  y_ = y;
+
+  if (!fullscreen_) ResizeClient(x_, y_);
+}
+
+void CMpvWindow::on_destroy() { mpv_terminate(); }
+
+void CMpvWindow::on_keydown(UINT key, WPARAM, LPARAM) {
+  switch (key) {
+    case VK_ESCAPE:
+      if (fullscreen_) toggle_fullscreen();
+    default:
+      break;
+  }
+}
+
+void CMpvWindow::toggle_fullscreen() {
+  if (!fullscreen_) {
+    saved_style = GetWindowLong(GWL_STYLE);
+    saved_ex_style = GetWindowLong(GWL_EXSTYLE);
+  }
+  fullscreen_ = !fullscreen_;
+  if (fullscreen_) {
+    SetParent(NULL);
+    SetWindowLong(GWL_STYLE,
+                  saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
+                      WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
+    SetWindowLong(GWL_EXSTYLE,
+                  saved_ex_style);
+
+    MONITORINFO monitor_info;
+    monitor_info.cbSize = sizeof(monitor_info);
+    GetMonitorInfoW(MonitorFromWindow(get_wnd(), MONITOR_DEFAULTTONEAREST),
+                   &monitor_info);
+    SetWindowPos(NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+                 monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                 monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                 SWP_NOZORDER | SWP_FRAMECHANGED);
+  } else {
+    SetParent(parent_);
+    SetWindowLong(GWL_STYLE, saved_style);
+    SetWindowLong(GWL_EXSTYLE, saved_ex_style);
+    SetWindowPos(NULL, 0, 0, x_, y_,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    ::SetActiveWindow(parent_);
+    ::SetFocus(parent_);
+  }
+}
+
+void CMpvWindow::on_double_click(UINT, CPoint) { toggle_fullscreen(); }
+
+LRESULT CMpvWindow::on_create(LPCREATESTRUCT lpcreate) {
+  ShowWindow(SW_SHOW);
+  return 0;
+}
+
+HWND CMpvWindow::get_wnd() { return m_hWnd; }
+}  // namespace mpv

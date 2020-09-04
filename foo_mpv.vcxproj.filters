@@ -21,10 +21,10 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mpv_panel.cpp">
+    <ClCompile Include="libmpv.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="libmpv.cpp">
+    <ClCompile Include="mpv_dui_panel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
