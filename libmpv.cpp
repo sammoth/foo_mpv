@@ -1,6 +1,234 @@
 #include "stdafx.h"
 #include "libmpv.h"
 
+
+mpv_player::mpv_player() : wid(NULL), enabled(false), mpv(NULL)
+{
+	if (!load_mpv())
+	{
+		console::error("Could not load mpv-1.dll");
+	}
+}
+
+void mpv_player::init()
+{
+	if (mpv == NULL && wid != NULL)
+	{
+		pfc::string_formatter path;
+		path.add_filename(core_api::get_profile_path());
+		path.add_filename("mpv");
+		path.replace_string("\\file://", "");
+		mpv = _mpv_create();
+
+		int64_t l_wid = (intptr_t)(wid);
+		_mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &l_wid);
+
+		_mpv_set_option_string(mpv, "load-scripts", "no");
+		_mpv_set_option_string(mpv, "ytdl", "no");
+		_mpv_set_option_string(mpv, "load-stats-overlay", "no");
+		_mpv_set_option_string(mpv, "load-osd-console", "no");
+
+		_mpv_set_option_string(mpv, "config", "yes");
+		_mpv_set_option_string(mpv, "config-dir", path.c_str());
+
+		if (cfg_mpv_native_logging.get())
+		{
+			path.add_filename("mpv.log");
+			_mpv_set_option_string(mpv, "log-file", path.c_str());
+		}
+
+		// no display for music
+		_mpv_set_option_string(mpv, "audio-display", "no");
+
+		// everything syncs to foobar
+		_mpv_set_option_string(mpv, "video-sync", "audio");
+		_mpv_set_option_string(mpv, "untimed", "no");
+
+		// seek fast
+		_mpv_set_option_string(mpv, "hr-seek-framedrop", "yes");
+
+		// foobar plays the audio
+		_mpv_set_option_string(mpv, "audio", "no");
+
+		// start timing immediately to keep in sync
+		_mpv_set_option_string(mpv, "no-initial-audio-sync", "yes");
+
+		// keep the renderer initialised
+		_mpv_set_option_string(mpv, "force-window", "yes");
+		_mpv_set_option_string(mpv, "idle", "yes");
+
+		if (_mpv_initialize(mpv) != 0)
+		{
+			_mpv_terminate_destroy(mpv);
+			mpv = NULL;
+		}
+	}
+}
+
+void mpv_player::terminate()
+{
+	enabled = false;
+
+	if (mpv != NULL)
+	{
+		mpv_handle* temp = mpv;
+		mpv = NULL;
+		_mpv_terminate_destroy(temp);
+	}
+};
+
+void mpv_player::enable()
+{
+	bool starting = !enabled;
+	enabled = true;
+
+	if (starting && playback_control::get()->is_playing())
+	{
+		metadb_handle_ptr handle;
+		playback_control::get()->get_now_playing(handle);
+		play_path(handle->get_path());
+	}
+}
+
+void mpv_player::disable()
+{
+	stop();
+	enabled = false;
+}
+
+void mpv_player::set_mpv_wid(HWND wnd)
+{
+	wid = wnd;
+}
+
+void mpv_player::play_path(const char* metadb_path)
+{
+	if (!enabled)
+		return;
+
+	if (mpv == NULL)
+		init();
+
+	std::stringstream time_sstring;
+	time_sstring.setf(std::ios::fixed);
+	time_sstring.precision(3);
+	time_sstring << playback_control::get()->playback_get_position();
+	std::string time_string = time_sstring.str();
+	_mpv_set_option_string(mpv, "start", time_string.c_str());
+
+	pfc::string8 filename;
+	filename.add_filename(metadb_path);
+	if (filename.has_prefix("\\file://"))
+	{
+		filename.remove_chars(0, 8);
+
+		if (filename.is_empty())
+			return;
+
+		const char* cmd[] = { "loadfile", filename.c_str(), NULL };
+		if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get())
+		{
+			std::stringstream msg;
+			msg << "Mpv: Error loading item '" << filename << "'";
+			console::error(msg.str().c_str());
+		}
+	}
+	else if (cfg_mpv_logging.get())
+	{
+		std::stringstream msg;
+		msg << "Mpv: Skipping loading item '" << filename << "' because it is not a local file";
+		console::error(msg.str().c_str());
+	}
+
+}
+
+void mpv_player::stop()
+{
+	if (mpv == NULL || !enabled)
+		return;
+
+	if (_mpv_command_string(mpv, "stop") < 0 && cfg_mpv_logging.get())
+	{
+		console::error("Mpv: Error stopping video");
+	}
+}
+
+void mpv_player::pause(bool state)
+{
+	if (mpv == NULL || !enabled)
+		return;
+
+	if (_mpv_set_property_string(mpv, "pause", state ? "yes" : "no") < 0 && cfg_mpv_logging.get())
+	{
+		console::error("Mpv: Error pausing");
+	}
+}
+
+void mpv_player::seek(double time)
+{
+	if (mpv == NULL || !enabled)
+		return;
+
+	std::stringstream time_sstring;
+	time_sstring.setf(std::ios::fixed);
+	time_sstring.precision(15);
+	time_sstring << time;
+	std::string time_string = time_sstring.str();
+	const char* cmd[] = { "seek", time_string.c_str(), "absolute+exact", NULL };
+	if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get())
+	{
+		console::error("Mpv: Error seeking");
+	}
+}
+
+void mpv_player::sync()
+{
+	if (mpv == NULL || !enabled)
+		return;
+
+	double mpv_time = -1.0;
+	if (_mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
+		return;
+
+	double desync = playback_control::get()->playback_get_position() - mpv_time;
+	double new_speed = 1.0;
+
+	if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get())
+	{
+		// hard sync
+		seek(playback_control::get()->playback_get_position());
+		if (cfg_mpv_logging.get())
+		{
+			console::info("Mpv: A/V sync");
+		}
+	}
+	else
+	{
+		// soft sync
+		if (abs(desync) > 0.001 * cfg_mpv_max_drift.get())
+		{
+			// aim to correct mpv internal timer in 1 second, then let mpv catch up the video
+			new_speed = min(max(1.0 + desync, 0.01), 100.0);
+		}
+	}
+
+	if (cfg_mpv_logging.get())
+	{
+		std::stringstream msg;
+		msg.setf(std::ios::fixed);
+		msg.setf(std::ios::showpos);
+		msg.precision(10);
+		msg << "Mpv: Video offset " << desync << "; setting mpv speed to " << new_speed;
+
+		console::info(msg.str().c_str());
+	}
+
+	if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 && cfg_mpv_logging.get())
+	{
+		console::error("Mpv: Error setting speed");
+	}
+}
+
 bool mpv_player::load_mpv()
 {
 	HMODULE dll;
@@ -60,228 +288,4 @@ bool mpv_player::load_mpv()
 	_mpv_hook_continue = (mpv_hook_continue)GetProcAddress(dll, "mpv_hook_continue");
 
 	return true;
-}
-
-mpv_player::mpv_player() : wid(NULL), running(false), mpv(NULL)
-{
-	if (!load_mpv())
-	{
-		console::error("Could not load mpv-1.dll");
-	}
-}
-
-void mpv_player::kill_mpv() {
-	if (mpv != NULL)
-	{
-		mpv_handle* temp = mpv;
-		mpv = NULL;
-		_mpv_terminate_destroy(temp);
-	}
-
-	running = false;
-};
-
-void mpv_player::disable()
-{
-	stop();
-	running = false;
-}
-
-void mpv_player::set_mpv_wid(HWND wnd)
-{
-	wid = wnd;
-	if (mpv != NULL)
-	{
-		int64_t l_wid = (intptr_t)(wid);
-		_mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &l_wid);
-	}
-}
-
-void mpv_player::start()
-{
-	if (mpv == NULL && wid != NULL)
-	{
-		pfc::string_formatter path;
-		path.add_filename(core_api::get_profile_path());
-		path.add_filename("mpv");
-		path.replace_string("\\file://", "");
-		mpv = _mpv_create();
-
-		int64_t l_wid = (intptr_t)(wid);
-		_mpv_set_option(mpv, "wid", MPV_FORMAT_INT64, &l_wid);
-
-		_mpv_set_option_string(mpv, "load-scripts", "no");
-		_mpv_set_option_string(mpv, "ytdl", "no");
-		_mpv_set_option_string(mpv, "load-stats-overlay", "no");
-		_mpv_set_option_string(mpv, "load-osd-console", "no");
-
-		_mpv_set_option_string(mpv, "config", "yes");
-		_mpv_set_option_string(mpv, "config-dir", path.c_str());
-
-		if (cfg_mpv_native_logging.get())
-		{
-			path.add_filename("mpv.log");
-			_mpv_set_option_string(mpv, "log-file", path.c_str());
-		}
-
-		// no display for music
-		_mpv_set_option_string(mpv, "audio-display", "no");
-
-		// everything syncs to foobar
-		_mpv_set_option_string(mpv, "video-sync", "audio");
-		_mpv_set_option_string(mpv, "untimed", "no");
-
-		// seek fast
-		_mpv_set_option_string(mpv, "hr-seek-framedrop", "yes");
-
-		// foobar plays the audio
-		_mpv_set_option_string(mpv, "audio", "no");
-
-		// start timing immediately to keep in sync
-		_mpv_set_option_string(mpv, "no-initial-audio-sync", "yes");
-
-		// keep the renderer initialised
-		_mpv_set_option_string(mpv, "force-window", "yes");
-		_mpv_set_option_string(mpv, "idle", "yes");
-
-		if (_mpv_initialize(mpv) != 0)
-		{
-			_mpv_terminate_destroy(mpv);
-			mpv = NULL;
-		}
-	}
-
-	running = true;
-
-	if (playback_control::get()->is_playing())
-	{
-		metadb_handle_ptr handle;
-		playback_control::get()->get_now_playing(handle);
-		play_path(handle->get_path());
-	}
-}
-
-void mpv_player::play_path(const char* metadb_path)
-{
-	if (mpv == NULL || !running)
-		return;
-
-	std::stringstream time_sstring;
-	time_sstring.setf(std::ios::fixed);
-	time_sstring.precision(3);
-	time_sstring << playback_control::get()->playback_get_position();
-	std::string time_string = time_sstring.str();
-	_mpv_set_option_string(mpv, "start", time_string.c_str());
-
-	pfc::string8 filename;
-	filename.add_filename(metadb_path);
-	if (filename.has_prefix("\\file://"))
-	{
-		filename.remove_chars(0, 8);
-
-		if (filename.is_empty())
-			return;
-
-		const char* cmd[] = { "loadfile", filename.c_str(), NULL };
-		if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get())
-		{
-			std::stringstream msg;
-			msg << "Mpv: Error loading item '" << filename << "'";
-			console::error(msg.str().c_str());
-		}
-	}
-	else if (cfg_mpv_logging.get())
-	{
-		std::stringstream msg;
-		msg << "Mpv: Skipping loading item '" << filename << "' because it is not a local file";
-		console::error(msg.str().c_str());
-	}
-
-}
-
-void mpv_player::stop()
-{
-	if (mpv == NULL || !running)
-		return;
-
-	if (_mpv_command_string(mpv, "stop") < 0 && cfg_mpv_logging.get())
-	{
-		console::error("Mpv: Error stopping video");
-	}
-}
-
-void mpv_player::pause(bool state)
-{
-	if (mpv == NULL || !running)
-		return;
-
-	if (_mpv_set_property_string(mpv, "pause", state ? "yes" : "no") < 0 && cfg_mpv_logging.get())
-	{
-		console::error("Mpv: Error pausing");
-	}
-}
-
-void mpv_player::seek(double time)
-{
-	if (mpv == NULL || !running)
-		return;
-
-	std::stringstream time_sstring;
-	time_sstring.setf(std::ios::fixed);
-	time_sstring.precision(15);
-	time_sstring << time;
-	std::string time_string = time_sstring.str();
-	const char* cmd[] = { "seek", time_string.c_str(), "absolute+exact", NULL };
-	if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get())
-	{
-		console::error("Mpv: Error seeking");
-	}
-}
-
-void mpv_player::sync()
-{
-	if (mpv == NULL || !running)
-		return;
-
-	double mpv_time = -1.0;
-	if (_mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
-		return;
-
-	double desync = playback_control::get()->playback_get_position() - mpv_time;
-	double new_speed = 1.0;
-
-	if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get())
-	{
-		// hard sync
-		seek(playback_control::get()->playback_get_position());
-		if (cfg_mpv_logging.get())
-		{
-			console::info("Mpv: A/V sync");
-		}
-	}
-	else
-	{
-		// soft sync
-		if (abs(desync) > 0.001 * cfg_mpv_max_drift.get())
-		{
-			// aim to correct mpv internal timer in 1 second, then let mpv catch up the video
-			new_speed = min(max(1.0 + desync, 0.01), 100.0);
-		}
-	}
-
-	if (cfg_mpv_logging.get())
-	{
-		std::stringstream msg;
-		msg.setf(std::ios::fixed);
-		msg.setf(std::ios::showpos);
-		msg.precision(10);
-		msg << "Mpv: Video offset " << desync << "; setting mpv speed to " << new_speed;
-
-		console::info(msg.str().c_str());
-	}
-
-	if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 && cfg_mpv_logging.get())
-	{
-		console::error("Mpv: Error setting speed");
-	}
 }

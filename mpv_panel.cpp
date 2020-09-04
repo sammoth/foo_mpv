@@ -11,11 +11,12 @@ namespace {
 
 	struct CMpvWindow : public ui_element_instance, CWindowImpl<CMpvWindow>, play_callback_impl_base, mpv_player {
 	public:
-		DECLARE_WND_CLASS_EX(L"mpv_dui", CS_HREDRAW | CS_VREDRAW, 0)
+		DECLARE_WND_CLASS_EX(L"mpv_dui", CS_DBLCLKS, 0)
 
 		BEGIN_MSG_MAP(CMpvWindow)
 			MSG_WM_ERASEBKGND(on_erase_bg)
 			MSG_WM_CREATE(on_created)
+			MSG_WM_SIZE(on_size)
 			MSG_WM_DESTROY(on_destroy)
 		END_MSG_MAP()
 
@@ -27,25 +28,32 @@ namespace {
 		BOOL on_erase_bg(CDCHandle dc) {
 			CRect rc; WIN32_OP_D(GetClientRect(&rc));
 			CBrush brush;
-			WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
+			WIN32_OP_D(brush.CreateSolidBrush(0x00ff0000) != NULL);
 			WIN32_OP_D(dc.FillRect(&rc, brush));
 			return TRUE;
 		}
 
 		void on_destroy() {
-			kill_mpv();
+			terminate();
 		}
 
 		LRESULT on_created(LPCREATESTRUCT lparam)
 		{
-			set_mpv_wid(m_hWnd);
-			start();
 			return 0;
+		}
+
+		void on_size(UINT unSize, CSize sizeNew)
+		{
 		}
 
 		void initialize_window(HWND parent)
 		{
-			Create(parent, 0, 0, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0);
+			HWND wid = Create(parent, 0, 0, WS_CHILD, 0);
+			set_mpv_wid(wid);
+			if (m_callback->is_elem_visible_(this))
+			{
+				enable();
+			}
 		}
 
 		void on_playback_starting(play_control::t_track_command p_command, bool p_paused) {
@@ -83,23 +91,13 @@ namespace {
 		{
 			if (p_what == ui_element_notify_visibility_changed)
 			{
-				if (cfg_mpv_stop_hidden)
+				if (p_param1 == 1)
 				{
-					if (p_param1 == 1)
-					{
-						start();
-					}
-					else
-					{
-						stop();
-					}
+					enable();
 				}
-				else
+				else if (cfg_mpv_stop_hidden)
 				{
-					if (p_param1 == 1)
-					{
-						start();
-					}
+					disable();
 				}
 			}
 		};

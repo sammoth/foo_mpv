@@ -255,16 +255,19 @@ class mpv_player
 	mpv_hook_continue _mpv_hook_continue;
 
 	mpv_handle* mpv;
-	bool running;
+	bool enabled;
 	HWND wid;
 
 public:
 	mpv_player();
 
-	void kill_mpv();
-	void disable();
 	void set_mpv_wid(HWND wnd);
-	void start();
+	void init();
+	void terminate();
+
+	void enable();
+	void disable();
+
 	void play_path(const char* metadb_path);
 	void stop();
 	void pause(bool state);
