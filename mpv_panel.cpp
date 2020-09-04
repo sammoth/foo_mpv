@@ -5,8 +5,6 @@
 
 #include "libmpv.h"
 
-// TODO doesn't start video when panel is first added into new tab (or maybe otherwise)
-
 namespace {
 	static const GUID guid_mpv_panel =
 	{ 0x777a523a, 0x1ed, 0x48b9, { 0xb9, 0x1, 0xda, 0xb1, 0xbe, 0x31, 0x7c, 0xa4 } };
@@ -16,8 +14,9 @@ namespace {
 		DECLARE_WND_CLASS_EX(L"mpv_dui", CS_HREDRAW | CS_VREDRAW, 0)
 
 		BEGIN_MSG_MAP(CMpvWindow)
-			MSG_WM_ERASEBKGND(erase_bg)
-			MSG_WM_DESTROY(kill_mpv)
+			MSG_WM_ERASEBKGND(on_erase_bg)
+			MSG_WM_CREATE(on_created)
+			MSG_WM_DESTROY(on_destroy)
 		END_MSG_MAP()
 
 		CMpvWindow(ui_element_config::ptr config, ui_element_instance_callback_ptr p_callback)
@@ -25,7 +24,7 @@ namespace {
 		{
 		}
 
-		BOOL erase_bg(CDCHandle dc) {
+		BOOL on_erase_bg(CDCHandle dc) {
 			CRect rc; WIN32_OP_D(GetClientRect(&rc));
 			CBrush brush;
 			WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
@@ -33,11 +32,20 @@ namespace {
 			return TRUE;
 		}
 
+		void on_destroy() {
+			kill_mpv();
+		}
+
+		LRESULT on_created(LPCREATESTRUCT lparam)
+		{
+			set_mpv_wid(m_hWnd);
+			start();
+			return 0;
+		}
+
 		void initialize_window(HWND parent)
 		{
-			set_mpv_wid(Create(parent, 0, 0, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0));
-
-			start();
+			Create(parent, 0, 0, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS, 0);
 		}
 
 		void on_playback_starting(play_control::t_track_command p_command, bool p_paused) {
@@ -102,7 +110,7 @@ namespace {
 	protected:
 		const ui_element_instance_callback_ptr m_callback;
 	};
-	class ui_element_mpvimpl : public ui_element_impl<CMpvWindow> {};
+	class ui_element_mpvimpl : public ui_element_impl_withpopup<CMpvWindow> {};
 	static service_factory_single_t<ui_element_mpvimpl> g_ui_element_mpvimpl_factory;
 }
 
