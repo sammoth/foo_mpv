@@ -2,6 +2,57 @@
 // PCH ^
 #include "libmpv.h"
 
+static const GUID guid_cfg_mpv_branch = {
+    0xa8d3b2ca,
+    0xa9a,
+    0x4efc,
+    {0xa4, 0x33, 0x32, 0x4d, 0x76, 0xcc, 0x8a, 0x33}};
+static const GUID guid_cfg_mpv_max_drift = {
+    0xa799d117,
+    0x7e68,
+    0x4d1e,
+    {0x9d, 0xc2, 0xe8, 0x16, 0x1e, 0xf1, 0xf5, 0xfe}};
+static const GUID guid_cfg_mpv_hard_sync = {
+    0x240d9ab0,
+    0xb58d,
+    0x4565,
+    {0x9e, 0xc0, 0x6b, 0x27, 0x99, 0xcd, 0x2d, 0xed}};
+static const GUID guid_cfg_mpv_logging = {
+    0x8b74d741,
+    0x232a,
+    0x46d5,
+    {0xa7, 0xee, 0x4, 0x89, 0xb1, 0x47, 0x43, 0xf0}};
+static const GUID guid_cfg_mpv_native_logging = {
+    0x3411741c,
+    0x239,
+    0x441d,
+    {0x8a, 0x8e, 0x99, 0x83, 0x2a, 0xda, 0xe7, 0xd0}};
+static const GUID guid_cfg_mpv_stop_hidden = {
+    0x9de7e631,
+    0x64f8,
+    0x4047,
+    {0x88, 0x39, 0x8f, 0x4a, 0x50, 0xa0, 0xb7, 0x2f}};
+
+static advconfig_branch_factory g_mpv_branch(
+    "Mpv", guid_cfg_mpv_branch, advconfig_branch::guid_branch_playback, 0);
+static advconfig_integer_factory cfg_mpv_max_drift(
+    "Permitted timing drift (ms)", guid_cfg_mpv_max_drift, guid_cfg_mpv_branch,
+    0, 20, 0, 1000, 0);
+static advconfig_integer_factory cfg_mpv_hard_sync("Hard sync threshold (ms)",
+                                                   guid_cfg_mpv_hard_sync,
+                                                   guid_cfg_mpv_branch, 0, 2000,
+                                                   0, 10000, 0);
+static advconfig_checkbox_factory cfg_mpv_logging(
+    "Enable verbose console logging", guid_cfg_mpv_logging, guid_cfg_mpv_branch,
+    0, false);
+static advconfig_checkbox_factory cfg_mpv_native_logging(
+    "Enable mpv log file", guid_cfg_mpv_native_logging, guid_cfg_mpv_branch, 0,
+    false);
+static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
+                                                      guid_cfg_mpv_stop_hidden,
+                                                      guid_cfg_mpv_branch, 0,
+                                                      true);
+
 mpv_player::mpv_player() : wid(NULL), enabled(false), mpv(NULL) {
   if (!load_mpv()) {
     console::error("Could not load mpv-1.dll");
@@ -81,8 +132,10 @@ void mpv_player::enable() {
 }
 
 void mpv_player::disable() {
-  stop();
-  enabled = false;
+  if (cfg_mpv_stop_hidden) {
+    stop();
+    enabled = false;
+  }
 }
 
 void mpv_player::set_mpv_wid(HWND wnd) { wid = wnd; }

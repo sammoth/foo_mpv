@@ -71,7 +71,7 @@ struct CMpvWindow : public ui_element_instance,
     if (p_what == ui_element_notify_visibility_changed) {
       if (p_param1 == 1) {
         enable();
-      } else if (cfg_mpv_stop_hidden) {
+      } else {
         disable();
       }
     }
