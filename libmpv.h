@@ -256,8 +256,11 @@ class mpv_player {
   mpv_hook_continue _mpv_hook_continue;
 
   mpv_handle* mpv;
-  bool enabled;
   HWND wid;
+
+  bool enabled;
+  double time_base;
+  double last_seek;
 
  public:
   mpv_player();
@@ -269,9 +272,10 @@ class mpv_player {
   void enable();
   void disable();
 
-  void play_path(const char* metadb_path);
+  void play(metadb_handle_ptr metadb);
   void stop();
   void pause(bool state);
+  // seek to specified time in the playing subsong
   void seek(double time);
   void sync();
 };

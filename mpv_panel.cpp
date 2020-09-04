@@ -48,7 +48,7 @@ struct CMpvWindow : public ui_element_instance,
   }
 
   void on_playback_new_track(metadb_handle_ptr p_track) {
-    play_path(p_track->get_path());
+    play(p_track);
   }
   void on_playback_stop(play_control::t_stop_reason p_reason) { stop(); }
   void on_playback_seek(double p_time) { seek(p_time); }
@@ -61,11 +61,11 @@ struct CMpvWindow : public ui_element_instance,
   ui_element_config::ptr get_configuration() { return m_config; }
   static GUID g_get_guid() { return guid_mpv_panel; }
   static GUID g_get_subclass() { return ui_element_subclass_utility; }
-  static void g_get_name(pfc::string_base& out) { out = "Mpv"; }
+  static void g_get_name(pfc::string_base& out) { out = "mpv Video"; }
   static ui_element_config::ptr g_get_default_configuration() {
     return ui_element_config::g_create_empty(g_get_guid());
   }
-  static const char* g_get_description() { return "Mpv"; }
+  static const char* g_get_description() { return "mpv Video"; }
   void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
               t_size p_param2size) {
     if (p_what == ui_element_notify_visibility_changed) {
@@ -83,7 +83,7 @@ struct CMpvWindow : public ui_element_instance,
  protected:
   const ui_element_instance_callback_ptr m_callback;
 };
-class ui_element_mpvimpl : public ui_element_impl_withpopup<CMpvWindow> {};
+class ui_element_mpvimpl : public ui_element_impl<CMpvWindow> {};
 static service_factory_single_t<ui_element_mpvimpl>
     g_ui_element_mpvimpl_factory;
 }  // namespace
