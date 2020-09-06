@@ -49,11 +49,11 @@ static advconfig_integer_factory cfg_mpv_max_drift(
     0, 20, 0, 1000, 0);
 static advconfig_integer_factory cfg_mpv_hard_sync("Hard sync threshold (ms)",
                                                    guid_cfg_mpv_hard_sync,
-                                                   guid_cfg_mpv_branch, 0, 500,
+                                                   guid_cfg_mpv_branch, 0, 800,
                                                    0, 10000, 0);
 static advconfig_integer_factory cfg_mpv_hard_sync_interval(
     "Minimum time between hard syncs (seconds)",
-    guid_cfg_mpv_hard_sync_interval, guid_cfg_mpv_branch, 0, 7, 0, 30, 0);
+    guid_cfg_mpv_hard_sync_interval, guid_cfg_mpv_branch, 0, 5, 0, 30, 0);
 static advconfig_checkbox_factory cfg_mpv_logging(
     "Enable verbose console logging", guid_cfg_mpv_logging, guid_cfg_mpv_branch,
     0, false);
