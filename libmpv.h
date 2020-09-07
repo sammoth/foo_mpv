@@ -263,7 +263,9 @@ class mpv_player : play_callback_impl_base {
   HWND wid;
 
   std::atomic_uint current_sync_request;
+  std::atomic_bool initial_sync_in_progress;
   std::thread sync_thread;
+  visualisation_stream::ptr vis_stream;
 
   bool enabled;
   double time_base;
@@ -294,7 +296,7 @@ class mpv_player : play_callback_impl_base {
   void mpv_stop();
   void mpv_pause(bool state);
   // seek to specified time in the playing subsong
-  void mpv_seek(double time);
+  void mpv_seek(double time, bool automatic);
   void mpv_request_initial_sync();
   void mpv_cancel_sync_requests();
   void mpv_sync_initial(double last_seek, unsigned request_number);
