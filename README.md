@@ -1,6 +1,8 @@
 # foo_mpv
 mpv video player UI element for foobar2000.
 
+<img src="screenshot.png" width="660">
+
 ### Features
 - Local files only
 - Aims to quickly and very accurately sync video to the audio
@@ -16,5 +18,3 @@ NB: go easy on the options in mpv.conf, you probably don't want to override any 
 vf-append=bwdif:deint=1
 scale=ewa_lanczos
 ```
-
-<img src="screenshot.png" width="660">
