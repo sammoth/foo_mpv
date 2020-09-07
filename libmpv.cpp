@@ -166,7 +166,10 @@ void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
 void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
   mpv_stop();
 }
-void mpv_player::on_playback_seek(double p_time) { mpv_seek(p_time); }
+void mpv_player::on_playback_seek(double p_time) {
+  mpv_seek(p_time);
+  mpv_sync_initial(time_base + p_time);
+}
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
 void mpv_player::on_playback_time(double p_time) { mpv_sync(); }
 
@@ -216,6 +219,9 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
         << "' because it is not a local file";
     console::error(msg.str().c_str());
   }
+
+  // if not paused, initial sync now, else initial sync later
+  mpv_sync_initial(time_base);
 
   // allow one hard seek to adjust after difference in seeking speed between
   // fb/mpv
@@ -272,6 +278,72 @@ void mpv_player::mpv_seek(double time) {
   // allow one hard seek to adjust after difference in seeking speed between
   // fb/mpv
   last_sync_seek = -999;
+}
+
+void mpv_player::mpv_sync_initial(double last_seek) {
+  int paused = 0;
+  _mpv_get_property(mpv, "pause", MPV_FORMAT_FLAG, &paused);
+  if (paused == 1) return;
+
+  const int64_t userdata = 853727396;
+  if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) < 0) {
+    if (cfg_mpv_logging.get()) {
+      console::error("mpv: Error observing time-pos");
+    }
+    return;
+  }
+  if (_mpv_observe_property(mpv, userdata, "pause", MPV_FORMAT_DOUBLE) < 0) {
+    if (cfg_mpv_logging.get()) {
+      console::error("mpv: Error observing time-pos");
+    }
+    return;
+  }
+
+  double mpv_time = -1.0;
+  while (true) {
+    mpv_event* event = _mpv_wait_event(mpv, 0.01);
+    // todo: check for pause too
+    if (event->event_id == MPV_EVENT_SHUTDOWN) {
+      return;
+    }
+
+    if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
+        event->reply_userdata == userdata) {
+      mpv_event_property* event_property = (mpv_event_property*)event->data;
+      if (strcmp(event_property->name, "pause") == 0 &&
+          event_property->format > 0 &&
+          *(int*)(event_property->data) == 1) {
+        return; // paused while waiting
+      }
+      if (event_property->format != MPV_FORMAT_DOUBLE)
+        continue;  // no frame decoded yet
+      mpv_time = *(double*)(event_property->data);
+
+      if (mpv_time > last_seek) {
+        // frame decoded, wait for fb
+        if (_mpv_set_property_string(mpv, "pause", "yes") < 0 &&
+            cfg_mpv_logging.get()) {
+          console::error("mpv: Error pausing");
+        }
+        break;
+      }
+    }
+  }
+  _mpv_unobserve_property(mpv, userdata);
+
+  // wait for fb to catch up to the first frame
+  int timeout = 0;
+  while (timeout < 100 &&
+         time_base + playback_control::get()->playback_get_position() <
+             mpv_time) {
+    Sleep(10);
+    timeout++;
+  }
+
+  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
+      cfg_mpv_logging.get()) {
+    console::error("mpv: Error pausing");
+  }
 }
 
 void mpv_player::mpv_sync() {
@@ -448,13 +520,12 @@ void CMpvWindow::toggle_fullscreen() {
     SetWindowLong(GWL_STYLE,
                   saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
                       WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
-    SetWindowLong(GWL_EXSTYLE,
-                  saved_ex_style);
+    SetWindowLong(GWL_EXSTYLE, saved_ex_style);
 
     MONITORINFO monitor_info;
     monitor_info.cbSize = sizeof(monitor_info);
     GetMonitorInfoW(MonitorFromWindow(get_wnd(), MONITOR_DEFAULTTONEAREST),
-                   &monitor_info);
+                    &monitor_info);
     SetWindowPos(NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
                  monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
                  monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,

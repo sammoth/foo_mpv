@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <sstream>
+#include <thread>
 
 namespace mpv {
 class mpv_player : play_callback_impl_base {
@@ -135,6 +136,7 @@ class mpv_player : play_callback_impl_base {
     MPV_EVENT_START_FILE = 6,
     MPV_EVENT_END_FILE = 7,
     MPV_EVENT_FILE_LOADED = 8,
+    MPV_EVENT_TICK = 14,
     MPV_EVENT_CLIENT_MESSAGE = 16,
     MPV_EVENT_VIDEO_RECONFIG = 17,
     MPV_EVENT_AUDIO_RECONFIG = 18,
@@ -259,6 +261,8 @@ class mpv_player : play_callback_impl_base {
   mpv_handle* mpv;
   HWND wid;
 
+  std::unique_ptr<std::thread> sync_thread;
+
   bool enabled;
   double time_base;
   double last_sync_seek;
@@ -288,6 +292,7 @@ class mpv_player : play_callback_impl_base {
   void mpv_pause(bool state);
   // seek to specified time in the playing subsong
   void mpv_seek(double time);
+  void mpv_sync_initial(double last_seek);
   void mpv_sync();
 };
 
