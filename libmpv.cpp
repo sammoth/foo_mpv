@@ -65,7 +65,12 @@ static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
                                                       guid_cfg_mpv_branch, 0,
                                                       true);
 
-mpv_player::mpv_player() : wid(NULL), enabled(false), mpv(NULL), time_base(0) {
+mpv_player::mpv_player()
+    : wid(NULL),
+      enabled(false),
+      mpv(NULL),
+      time_base(0),
+      current_sync_request(0) {
   mpv_loaded = load_mpv();
 }
 
@@ -168,7 +173,11 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 }
 void mpv_player::on_playback_seek(double p_time) {
   mpv_seek(p_time);
-  mpv_sync_initial(time_base + p_time);
+  if (playback_control::get()->is_paused()) {
+    current_sync_request++;
+  } else {
+  mpv_request_initial_sync();
+  }
 }
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
 void mpv_player::on_playback_time(double p_time) { mpv_sync(); }
@@ -202,8 +211,8 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(3);
-    time_sstring << time_base +
-                        playback_control::get()->playback_get_position();
+    double start_time = playback_control::get()->playback_get_position();
+    time_sstring << time_base + start_time;
     std::string time_string = time_sstring.str();
     _mpv_set_option_string(mpv, "start", time_string.c_str());
 
@@ -213,6 +222,8 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
       msg << "mpv: Error loading item '" << filename << "'";
       console::error(msg.str().c_str());
     }
+
+    last_seek = start_time;
   } else if (cfg_mpv_logging.get()) {
     std::stringstream msg;
     msg << "mpv: Skipping loading item '" << filename
@@ -220,12 +231,96 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
     console::error(msg.str().c_str());
   }
 
-  // if not paused, initial sync now, else initial sync later
-  mpv_sync_initial(time_base);
+  mpv_request_initial_sync();
+}
 
-  // allow one hard seek to adjust after difference in seeking speed between
-  // fb/mpv
-  last_sync_seek = -999;
+void mpv_player::mpv_cancel_sync_requests() { current_sync_request++; }
+
+void mpv_player::mpv_request_initial_sync() {
+  int request_number = current_sync_request.fetch_add(1) + 1;
+  auto f = [this, request_number]() {
+    if (!mpv_loaded) return;
+
+    if (mpv == NULL || !enabled) return;
+
+    const int64_t userdata = 853727396;
+    if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) <
+        0) {
+      if (cfg_mpv_logging.get()) {
+        console::error("mpv: Error observing time-pos");
+      }
+      return;
+    }
+    if (_mpv_observe_property(mpv, userdata, "pause", MPV_FORMAT_DOUBLE) < 0) {
+      if (cfg_mpv_logging.get()) {
+        console::error("mpv: Error observing time-pos");
+      }
+      return;
+    }
+
+    double mpv_time = -1.0;
+    while (true) {
+      if (current_sync_request != request_number) {
+        _mpv_unobserve_property(mpv, userdata);
+        return;
+      }
+      mpv_event* event = _mpv_wait_event(mpv, 0.01);
+      if (event->event_id == MPV_EVENT_SHUTDOWN) {
+        _mpv_unobserve_property(mpv, userdata);
+        return;
+      }
+
+      if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
+          event->reply_userdata == userdata) {
+        mpv_event_property* event_property = (mpv_event_property*)event->data;
+        if (strcmp(event_property->name, "pause") == 0 &&
+            event_property->format > 0 && *(int*)(event_property->data) == 1) {
+          _mpv_unobserve_property(mpv, userdata);
+          return;  // paused while waiting
+        }
+        if (event_property->format != MPV_FORMAT_DOUBLE)
+          continue;  // no frame decoded yet
+        mpv_time = *(double*)(event_property->data);
+
+        if (mpv_time > last_seek) {
+          // frame decoded, wait for fb
+          if (current_sync_request != request_number) {
+            _mpv_unobserve_property(mpv, userdata);
+            return;
+          }
+          if (_mpv_set_property_string(mpv, "pause", "yes") < 0 &&
+              cfg_mpv_logging.get()) {
+            console::error("mpv: Error pausing");
+          }
+          break;
+        }
+      }
+    }
+    _mpv_unobserve_property(mpv, userdata);
+
+    visualisation_stream::ptr vis_stream;
+    visualisation_manager::get()->create_stream(vis_stream, 0);
+
+    // wait for fb to catch up to the first frame
+    int timeout = 0;
+    double fb_time = 0.0;
+    vis_stream->get_absolute_time(fb_time);
+    while (timeout < 100 && time_base + last_seek + fb_time < mpv_time) {
+      timeout++;
+      Sleep(10);
+      vis_stream->get_absolute_time(fb_time);
+    }
+
+    if (current_sync_request != request_number) {
+      return;
+    }
+    if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
+        cfg_mpv_logging.get()) {
+      console::error("mpv: Error pausing");
+    }
+  };
+  auto t = std::thread(f);
+  t.detach();
 }
 
 void mpv_player::mpv_stop() {
@@ -275,76 +370,11 @@ void mpv_player::mpv_seek(double time) {
     }
   }
 
-  // allow one hard seek to adjust after difference in seeking speed between
-  // fb/mpv
-  last_sync_seek = -999;
+  last_seek = time;
 }
 
-void mpv_player::mpv_sync_initial(double last_seek) {
-  int paused = 0;
-  _mpv_get_property(mpv, "pause", MPV_FORMAT_FLAG, &paused);
-  if (paused == 1) return;
-
-  const int64_t userdata = 853727396;
-  if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) < 0) {
-    if (cfg_mpv_logging.get()) {
-      console::error("mpv: Error observing time-pos");
-    }
-    return;
-  }
-  if (_mpv_observe_property(mpv, userdata, "pause", MPV_FORMAT_DOUBLE) < 0) {
-    if (cfg_mpv_logging.get()) {
-      console::error("mpv: Error observing time-pos");
-    }
-    return;
-  }
-
-  double mpv_time = -1.0;
-  while (true) {
-    mpv_event* event = _mpv_wait_event(mpv, 0.01);
-    // todo: check for pause too
-    if (event->event_id == MPV_EVENT_SHUTDOWN) {
-      return;
-    }
-
-    if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
-        event->reply_userdata == userdata) {
-      mpv_event_property* event_property = (mpv_event_property*)event->data;
-      if (strcmp(event_property->name, "pause") == 0 &&
-          event_property->format > 0 &&
-          *(int*)(event_property->data) == 1) {
-        return; // paused while waiting
-      }
-      if (event_property->format != MPV_FORMAT_DOUBLE)
-        continue;  // no frame decoded yet
-      mpv_time = *(double*)(event_property->data);
-
-      if (mpv_time > last_seek) {
-        // frame decoded, wait for fb
-        if (_mpv_set_property_string(mpv, "pause", "yes") < 0 &&
-            cfg_mpv_logging.get()) {
-          console::error("mpv: Error pausing");
-        }
-        break;
-      }
-    }
-  }
-  _mpv_unobserve_property(mpv, userdata);
-
-  // wait for fb to catch up to the first frame
-  int timeout = 0;
-  while (timeout < 100 &&
-         time_base + playback_control::get()->playback_get_position() <
-             mpv_time) {
-    Sleep(10);
-    timeout++;
-  }
-
-  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
-      cfg_mpv_logging.get()) {
-    console::error("mpv: Error pausing");
-  }
-}
+void mpv_player::mpv_sync_initial(double last_seek, unsigned request_number) {
+}  // namespace mpv
 
 void mpv_player::mpv_sync() {
   if (!mpv_loaded) return;
@@ -360,10 +390,9 @@ void mpv_player::mpv_sync() {
   double new_speed = 1.0;
 
   if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get() &&
-      (fb_time - last_sync_seek) > cfg_mpv_hard_sync_interval.get()) {
+      (fb_time - last_seek) > cfg_mpv_hard_sync_interval.get()) {
     // hard sync
     mpv_seek(fb_time);
-    last_sync_seek = fb_time;
     if (cfg_mpv_logging.get()) {
       console::info("mpv: A/V sync");
     }
