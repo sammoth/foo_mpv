@@ -179,12 +179,7 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 }
 void mpv_player::on_playback_seek(double p_time) {
   mpv_seek(p_time, false);
-  if (playback_control::get()->is_paused()) {
-    mpv_cancel_sync_requests();
-  } else {
-    mpv_pause(false);
-    mpv_request_initial_sync();
-  }
+  mpv_request_initial_sync();
 }
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
 void mpv_player::on_playback_time(double p_time) { mpv_sync(); }
@@ -251,8 +246,18 @@ void mpv_player::mpv_cancel_sync_requests() {
 }
 
 void mpv_player::mpv_request_initial_sync() {
+  if (playback_control::get()->is_paused()) {
+    if (cfg_mpv_logging.get()) {
+      console::info("mpv: No initial seek - paused");
+    }
+    mpv_cancel_sync_requests();
+    return;
+  }
+
   int request_number = current_sync_request.fetch_add(1) + 1;
   initial_sync_in_progress = true;
+  mpv_pause(false);
+
   auto f = [this, request_number]() {
     if (!mpv_loaded) return;
 
@@ -318,6 +323,7 @@ void mpv_player::mpv_request_initial_sync() {
         mpv_time = *(double*)(event_property->data);
 
         if (mpv_time > last_seek) {
+          _mpv_unobserve_property(mpv, userdata);
           // frame decoded, wait for fb
           if (cfg_mpv_logging.get()) {
             msg.str("");
@@ -327,7 +333,6 @@ void mpv_player::mpv_request_initial_sync() {
             console::info(msg.str().c_str());
           }
           if (current_sync_request != request_number) {
-            _mpv_unobserve_property(mpv, userdata);
             if (cfg_mpv_logging.get()) {
               msg.str("");
               msg << "mpv: Initial sync aborted (request " << request_number
@@ -407,11 +412,7 @@ void mpv_player::mpv_stop() {
     console::error("mpv: Error stopping video");
   }
 
-  // when foobar is stopped it's also unpaused
-  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
-      cfg_mpv_logging.get()) {
-    console::error("mpv: Error pausing");
-  }
+  mpv_cancel_sync_requests();
 }
 
 void mpv_player::mpv_pause(bool state) {
@@ -450,12 +451,11 @@ void mpv_player::mpv_seek(double time, bool automatic) {
   std::string time_string = time_sstring.str();
   const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
   if (_mpv_command(mpv, cmd) < 0) {
-    Sleep(10);  // one more time
-    if (_mpv_command(mpv, cmd) < 0) {
-      if (cfg_mpv_logging.get()) {
-        console::error("mpv: Error seeking");
-      }
+    if (cfg_mpv_logging.get()) {
+      console::error("mpv: Error seeking, waiting for frame");
     }
+
+    // todo: wait for first frame
   }
 }
 
@@ -468,6 +468,8 @@ void mpv_player::mpv_sync() {
     if (cfg_mpv_logging.get()) {
       console::info("mpv: Skipping regular sync");
     }
+
+    return;
   }
 
   double mpv_time = -1.0;
