@@ -1,7 +1,7 @@
 # foo_mpv
 mpv video player UI element for foobar2000.
 
-Features
+### Features
 - Local files only
 - Aims to quickly and very accurately sync video to the audio
 - Supports files with chapters/subsongs
