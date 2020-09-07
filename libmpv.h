@@ -268,6 +268,7 @@ class mpv_player : play_callback_impl_base {
   bool enabled;
   double time_base;
   double last_seek;
+  double last_seek_vistime;
 
   bool mpv_loaded;
 

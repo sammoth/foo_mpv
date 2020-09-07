@@ -120,6 +120,10 @@ void mpv_player::mpv_init() {
     _mpv_set_option_string(mpv, "force-window", "yes");
     _mpv_set_option_string(mpv, "idle", "yes");
 
+    // don't unload the file when finished, maybe fb is still playing and we
+    // could be asked to seek backwards
+    _mpv_set_option_string(mpv, "keep-open", "yes");
+
     if (_mpv_initialize(mpv) != 0) {
       _mpv_destroy(mpv);
       mpv = NULL;
@@ -174,9 +178,10 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 void mpv_player::on_playback_seek(double p_time) {
   mpv_seek(p_time);
   if (playback_control::get()->is_paused()) {
-    current_sync_request++;
+    mpv_cancel_sync_requests();
   } else {
-  mpv_request_initial_sync();
+    mpv_pause(false);
+    mpv_request_initial_sync();
   }
 }
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
@@ -212,6 +217,9 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(3);
     double start_time = playback_control::get()->playback_get_position();
+    if (start_time < 1.0)
+      start_time =
+          0.0;  // hack, maybe we should determine what started playback
     time_sstring << time_base + start_time;
     std::string time_string = time_sstring.str();
     _mpv_set_option_string(mpv, "start", time_string.c_str());
@@ -223,7 +231,10 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
       console::error(msg.str().c_str());
     }
 
+    visualisation_stream::ptr vis_stream;
+    visualisation_manager::get()->create_stream(vis_stream, 0);
     last_seek = start_time;
+    vis_stream->get_absolute_time(last_seek_vistime);
   } else if (cfg_mpv_logging.get()) {
     std::stringstream msg;
     msg << "mpv: Skipping loading item '" << filename
@@ -298,17 +309,17 @@ void mpv_player::mpv_request_initial_sync() {
     }
     _mpv_unobserve_property(mpv, userdata);
 
-    visualisation_stream::ptr vis_stream;
-    visualisation_manager::get()->create_stream(vis_stream, 0);
-
     // wait for fb to catch up to the first frame
     int timeout = 0;
-    double fb_time = 0.0;
-    vis_stream->get_absolute_time(fb_time);
-    while (timeout < 100 && time_base + last_seek + fb_time < mpv_time) {
+    double vis_time = 0.0;
+    visualisation_stream::ptr vis_stream;
+    visualisation_manager::get()->create_stream(vis_stream, 0);
+    vis_stream->get_absolute_time(vis_time);
+    while (timeout < 100 &&
+           time_base + last_seek + vis_time - last_seek_vistime < mpv_time) {
       timeout++;
       Sleep(10);
-      vis_stream->get_absolute_time(fb_time);
+      vis_stream->get_absolute_time(vis_time);
     }
 
     if (current_sync_request != request_number) {
@@ -355,6 +366,11 @@ void mpv_player::mpv_seek(double time) {
 
   if (mpv == NULL || !enabled) return;
 
+  visualisation_stream::ptr vis_stream;
+  visualisation_manager::get()->create_stream(vis_stream, 0);
+  last_seek = time;
+  vis_stream->get_absolute_time(last_seek_vistime);
+
   std::stringstream time_sstring;
   time_sstring.setf(std::ios::fixed);
   time_sstring.precision(15);
@@ -369,12 +385,7 @@ void mpv_player::mpv_seek(double time) {
       }
     }
   }
-
-  last_seek = time;
 }
-
-void mpv_player::mpv_sync_initial(double last_seek, unsigned request_number) {
-}  // namespace mpv
 
 void mpv_player::mpv_sync() {
   if (!mpv_loaded) return;
