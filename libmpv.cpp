@@ -146,6 +146,7 @@ void mpv_player::mpv_init() {
 
     // seek fast
     _mpv_set_option_string(mpv, "hr-seek-framedrop", "yes");
+    _mpv_set_option_string(mpv, "hr-seek-demuxer-offset", "1.5");
 
     // foobar plays the audio
     _mpv_set_option_string(mpv, "audio", "no");
@@ -193,8 +194,6 @@ void mpv_player::mpv_update_visibility() {
       mpv_play(handle);
     }
   } else {
-    if (!mpv_loaded) return;
-
     bool stopping = enabled;
     enabled = false;
 
@@ -224,13 +223,15 @@ void mpv_player::on_playback_time(double p_time) {
 void mpv_player::mpv_play(metadb_handle_ptr metadb) {
   if (!mpv_loaded) return;
 
+  double start_time = playback_control::get()->playback_get_position();
+
   mpv_update_visibility();
 
   if (!enabled) return;
 
   if (mpv == NULL) mpv_init();
 
-      sync_on_unpause = false;
+  sync_on_unpause = false;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -247,6 +248,8 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
     if (filename.has_prefix("\\file://")) {
       filename.remove_chars(0, 8);
 
+      bool paused = playback_control::get()->is_paused();
+
       time_base = 0.0;
       if (metadb->get_subsong_index() > 1) {
         for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
@@ -259,16 +262,36 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
         }
       }
 
+      if (start_time < 1.0) {
+        // hack, maybe we should determine what started playback
+        start_time = 0.0;
+        // this isn't accurate, it means initial sync after start in the middle
+        // of a file doesn't really work
+        visualisation_stream::ptr vis_stream;
+        visualisation_manager::get()->create_stream(vis_stream, 0);
+        vis_stream->get_absolute_time(last_seek_vistime);
+        last_seek = start_time;
+      }
+
       std::stringstream time_sstring;
       time_sstring.setf(std::ios::fixed);
       time_sstring.precision(3);
-      double start_time = playback_control::get()->playback_get_position();
-      if (start_time < 1.0)
-        start_time =
-            0.0;  // hack, maybe we should determine what started playback
       time_sstring << time_base + start_time;
       std::string time_string = time_sstring.str();
       _mpv_set_option_string(mpv, "start", time_string.c_str());
+      if (cfg_mpv_logging.get()) {
+        std::stringstream msg;
+        msg << "mpv: Loading item '" << filename << "' at start time "
+            << time_base + start_time;
+        console::error(msg.str().c_str());
+      }
+
+      // reset speed
+      double unity = 1.0;
+      if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &unity) < 0 &&
+          cfg_mpv_logging.get()) {
+        console::error("mpv: Error setting speed");
+      }
 
       const char* cmd[] = {"loadfile", filename.c_str(), NULL};
       if (_mpv_command(mpv, cmd) < 0 && cfg_mpv_logging.get()) {
@@ -277,12 +300,18 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
         console::error(msg.str().c_str());
       }
 
-      last_seek = start_time;
-      visualisation_stream::ptr vis_stream;
-      visualisation_manager::get()->create_stream(vis_stream, 0);
-      vis_stream->get_absolute_time(last_seek_vistime);
-
-      sync_task = sync_task_type::FirstFrameSync;
+      if (_mpv_set_property_string(mpv, "pause", paused ? "yes" : "no") < 0 &&
+          cfg_mpv_logging.get()) {
+        console::error("mpv: Error pausing");
+      }
+      if (paused) {
+        sync_on_unpause = true;
+      } else {
+        // first frame sync isn't accurate for starting mid-file yet
+        // maybe try saving separately the clock sync info and keeping it even
+        // when disabled
+        sync_task = sync_task_type::FirstFrameSync;
+      }
     } else if (cfg_mpv_logging.get()) {
       std::stringstream msg;
       msg << "mpv: Skipping loading item '" << filename
@@ -354,8 +383,6 @@ void mpv_player::mpv_pause(bool state) {
 void mpv_player::mpv_seek(double time, bool automatic) {
   if (!mpv_loaded) return;
 
-  if (mpv == NULL || !enabled) return;
-
   last_seek = time;
   if (automatic) {
     visualisation_stream::ptr vis_stream;
@@ -364,6 +391,8 @@ void mpv_player::mpv_seek(double time, bool automatic) {
   } else {
     last_seek_vistime = 0.0;
   }
+
+  if (mpv == NULL || !enabled) return;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -383,6 +412,13 @@ void mpv_player::mpv_seek(double time, bool automatic) {
 
     bool paused = playback_control::get()->is_paused();
 
+    // reset speed
+    double unity = 1.0;
+    if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &unity) < 0 &&
+        cfg_mpv_logging.get()) {
+      console::error("mpv: Error setting speed");
+    }
+
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(15);
@@ -394,16 +430,37 @@ void mpv_player::mpv_seek(double time, bool automatic) {
         console::error("mpv: Error seeking, waiting for file to load first");
       }
 
-      // wait for file to load
-      for (int t = 0; t < 10; t++) {
-        mpv_event* event = _mpv_wait_event(mpv, 0.10);
+      const int64_t userdata = 853727396;
+      if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) <
+          0) {
+        if (cfg_mpv_logging.get()) {
+          console::error("mpv: Error observing time-pos");
+        }
+        return;
+      }
+
+      double mpv_time = -1.0;
+      for (int i = 0; i < 50; i++) {
+        mpv_event* event = _mpv_wait_event(mpv, 0.1);
         if (event->event_id == MPV_EVENT_SHUTDOWN) {
+          _mpv_unobserve_property(mpv, userdata);
           break;
         }
-        if (event->event_id == MPV_EVENT_FILE_LOADED) {
-          break;
+
+        if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
+            event->reply_userdata == userdata) {
+          mpv_event_property* event_property = (mpv_event_property*)event->data;
+
+          if (event_property->format != MPV_FORMAT_DOUBLE)
+            continue;  // no frame decoded yet
+
+          mpv_time = *(double*)(event_property->data);
+          if (mpv_time > 0.0) {
+            break;
+          }
         }
       }
+      _mpv_unobserve_property(mpv, userdata);
 
       if (_mpv_command(mpv, cmd) < 0) {
         if (cfg_mpv_logging.get()) {
@@ -490,12 +547,6 @@ void mpv_player::mpv_first_frame_sync() {
     console::error("mpv: Error pausing");
   }
 
-  double unity = 1.0;
-  if (_mpv_set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &unity) < 0 &&
-      cfg_mpv_logging.get()) {
-    console::error("mpv: Error setting speed");
-  }
-
   if (cfg_mpv_logging.get()) {
     console::info("mpv: Initial sync");
   }
@@ -507,7 +558,7 @@ void mpv_player::mpv_first_frame_sync() {
     }
     return;
   }
-  if (_mpv_observe_property(mpv, userdata, "pause", MPV_FORMAT_DOUBLE) < 0) {
+  if (_mpv_observe_property(mpv, userdata, "pause", MPV_FORMAT_FLAG) < 0) {
     if (cfg_mpv_logging.get()) {
       console::error("mpv: Error observing time-pos");
     }
@@ -594,16 +645,16 @@ void mpv_player::mpv_first_frame_sync() {
     return;
   }
 
+  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
+      cfg_mpv_logging.get()) {
+    console::error("mpv: Error pausing");
+  }
+
   if (cfg_mpv_logging.get()) {
     msg.str("");
     msg << "mpv: Resuming playback, audio time now "
         << time_base + last_seek + vis_time - last_seek_vistime;
     console::info(msg.str().c_str());
-  }
-
-  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
-      cfg_mpv_logging.get()) {
-    console::error("mpv: Error pausing");
   }
 }
 
