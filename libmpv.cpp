@@ -73,6 +73,7 @@ mpv_player::mpv_player()
       enabled(false),
       mpv(NULL),
       sync_task(sync_task_type::Wait),
+      sync_on_unpause(false),
       time_base(0) {
   mpv_loaded = load_mpv();
   sync_thread = std::thread([this]() {
@@ -170,7 +171,7 @@ void mpv_player::mpv_init() {
 void mpv_player::mpv_terminate() {
   if (!mpv_loaded) return;
 
-  enabled = false;
+  mpv_stop();
 
   if (mpv != NULL) {
     mpv_handle* temp = mpv;
@@ -179,25 +180,27 @@ void mpv_player::mpv_terminate() {
   }
 };
 
-void mpv_player::mpv_enable() {
+void mpv_player::mpv_update_visibility() {
   if (!mpv_loaded) return;
 
-  bool starting = !enabled;
-  enabled = true;
+  if (mpv_is_visible()) {
+    bool starting = !enabled;
+    enabled = true;
 
-  if (starting && playback_control::get()->is_playing()) {
-    metadb_handle_ptr handle;
-    playback_control::get()->get_now_playing(handle);
-    mpv_play(handle);
-  }
-}
+    if (starting && playback_control::get()->is_playing()) {
+      metadb_handle_ptr handle;
+      playback_control::get()->get_now_playing(handle);
+      mpv_play(handle);
+    }
+  } else {
+    if (!mpv_loaded) return;
 
-void mpv_player::mpv_disable() {
-  if (!mpv_loaded) return;
-
-  if (cfg_mpv_stop_hidden) {
-    mpv_stop();
+    bool stopping = enabled;
     enabled = false;
+
+    if (stopping && cfg_mpv_stop_hidden) {
+      mpv_stop();
+    }
   }
 }
 
@@ -213,14 +216,21 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 }
 void mpv_player::on_playback_seek(double p_time) { mpv_seek(p_time, false); }
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
-void mpv_player::on_playback_time(double p_time) { mpv_sync(p_time); }
+void mpv_player::on_playback_time(double p_time) {
+  mpv_sync(p_time);
+  mpv_update_visibility();
+}
 
 void mpv_player::mpv_play(metadb_handle_ptr metadb) {
   if (!mpv_loaded) return;
 
+  mpv_update_visibility();
+
   if (!enabled) return;
 
   if (mpv == NULL) mpv_init();
+
+      sync_on_unpause = false;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -290,6 +300,8 @@ void mpv_player::mpv_stop() {
 
   if (mpv == NULL || !enabled) return;
 
+  sync_on_unpause = false;
+
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
     sync_task = sync_task_type::Stop;
@@ -306,6 +318,7 @@ void mpv_player::mpv_stop() {
 
     lock.unlock();
   }
+  cv.notify_all();
 }
 
 void mpv_player::mpv_pause(bool state) {
@@ -328,14 +341,29 @@ void mpv_player::mpv_pause(bool state) {
       console::error("mpv: Error pausing");
     }
 
+    if (!state && sync_on_unpause) {
+      sync_on_unpause = false;
+      sync_task = sync_task_type::FirstFrameSync;
+    }
+
     lock.unlock();
   }
+  cv.notify_all();
 }
 
 void mpv_player::mpv_seek(double time, bool automatic) {
   if (!mpv_loaded) return;
 
   if (mpv == NULL || !enabled) return;
+
+  last_seek = time;
+  if (automatic) {
+    visualisation_stream::ptr vis_stream;
+    visualisation_manager::get()->create_stream(vis_stream, 0);
+    vis_stream->get_absolute_time(last_seek_vistime);
+  } else {
+    last_seek_vistime = 0.0;
+  }
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -347,20 +375,13 @@ void mpv_player::mpv_seek(double time, bool automatic) {
     std::unique_lock<std::mutex> lock(cv_mutex);
     cv.wait(lock, [this] { return sync_task == sync_task_type::Wait; });
 
-    last_seek = time;
-    if (automatic) {
-      visualisation_stream::ptr vis_stream;
-      visualisation_manager::get()->create_stream(vis_stream, 0);
-      vis_stream->get_absolute_time(last_seek_vistime);
-    } else {
-      last_seek_vistime = 0.0;
-    }
-
     if (cfg_mpv_logging.get()) {
       std::stringstream msg;
       msg << "mpv: Seeking to " << time << ", clock at " << last_seek_vistime;
       console::info(msg.str().c_str());
     }
+
+    bool paused = playback_control::get()->is_paused();
 
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
@@ -373,47 +394,34 @@ void mpv_player::mpv_seek(double time, bool automatic) {
         console::error("mpv: Error seeking, waiting for file to load first");
       }
 
-      // wait for first frame and try again
-      const int64_t userdata = 853727396;
-      if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) <
-          0) {
+      // wait for file to load
+      for (int t = 0; t < 10; t++) {
+        mpv_event* event = _mpv_wait_event(mpv, 0.10);
+        if (event->event_id == MPV_EVENT_SHUTDOWN) {
+          break;
+        }
+        if (event->event_id == MPV_EVENT_FILE_LOADED) {
+          break;
+        }
+      }
+
+      if (_mpv_command(mpv, cmd) < 0) {
         if (cfg_mpv_logging.get()) {
-          console::error("mpv: Error observing time-pos");
-        }
-      } else {
-        while (true) {
-          mpv_event* event = _mpv_wait_event(mpv, 0.01);
-          if (event->event_id == MPV_EVENT_SHUTDOWN) {
-            _mpv_unobserve_property(mpv, userdata);
-            break;
-          }
-
-          if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
-              event->reply_userdata == userdata) {
-            mpv_event_property* event_property =
-                (mpv_event_property*)event->data;
-
-            if (event_property->format != MPV_FORMAT_DOUBLE)
-              continue;  // no frame decoded yet
-
-            break;
-          }
-        }
-        _mpv_unobserve_property(mpv, userdata);
-
-        if (_mpv_command(mpv, cmd) < 0) {
-          if (cfg_mpv_logging.get()) {
-            console::error("mpv: Error seeking");
-          }
+          console::error("mpv: Error seeking");
         }
       }
     }
 
-    sync_task = sync_task_type::FirstFrameSync;
+    if (paused) {
+      sync_on_unpause = true;
+    } else {
+      sync_task = sync_task_type::FirstFrameSync;
+    }
+
     lock.unlock();
   }
   cv.notify_all();
-}  // namespace mpv
+}
 
 void mpv_player::mpv_sync(double debug_time) {
   if (!mpv_loaded) return;
@@ -682,11 +690,15 @@ bool mpv_player::load_mpv() {
   return true;
 }
 
-CMpvWindow::CMpvWindow(HWND parent) : parent_(parent) {
+CMpvWindow::CMpvWindow(HWND parent, std::function<bool()> is_visible)
+    : parent_(parent), visible_cb(is_visible) {
   HWND wid;
   WIN32_OP(wid = Create(parent, 0, 0, WS_CHILD, 0));
   mpv_set_wid(wid);
+  mpv_update_visibility();
 }
+
+bool CMpvWindow::mpv_is_visible() { return visible_cb(); }
 
 BOOL CMpvWindow::on_erase_bg(CDCHandle dc) {
   CRect rc;

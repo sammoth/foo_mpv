@@ -4,10 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <atomic>
+#include <condition_variable>
+#include <functional>
 #include <sstream>
 #include <thread>
-#include <condition_variable>
-#include <atomic>
 
 namespace mpv {
 class mpv_player : play_callback_impl_base {
@@ -263,19 +264,27 @@ class mpv_player : play_callback_impl_base {
   mpv_handle* mpv;
   HWND wid;
 
+  void mpv_init();
+  bool mpv_loaded;
+  bool enabled;
+
+  void mpv_play(metadb_handle_ptr metadb);
+  void mpv_stop();
+  void mpv_pause(bool state);
+  void mpv_seek(double time, bool automatic);
+  void mpv_sync(double debug_time);
+
+  double time_base;
+  double last_seek;
+  double last_seek_vistime;
+  bool sync_on_unpause;
+
   std::thread sync_thread;
   std::condition_variable cv;
   std::mutex cv_mutex;
   enum class sync_task_type { Wait, Stop, Quit, FirstFrameSync };
   std::atomic<sync_task_type> sync_task;
   void mpv_first_frame_sync();
-
-  bool enabled;
-  double time_base;
-  double last_seek;
-  double last_seek_vistime;
-
-  bool mpv_loaded;
 
   void on_playback_starting(play_control::t_track_command p_command,
                             bool p_paused);
@@ -285,25 +294,15 @@ class mpv_player : play_callback_impl_base {
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
 
-  void mpv_cancel_sync_requests();
-
  public:
   mpv_player();
   ~mpv_player();
 
   void mpv_set_wid(HWND wnd);
-  void mpv_init();
   void mpv_terminate();
 
-  void mpv_enable();
-  void mpv_disable();
-
-  void mpv_play(metadb_handle_ptr metadb);
-  void mpv_stop();
-  void mpv_pause(bool state);
-  // seek to specified time in the playing subsong
-  void mpv_seek(double time, bool automatic);
-  void mpv_sync(double debug_time);
+  void mpv_update_visibility();
+  virtual bool mpv_is_visible() { return true; }
 };
 
 struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
@@ -322,6 +321,9 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   BOOL on_erase_bg(CDCHandle dc);
   void on_keydown(UINT, WPARAM, LPARAM);
 
+  std::function<bool()> visible_cb;
+  bool mpv_is_visible() override;
+
   bool fullscreen_ = false;
   LONG x_;
   LONG y_;
@@ -336,7 +338,7 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   HWND get_wnd();
 
  public:
-  CMpvWindow(HWND parent);
+  CMpvWindow(HWND parent, std::function<bool()> is_visible);
   void on_double_click(UINT, CPoint);
 
   void MaybeResize(LONG x, LONG y);

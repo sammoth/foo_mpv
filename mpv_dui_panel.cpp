@@ -47,11 +47,8 @@ struct CMpvDuiWindow : public ui_element_instance, CWindowImpl<CMpvDuiWindow> {
     HWND wid;
     WIN32_OP(wid = Create(parent, 0, 0, WS_CHILD, 0));
 
-    player_window = std::unique_ptr<CMpvWindow>(new CMpvWindow(*this));
-
-    if (m_callback->is_elem_visible_(this)) {
-      player_window->mpv_enable();
-    }
+    player_window = std::unique_ptr<CMpvWindow>(new CMpvWindow(
+        *this, [this]() { return m_callback->is_elem_visible_(this); }));
   }
 
   HWND get_wnd() { return m_hWnd; }
@@ -67,12 +64,9 @@ struct CMpvDuiWindow : public ui_element_instance, CWindowImpl<CMpvDuiWindow> {
   static const char* g_get_description() { return "mpv Video"; }
   void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
               t_size p_param2size) {
+    bool now_visible = m_callback->is_elem_visible_(this);
     if (p_what == ui_element_notify_visibility_changed) {
-      if (p_param1 == 1) {
-        player_window->mpv_enable();
-      } else {
-        player_window->mpv_disable();
-      }
+      player_window->mpv_update_visibility();
     }
   };
 
