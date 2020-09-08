@@ -6,6 +6,7 @@
 
 #include <sstream>
 #include <thread>
+#include <condition_variable>
 #include <atomic>
 
 namespace mpv {
@@ -262,10 +263,12 @@ class mpv_player : play_callback_impl_base {
   mpv_handle* mpv;
   HWND wid;
 
-  std::atomic_uint current_sync_request;
-  std::atomic_bool initial_sync_in_progress;
   std::thread sync_thread;
-  visualisation_stream::ptr vis_stream;
+  std::condition_variable cv;
+  std::mutex cv_mutex;
+  enum class sync_task_type { Wait, Stop, Quit, FirstFrameSync };
+  std::atomic<sync_task_type> sync_task;
+  void mpv_first_frame_sync();
 
   bool enabled;
   double time_base;
@@ -282,8 +285,11 @@ class mpv_player : play_callback_impl_base {
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
 
+  void mpv_cancel_sync_requests();
+
  public:
   mpv_player();
+  ~mpv_player();
 
   void mpv_set_wid(HWND wnd);
   void mpv_init();
@@ -297,10 +303,7 @@ class mpv_player : play_callback_impl_base {
   void mpv_pause(bool state);
   // seek to specified time in the playing subsong
   void mpv_seek(double time, bool automatic);
-  void mpv_request_initial_sync();
-  void mpv_cancel_sync_requests();
-  void mpv_sync_initial(double last_seek, unsigned request_number);
-  void mpv_sync();
+  void mpv_sync(double debug_time);
 };
 
 struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
