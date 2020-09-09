@@ -74,9 +74,7 @@ mpv_player::mpv_player()
       mpv(NULL),
       sync_task(sync_task_type::Wait),
       sync_on_unpause(false),
-      last_fb_seek(-99),
       last_mpv_seek(0),
-      last_seek_vistime(-99),
       time_base(0) {
   mpv_loaded = load_mpv();
   sync_thread = std::thread([this]() {
@@ -206,25 +204,50 @@ void mpv_player::mpv_update_visibility() {
   }
 }
 
+struct timing_info {
+  double last_fb_seek;
+  double last_seek_vistime;
+};
+static std::atomic<timing_info> g_timing_info;
+class timing_info_callbacks : public play_callback_static {
+  void on_playback_new_track(metadb_handle_ptr p_track) {
+    visualisation_stream::ptr vis_stream;
+    visualisation_manager::get()->create_stream(vis_stream, 0);
+    double vistime;
+    vis_stream->get_absolute_time(vistime);
+    double fb_time = playback_control::get()->playback_get_position();
+    g_timing_info.store({0.0, vistime - fb_time});
+  }
+
+  void on_playback_seek(double p_time) { g_timing_info.store({p_time, 0.0}); }
+  void on_playback_starting(play_control::t_track_command p_command,
+                            bool p_paused){};
+  void on_playback_stop(play_control::t_stop_reason p_reason){};
+  void on_playback_pause(bool p_state){};
+  void on_playback_time(double p_time){};
+  void on_playback_edited(metadb_handle_ptr p_track){};
+  void on_playback_dynamic_info(const file_info& p_info){};
+  void on_playback_dynamic_info_track(const file_info& p_info){};
+  void on_volume_change(float p_new_val){};
+
+  unsigned get_flags() {
+    return play_callback::flag_on_playback_new_track |
+           play_callback::flag_on_playback_seek;
+  }
+};
+static service_factory_single_t<timing_info_callbacks> g_timing_info_callbacks;
+
 void mpv_player::mpv_set_wid(HWND wnd) { wid = wnd; }
 
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {}
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
-  visualisation_stream::ptr vis_stream;
-  visualisation_manager::get()->create_stream(vis_stream, 0);
-  vis_stream->get_absolute_time(last_seek_vistime);
-  last_fb_seek = 0.0;
   mpv_play(p_track, true);
 }
 void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
   mpv_stop();
 }
-void mpv_player::on_playback_seek(double p_time) {
-  last_seek_vistime = 0.0;
-  last_fb_seek = p_time;
-  mpv_seek(p_time, true);
-}
+void mpv_player::on_playback_seek(double p_time) { mpv_seek(p_time, true); }
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
 void mpv_player::on_playback_time(double p_time) {
   mpv_sync(p_time);
@@ -532,7 +555,7 @@ void mpv_player::mpv_first_frame_sync() {
 
   if (mpv == NULL || !enabled) return;
 
-  if (last_fb_seek < 0) return;
+  if (g_timing_info.load().last_fb_seek < 0) return;
 
   std::stringstream msg;
   msg.setf(std::ios::fixed);
@@ -592,7 +615,7 @@ void mpv_player::mpv_first_frame_sync() {
         continue;  // no frame decoded yet
 
       mpv_time = *(double*)(event_property->data);
-      if (mpv_time > last_fb_seek) {
+      if (mpv_time > g_timing_info.load().last_fb_seek) {
         // frame decoded, wait for fb
         if (cfg_mpv_logging.get()) {
           msg.str("");
@@ -626,11 +649,14 @@ void mpv_player::mpv_first_frame_sync() {
   if (cfg_mpv_logging.get()) {
     msg.str("");
     msg << "mpv: Audio time "
-        << time_base + last_fb_seek + vis_time - last_seek_vistime;
+        << time_base + g_timing_info.load().last_fb_seek + vis_time -
+               g_timing_info.load().last_seek_vistime;
     console::info(msg.str().c_str());
   }
 
-  while (time_base + last_fb_seek + vis_time - last_seek_vistime < mpv_time) {
+  while (time_base + g_timing_info.load().last_fb_seek + vis_time -
+             g_timing_info.load().last_seek_vistime <
+         mpv_time) {
     if (sync_task != sync_task_type::FirstFrameSync) {
       return;
     }
@@ -650,7 +676,8 @@ void mpv_player::mpv_first_frame_sync() {
   if (cfg_mpv_logging.get()) {
     msg.str("");
     msg << "mpv: Resuming playback, audio time now "
-        << time_base + last_fb_seek + vis_time - last_seek_vistime;
+        << time_base + g_timing_info.load().last_fb_seek + vis_time -
+               g_timing_info.load().last_seek_vistime;
     console::info(msg.str().c_str());
   }
 }

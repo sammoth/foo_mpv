@@ -275,9 +275,7 @@ class mpv_player : play_callback_impl_base {
   void mpv_sync(double debug_time);
 
   double time_base; // start time of the current track/subsong within its file
-  double last_fb_seek;
   double last_mpv_seek;
-  double last_seek_vistime;
   bool sync_on_unpause;
 
   std::thread sync_thread;
