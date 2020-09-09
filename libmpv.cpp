@@ -1,9 +1,9 @@
 #include "stdafx.h"
 // PCH ^
+#include <algorithm>
 #include <mutex>
 #include <set>
 #include <thread>
-#include <algorithm>
 
 #include "helpers/win32_misc.h"
 #include "libmpv.h"
@@ -73,18 +73,17 @@ static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
 static std::vector<mpv_container*> mpv_containers;
 static std::unique_ptr<CMpvWindow> mpv_window;
 
-mpv_container* mpv_container::get_main() { 
-std::sort(mpv_containers.begin(), mpv_containers.end(), [](mpv_container* a, mpv_container* b) {
-    if (!a->is_visible())
-        return false;
-    
-    if (!b->is_visible())
-        return true;
+mpv_container* mpv_container::get_main() {
+  std::sort(mpv_containers.begin(), mpv_containers.end(),
+            [](mpv_container* a, mpv_container* b) {
+              if (!a->is_visible()) return false;
 
-    return a->priority() > b->priority();
-    });
+              if (!b->is_visible()) return true;
 
-return *mpv_containers.begin();
+              return a->priority() > b->priority();
+            });
+
+  return *mpv_containers.begin();
 }
 
 void mpv_container::resize(long p_x, long p_y) {
@@ -437,6 +436,15 @@ void mpv_player::mpv_pause(bool state) {
   if (mpv == NULL || !enabled) return;
 
   {
+    int idle = 0;
+    _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
+
+    if (idle == 1) {
+      return;
+    }
+  }
+
+  {
     std::lock_guard<std::mutex> lock(cv_mutex);
     sync_task = sync_task_type::Stop;
   }
@@ -467,6 +475,15 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
   if (mpv == NULL || !enabled) return;
 
   {
+    int idle = 0;
+    _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
+
+    if (idle == 1) {
+      return;
+    }
+  }
+
+  {
     std::lock_guard<std::mutex> lock(cv_mutex);
     sync_task = sync_task_type::Stop;
   }
@@ -492,27 +509,39 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
       console::error("mpv: Error setting speed");
     }
 
+    // build command
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(15);
     time_sstring << time_base + time;
     std::string time_string = time_sstring.str();
     const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
+
     if (_mpv_command(mpv, cmd) < 0) {
       if (cfg_mpv_logging.get()) {
         console::error("mpv: Error seeking, waiting for file to load first");
       }
 
       const int64_t userdata = 853727396;
-      if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) <
+      if (_mpv_observe_property(mpv, userdata, "seeking", MPV_FORMAT_FLAG) <
           0) {
         if (cfg_mpv_logging.get()) {
-          console::error("mpv: Error observing time-pos");
+          console::error("mpv: Error observing seeking");
         }
       } else {
-        double mpv_time = -1.0;
-        for (int i = 0; i < 50; i++) {
-          mpv_event* event = _mpv_wait_event(mpv, 0.1);
+        for (int i = 0; i < 100; i++) {
+          mpv_event* event = _mpv_wait_event(mpv, 0.05);
+
+          {
+            int idle = 0;
+            _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
+
+            if (idle == 1) {
+              _mpv_unobserve_property(mpv, userdata);
+              return;
+            }
+          }
+
           if (event->event_id == MPV_EVENT_SHUTDOWN) {
             _mpv_unobserve_property(mpv, userdata);
             break;
@@ -523,11 +552,11 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
             mpv_event_property* event_property =
                 (mpv_event_property*)event->data;
 
-            if (event_property->format != MPV_FORMAT_DOUBLE)
+            if (event_property->format != MPV_FORMAT_FLAG)
               continue;  // no frame decoded yet
 
-            mpv_time = *(double*)(event_property->data);
-            if (mpv_time > 0.0) {
+            int seeking = *(int*)(event_property->data);
+            if (seeking == 0) {
               break;
             }
           }
@@ -559,6 +588,15 @@ void mpv_player::mpv_sync(double debug_time) {
   if (!mpv_loaded) return;
 
   if (mpv == NULL || !enabled) return;
+
+  {
+    int idle = 0;
+    _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
+
+    if (idle == 1) {
+      return;
+    }
+  }
 
   if (sync_task == sync_task_type::FirstFrameSync) {
     if (cfg_mpv_logging.get()) {
@@ -626,7 +664,7 @@ void mpv_player::mpv_first_frame_sync() {
     console::info("mpv: Initial sync");
   }
 
-  const int64_t userdata = 853727396;
+  const int64_t userdata = 208341047;
   if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) < 0) {
     if (cfg_mpv_logging.get()) {
       console::error("mpv: Error observing time-pos");
@@ -648,6 +686,15 @@ void mpv_player::mpv_first_frame_sync() {
     }
 
     mpv_event* event = _mpv_wait_event(mpv, 0.01);
+    {
+      int idle = 0;
+      _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
+
+      if (idle == 1) {
+        _mpv_unobserve_property(mpv, userdata);
+        return;
+      }
+    }
     if (event->event_id == MPV_EVENT_SHUTDOWN) {
       _mpv_unobserve_property(mpv, userdata);
       return;
