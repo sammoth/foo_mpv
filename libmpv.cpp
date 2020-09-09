@@ -353,7 +353,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 
       double start_time =
           new_file ? 0.0 : playback_control::get()->playback_get_position();
-      last_mpv_seek = start_time;
+      last_mpv_seek = ceil(1000 * start_time)/1000.0;
 
       std::stringstream time_sstring;
       time_sstring.setf(std::ios::fixed);
@@ -365,7 +365,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
         std::stringstream msg;
         msg << "mpv: Loading item '" << filename << "' at start time "
             << time_base + start_time;
-        console::error(msg.str().c_str());
+        console::info(msg.str().c_str());
       }
 
       // reset speed
@@ -396,7 +396,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
       std::stringstream msg;
       msg << "mpv: Skipping loading item '" << filename
           << "' because it is not a local file";
-      console::error(msg.str().c_str());
+      console::info(msg.str().c_str());
     }
 
     lock.unlock();
@@ -721,7 +721,7 @@ void mpv_player::mpv_first_frame_sync() {
         // frame decoded, wait for fb
         if (cfg_mpv_logging.get()) {
           msg.str("");
-          msg << "mpv: First frame found at timestamp " << mpv_time
+          msg << "mpv: First frame found at timestamp " << mpv_time << " after seek to " << last_mpv_seek
               << ", pausing";
           console::info(msg.str().c_str());
         }
