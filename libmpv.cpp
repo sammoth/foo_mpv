@@ -296,6 +296,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 
       double start_time =
           new_file ? 0.0 : playback_control::get()->playback_get_position();
+      last_mpv_seek = start_time;
 
       std::stringstream time_sstring;
       time_sstring.setf(std::ios::fixed);
@@ -328,12 +329,10 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
           cfg_mpv_logging.get()) {
         console::error("mpv: Error pausing");
       }
+
       if (paused) {
         sync_on_unpause = true;
       } else {
-        // first frame sync isn't accurate for starting mid-file yet
-        // maybe try saving separately the clock sync info and keeping it even
-        // when disabled
         sync_task = sync_task_type::FirstFrameSync;
       }
     } else if (cfg_mpv_logging.get()) {
@@ -555,8 +554,6 @@ void mpv_player::mpv_first_frame_sync() {
 
   if (mpv == NULL || !enabled) return;
 
-  if (g_timing_info.load().last_fb_seek < 0) return;
-
   std::stringstream msg;
   msg.setf(std::ios::fixed);
   msg.setf(std::ios::showpos);
@@ -615,7 +612,7 @@ void mpv_player::mpv_first_frame_sync() {
         continue;  // no frame decoded yet
 
       mpv_time = *(double*)(event_property->data);
-      if (mpv_time > g_timing_info.load().last_fb_seek) {
+      if (mpv_time > last_mpv_seek) {
         // frame decoded, wait for fb
         if (cfg_mpv_logging.get()) {
           msg.str("");
