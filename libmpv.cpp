@@ -187,7 +187,7 @@ void mpv_player::mpv_terminate() {
 void mpv_player::mpv_update_visibility() {
   if (!mpv_loaded) return;
 
-  if (mpv_is_visible()) {
+  if (mpv_is_visible() || !cfg_mpv_stop_hidden.get()) {
     bool starting = !enabled;
     enabled = true;
 
@@ -200,7 +200,7 @@ void mpv_player::mpv_update_visibility() {
     bool stopping = enabled;
     enabled = false;
 
-    if (stopping && cfg_mpv_stop_hidden) {
+    if (stopping) {
       mpv_stop();
     }
   }
