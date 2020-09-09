@@ -74,9 +74,9 @@ mpv_player::mpv_player()
       mpv(NULL),
       sync_task(sync_task_type::Wait),
       sync_on_unpause(false),
-      last_fb_seek(0),
+      last_fb_seek(-99),
       last_mpv_seek(0),
-      last_seek_vistime(0),
+      last_seek_vistime(-99),
       time_base(0) {
   mpv_loaded = load_mpv();
   sync_thread = std::thread([this]() {
@@ -531,6 +531,8 @@ void mpv_player::mpv_first_frame_sync() {
   if (!mpv_loaded) return;
 
   if (mpv == NULL || !enabled) return;
+
+  if (last_fb_seek < 0) return;
 
   std::stringstream msg;
   msg.setf(std::ios::fixed);
