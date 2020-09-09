@@ -268,14 +268,15 @@ class mpv_player : play_callback_impl_base {
   bool mpv_loaded;
   bool enabled;
 
-  void mpv_play(metadb_handle_ptr metadb);
+  void mpv_play(metadb_handle_ptr metadb, bool new_track);
   void mpv_stop();
   void mpv_pause(bool state);
-  void mpv_seek(double time, bool automatic);
+  void mpv_seek(double time, bool sync_after);
   void mpv_sync(double debug_time);
 
   double time_base; // start time of the current track/subsong within its file
-  double last_seek;
+  double last_fb_seek;
+  double last_mpv_seek;
   double last_seek_vistime;
   bool sync_on_unpause;
 

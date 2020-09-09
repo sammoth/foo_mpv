@@ -74,6 +74,9 @@ mpv_player::mpv_player()
       mpv(NULL),
       sync_task(sync_task_type::Wait),
       sync_on_unpause(false),
+      last_fb_seek(0),
+      last_mpv_seek(0),
+      last_seek_vistime(0),
       time_base(0) {
   mpv_loaded = load_mpv();
   sync_thread = std::thread([this]() {
@@ -146,7 +149,7 @@ void mpv_player::mpv_init() {
 
     // seek fast
     _mpv_set_option_string(mpv, "hr-seek-framedrop", "yes");
-    _mpv_set_option_string(mpv, "hr-seek-demuxer-offset", "1.5");
+    _mpv_set_option_string(mpv, "hr-seek-demuxer-offset", "0");
 
     // foobar plays the audio
     _mpv_set_option_string(mpv, "audio", "no");
@@ -191,7 +194,7 @@ void mpv_player::mpv_update_visibility() {
     if (starting && playback_control::get()->is_playing()) {
       metadb_handle_ptr handle;
       playback_control::get()->get_now_playing(handle);
-      mpv_play(handle);
+      mpv_play(handle, false);
     }
   } else {
     bool stopping = enabled;
@@ -208,22 +211,28 @@ void mpv_player::mpv_set_wid(HWND wnd) { wid = wnd; }
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {}
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
-  mpv_play(p_track);
+  visualisation_stream::ptr vis_stream;
+  visualisation_manager::get()->create_stream(vis_stream, 0);
+  vis_stream->get_absolute_time(last_seek_vistime);
+  last_fb_seek = 0.0;
+  mpv_play(p_track, true);
 }
 void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
   mpv_stop();
 }
-void mpv_player::on_playback_seek(double p_time) { mpv_seek(p_time, false); }
+void mpv_player::on_playback_seek(double p_time) {
+  last_seek_vistime = 0.0;
+  last_fb_seek = p_time;
+  mpv_seek(p_time, true);
+}
 void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
 void mpv_player::on_playback_time(double p_time) {
   mpv_sync(p_time);
   mpv_update_visibility();
 }
 
-void mpv_player::mpv_play(metadb_handle_ptr metadb) {
+void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
   if (!mpv_loaded) return;
-
-  double start_time = playback_control::get()->playback_get_position();
 
   mpv_update_visibility();
 
@@ -262,16 +271,8 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb) {
         }
       }
 
-      if (start_time < 1.0) {
-        // hack, maybe we should determine what started playback
-        start_time = 0.0;
-        // this isn't accurate, it means initial sync after start in the middle
-        // of a file doesn't really work
-        visualisation_stream::ptr vis_stream;
-        visualisation_manager::get()->create_stream(vis_stream, 0);
-        vis_stream->get_absolute_time(last_seek_vistime);
-        last_seek = start_time;
-      }
+      double start_time =
+          new_file ? 0.0 : playback_control::get()->playback_get_position();
 
       std::stringstream time_sstring;
       time_sstring.setf(std::ios::fixed);
@@ -380,17 +381,8 @@ void mpv_player::mpv_pause(bool state) {
   cv.notify_all();
 }
 
-void mpv_player::mpv_seek(double time, bool automatic) {
+void mpv_player::mpv_seek(double time, bool sync_after) {
   if (!mpv_loaded) return;
-
-  last_seek = time;
-  if (automatic) {
-    visualisation_stream::ptr vis_stream;
-    visualisation_manager::get()->create_stream(vis_stream, 0);
-    vis_stream->get_absolute_time(last_seek_vistime);
-  } else {
-    last_seek_vistime = 0.0;
-  }
 
   if (mpv == NULL || !enabled) return;
 
@@ -406,10 +398,11 @@ void mpv_player::mpv_seek(double time, bool automatic) {
 
     if (cfg_mpv_logging.get()) {
       std::stringstream msg;
-      msg << "mpv: Seeking to " << time << ", clock at " << last_seek_vistime;
+      msg << "mpv: Seeking to " << time;
       console::info(msg.str().c_str());
     }
 
+    last_mpv_seek = time;
     bool paused = playback_control::get()->is_paused();
 
     // reset speed
@@ -436,27 +429,27 @@ void mpv_player::mpv_seek(double time, bool automatic) {
         if (cfg_mpv_logging.get()) {
           console::error("mpv: Error observing time-pos");
         }
-        return;
-      }
-
-      double mpv_time = -1.0;
-      for (int i = 0; i < 50; i++) {
-        mpv_event* event = _mpv_wait_event(mpv, 0.1);
-        if (event->event_id == MPV_EVENT_SHUTDOWN) {
-          _mpv_unobserve_property(mpv, userdata);
-          break;
-        }
-
-        if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
-            event->reply_userdata == userdata) {
-          mpv_event_property* event_property = (mpv_event_property*)event->data;
-
-          if (event_property->format != MPV_FORMAT_DOUBLE)
-            continue;  // no frame decoded yet
-
-          mpv_time = *(double*)(event_property->data);
-          if (mpv_time > 0.0) {
+      } else {
+        double mpv_time = -1.0;
+        for (int i = 0; i < 50; i++) {
+          mpv_event* event = _mpv_wait_event(mpv, 0.1);
+          if (event->event_id == MPV_EVENT_SHUTDOWN) {
+            _mpv_unobserve_property(mpv, userdata);
             break;
+          }
+
+          if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
+              event->reply_userdata == userdata) {
+            mpv_event_property* event_property =
+                (mpv_event_property*)event->data;
+
+            if (event_property->format != MPV_FORMAT_DOUBLE)
+              continue;  // no frame decoded yet
+
+            mpv_time = *(double*)(event_property->data);
+            if (mpv_time > 0.0) {
+              break;
+            }
           }
         }
       }
@@ -469,10 +462,12 @@ void mpv_player::mpv_seek(double time, bool automatic) {
       }
     }
 
-    if (paused) {
-      sync_on_unpause = true;
-    } else {
-      sync_task = sync_task_type::FirstFrameSync;
+    if (sync_after) {
+      if (paused) {
+        sync_on_unpause = true;
+      } else {
+        sync_task = sync_task_type::FirstFrameSync;
+      }
     }
 
     lock.unlock();
@@ -501,7 +496,7 @@ void mpv_player::mpv_sync(double debug_time) {
   double new_speed = 1.0;
 
   if (abs(desync) > 0.001 * cfg_mpv_hard_sync.get() &&
-      (fb_time - last_seek) > cfg_mpv_hard_sync_interval.get()) {
+      (fb_time - last_mpv_seek) > cfg_mpv_hard_sync_interval.get()) {
     // hard sync
     mpv_seek(fb_time, true);
     if (cfg_mpv_logging.get()) {
@@ -595,7 +590,7 @@ void mpv_player::mpv_first_frame_sync() {
         continue;  // no frame decoded yet
 
       mpv_time = *(double*)(event_property->data);
-      if (mpv_time > last_seek) {
+      if (mpv_time > last_fb_seek) {
         // frame decoded, wait for fb
         if (cfg_mpv_logging.get()) {
           msg.str("");
@@ -629,11 +624,11 @@ void mpv_player::mpv_first_frame_sync() {
   if (cfg_mpv_logging.get()) {
     msg.str("");
     msg << "mpv: Audio time "
-        << time_base + last_seek + vis_time - last_seek_vistime;
+        << time_base + last_fb_seek + vis_time - last_seek_vistime;
     console::info(msg.str().c_str());
   }
 
-  while (time_base + last_seek + vis_time - last_seek_vistime < mpv_time) {
+  while (time_base + last_fb_seek + vis_time - last_seek_vistime < mpv_time) {
     if (sync_task != sync_task_type::FirstFrameSync) {
       return;
     }
@@ -653,7 +648,7 @@ void mpv_player::mpv_first_frame_sync() {
   if (cfg_mpv_logging.get()) {
     msg.str("");
     msg << "mpv: Resuming playback, audio time now "
-        << time_base + last_seek + vis_time - last_seek_vistime;
+        << time_base + last_fb_seek + vis_time - last_seek_vistime;
     console::info(msg.str().c_str());
   }
 }
