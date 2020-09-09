@@ -1,7 +1,9 @@
 #include "stdafx.h"
 // PCH ^
 #include <mutex>
+#include <set>
 #include <thread>
+#include <algorithm>
 
 #include "helpers/win32_misc.h"
 #include "libmpv.h"
@@ -67,6 +69,62 @@ static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
                                                       guid_cfg_mpv_stop_hidden,
                                                       guid_cfg_mpv_branch, 0,
                                                       true);
+
+static std::vector<mpv_container*> mpv_containers;
+static std::unique_ptr<CMpvWindow> mpv_window;
+
+mpv_container* mpv_container::get_main() { 
+std::sort(mpv_containers.begin(), mpv_containers.end(), [](mpv_container* a, mpv_container* b) {
+    if (!a->is_visible())
+        return false;
+    
+    if (!b->is_visible())
+        return true;
+
+    return a->priority() > b->priority();
+    });
+
+return *mpv_containers.begin();
+}
+
+void mpv_container::resize(long p_x, long p_y) {
+  x = p_x;
+  y = p_y;
+  if (mpv_window) {
+    mpv_window->update();
+  }
+}
+
+void mpv_container::update() {
+  if (mpv_window) {
+    mpv_window->update();
+  }
+}
+
+void mpv_container::create() {
+  mpv_containers.push_back(this);
+
+  if (!mpv_window) {
+    mpv_window = std::unique_ptr<CMpvWindow>(new CMpvWindow());
+  } else {
+    mpv_window->update();
+  }
+}
+
+void mpv_container::destroy() {
+  mpv_containers.erase(
+      std::remove(mpv_containers.begin(), mpv_containers.end(), this),
+      mpv_containers.end());
+
+  if (mpv_containers.empty()) {
+    if (mpv_window != NULL) mpv_window->DestroyWindow();
+    mpv_window = NULL;
+  }
+
+  if (mpv_window) {
+    mpv_window->update();
+  }
+}
 
 mpv_player::mpv_player()
     : wid(NULL),
@@ -762,15 +820,35 @@ bool mpv_player::load_mpv() {
   return true;
 }
 
-CMpvWindow::CMpvWindow(HWND parent, std::function<bool()> is_visible)
-    : parent_(parent), visible_cb(is_visible) {
-  HWND wid;
-  WIN32_OP(wid = Create(parent, 0, 0, WS_CHILD, 0));
-  mpv_set_wid(wid);
+CMpvWindow::CMpvWindow() {
+  mpv_container* container = mpv_container::get_main();
+  if (!container) {
+    throw exception_messagebox(
+        "mpv: Exception creating player window - nowhere to place mpv");
+  } else {
+    HWND wid;
+    WIN32_OP(wid = Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
+    mpv_set_wid(wid);
+    mpv_update_visibility();
+  }
+}
+
+void CMpvWindow::update() {
+  mpv_container* container = mpv_container::get_main();
+  if (!fullscreen_) {
+    if (GetParent() != container->container_wnd()) {
+      SetParent(container->container_wnd());
+    }
+    ResizeClient(container->x, container->y);
+  }
+
   mpv_update_visibility();
 }
 
-bool CMpvWindow::mpv_is_visible() { return visible_cb(); }
+bool CMpvWindow::mpv_is_visible() {
+  mpv_container* container = mpv_container::get_main();
+  return fullscreen_ || container->is_visible();
+}
 
 BOOL CMpvWindow::on_erase_bg(CDCHandle dc) {
   CRect rc;
@@ -779,13 +857,6 @@ BOOL CMpvWindow::on_erase_bg(CDCHandle dc) {
   WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
   WIN32_OP_D(dc.FillRect(&rc, brush));
   return TRUE;
-}
-
-void CMpvWindow::MaybeResize(LONG x, LONG y) {
-  x_ = x;
-  y_ = y;
-
-  if (!fullscreen_) ResizeClient(x_, y_);
 }
 
 void CMpvWindow::on_destroy() { mpv_terminate(); }
@@ -821,13 +892,14 @@ void CMpvWindow::toggle_fullscreen() {
                  monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
                  SWP_NOZORDER | SWP_FRAMECHANGED);
   } else {
-    SetParent(parent_);
+    mpv_container* container = mpv_container::get_main();
+    SetParent(container->container_wnd());
     SetWindowLong(GWL_STYLE, saved_style);
     SetWindowLong(GWL_EXSTYLE, saved_ex_style);
-    SetWindowPos(NULL, 0, 0, x_, y_,
+    SetWindowPos(NULL, 0, 0, container->x, container->y,
                  SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    ::SetActiveWindow(parent_);
-    ::SetFocus(parent_);
+    ::SetActiveWindow(container->container_wnd());
+    ::SetFocus(container->container_wnd());
   }
 }
 
@@ -839,4 +911,5 @@ LRESULT CMpvWindow::on_create(LPCREATESTRUCT lpcreate) {
 }
 
 HWND CMpvWindow::get_wnd() { return m_hWnd; }
+
 }  // namespace mpv

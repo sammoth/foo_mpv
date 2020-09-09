@@ -11,7 +11,9 @@ namespace mpv {
 static const GUID guid_mpv_dui_panel = {
     0x777a523a, 0x1ed, 0x48b9, {0xb9, 0x1, 0xda, 0xb1, 0xbe, 0x31, 0x7c, 0xa4}};
 
-struct CMpvDuiWindow : public ui_element_instance, CWindowImpl<CMpvDuiWindow> {
+struct CMpvDuiWindow : public ui_element_instance,
+                       public mpv_container,
+                       CWindowImpl<CMpvDuiWindow> {
  public:
   DECLARE_WND_CLASS_EX(TEXT("{9D6179F4-0A94-4F76-B7EB-C4A853853DCB}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
@@ -35,21 +37,22 @@ struct CMpvDuiWindow : public ui_element_instance, CWindowImpl<CMpvDuiWindow> {
     return TRUE;
   }
 
-  void on_destroy() {
-    if (player_window != NULL) player_window->DestroyWindow();
+  void on_destroy() { destroy(); }
+
+  void on_size(UINT wparam, CSize size) { resize(size.cx, size.cy); }
+
+  double priority() override {
+      return x*y;
   }
 
-  void on_size(UINT wparam, CSize size) {
-    if (player_window != NULL) player_window->MaybeResize(size.cx, size.cy);
-  }
+  HWND container_wnd() override { return m_hWnd; }
 
   void initialize_window(HWND parent) {
-    HWND wid;
-    WIN32_OP(wid = Create(parent, 0, 0, WS_CHILD, 0));
-
-    player_window = std::unique_ptr<CMpvWindow>(new CMpvWindow(
-        *this, [this]() { return m_callback->is_elem_visible_(this); }));
+    WIN32_OP(Create(parent, 0, 0, WS_CHILD, 0));
+    create();
   }
+
+  bool is_visible() override { return m_callback->is_elem_visible_(this); }
 
   HWND get_wnd() { return m_hWnd; }
 
@@ -64,15 +67,13 @@ struct CMpvDuiWindow : public ui_element_instance, CWindowImpl<CMpvDuiWindow> {
   static const char* g_get_description() { return "mpv Video"; }
   void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
               t_size p_param2size) {
-    bool now_visible = m_callback->is_elem_visible_(this);
     if (p_what == ui_element_notify_visibility_changed) {
-      player_window->mpv_update_visibility();
+      update();
     }
   };
 
  private:
   ui_element_config::ptr m_config;
-  std::unique_ptr<CMpvWindow> player_window;
 
  protected:
   const ui_element_instance_callback_ptr m_callback;

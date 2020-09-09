@@ -274,7 +274,7 @@ class mpv_player : play_callback_impl_base {
   void mpv_seek(double time, bool sync_after);
   void mpv_sync(double debug_time);
 
-  double time_base; // start time of the current track/subsong within its file
+  double time_base;  // start time of the current track/subsong within its file
   double last_mpv_seek;
   bool sync_on_unpause;
 
@@ -304,6 +304,7 @@ class mpv_player : play_callback_impl_base {
   virtual bool mpv_is_visible() { return true; }
 };
 
+
 struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
@@ -316,16 +317,14 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   MSG_WM_KEYDOWN(on_keydown)
   END_MSG_MAP()
 
-  HWND parent_;
+  void update();
+
   BOOL on_erase_bg(CDCHandle dc);
   void on_keydown(UINT, WPARAM, LPARAM);
 
-  std::function<bool()> visible_cb;
   bool mpv_is_visible() override;
 
   bool fullscreen_ = false;
-  LONG x_;
-  LONG y_;
   LONG saved_style;
   LONG saved_ex_style;
   void toggle_fullscreen();
@@ -337,9 +336,22 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   HWND get_wnd();
 
  public:
-  CMpvWindow(HWND parent, std::function<bool()> is_visible);
+  CMpvWindow();
   void on_double_click(UINT, CPoint);
+};
 
-  void MaybeResize(LONG x, LONG y);
+class mpv_container {
+ public:
+  static mpv_container* get_main();
+
+  long x;
+  long y;
+  void resize(long p_x, long p_y);
+  void update();
+  void create();
+  void destroy();
+  virtual double priority() = 0;
+  virtual HWND container_wnd() = 0;
+  virtual bool is_visible() = 0;
 };
 }  // namespace mpv
