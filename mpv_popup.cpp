@@ -86,9 +86,9 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
                      _T("Always on-top"));
     menudesc->Set(ID_ONTOP, "Keep the video window above other windows");
     menu->AppendMenu(stick ? MF_CHECKED : MF_UNCHECKED, ID_STICK,
-                     _T("Stick to foobar"));
+                     _T("Stick to main window"));
     menudesc->Set(ID_STICK,
-                  "Minimize/restore window with foobar2000 main window");
+                  "Minimize/restore window with foobar2000 main window and always keep above");
   }
 
   bool ontop = false;
@@ -153,17 +153,21 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     }
   }
 
-  HWND container_wnd() override { return m_hWnd; }
-
-  bool is_visible() override { return !IsIconic(); }
+  HWND get_wnd() { return m_hWnd; }
 
   void on_fullscreen(bool fullscreen) override {
     ShowWindow(fullscreen ? SW_HIDE : SW_NORMAL);
   }
 
-  HWND get_wnd() { return m_hWnd; }
-
   void set_owner(popup_owner* p_owner) { owner = p_owner; }
+
+  HWND container_wnd() override { return get_wnd(); }
+  bool is_visible() override { return !IsIconic(); }
+  t_ui_color get_background_color() override { return (t_ui_color)0; }
+  void request_activation() override {
+    ::SetActiveWindow(get_wnd());
+    ::SetFocus(get_wnd());
+  }
 
  private:
   popup_owner* owner;

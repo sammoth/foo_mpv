@@ -30,13 +30,19 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   CMpvDuiWindow(ui_element_config::ptr config,
                 ui_element_instance_callback_ptr p_callback)
-      : m_callback(p_callback), m_config(config) {}
+      : m_callback(p_callback),
+        m_config(config),
+        background_color_enabled(false),
+        background_color(0) {}
 
   BOOL on_erase_bg(CDCHandle dc) {
     CRect rc;
     WIN32_OP_D(GetClientRect(&rc));
     CBrush brush;
-    WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
+    WIN32_OP_D(brush.CreateSolidBrush(background_color_enabled
+                                          ? background_color
+                                          : m_callback->query_std_color(
+                                                ui_color_background)) != NULL);
     WIN32_OP_D(dc.FillRect(&rc, brush));
     return TRUE;
   }
@@ -69,6 +75,8 @@ struct CMpvDuiWindow : public ui_element_instance,
       if (cfg_pinned) {
         pin();
       }
+      in >> background_color_enabled;
+      in >> background_color;
     } catch (exception_io_data) {
     }
   };
@@ -81,6 +89,8 @@ struct CMpvDuiWindow : public ui_element_instance,
   ui_element_config::ptr get_configuration() {
     ui_element_config_builder out;
     out << is_pinned();
+    out << background_color_enabled;
+    out << background_color;
     return out.finish(g_get_guid());
   }
 
@@ -88,7 +98,11 @@ struct CMpvDuiWindow : public ui_element_instance,
   static GUID g_get_subclass() { return ui_element_subclass_utility; }
   static void g_get_name(pfc::string_base& out) { out = "mpv Video"; }
   static ui_element_config::ptr g_get_default_configuration() {
-    return ui_element_config::g_create_empty(g_get_guid());
+    ui_element_config_builder out;
+    out << false;
+    out << false;
+    out << (t_ui_color)0;
+    return out.finish(g_get_guid());
   }
   static const char* g_get_description() { return "mpv Video"; }
   void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
@@ -96,12 +110,21 @@ struct CMpvDuiWindow : public ui_element_instance,
     if (p_what == ui_element_notify_visibility_changed) {
       update();
     }
+
+    if (p_what == ui_element_notify_colors_changed ||
+        p_what == ui_element_notify_font_changed) {
+      // we use global colors and fonts - trigger a repaint whenever these
+      // change.
+      Invalidate();
+    }
   };
 
   enum {
     ID_PIN = 1003,
     ID_POPOUT = 1004,
-    ID_SETCOLOUR = 1005,
+    ID_SETCOLOR = 1005,
+    ID_RESETCOLOR = 1006,
+    ID_SPLITTERCOLOR = 1007,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
@@ -113,9 +136,27 @@ struct CMpvDuiWindow : public ui_element_instance,
       menu->AppendMenu(MF_DEFAULT, ID_POPOUT, _T("Pop out"));
       menudesc->Set(ID_POPOUT, "Open video in popup");
     }
+
+    CMenu settings;
+    WIN32_OP(settings.CreateMenu());
+
+    settings.AppendMenu(MF_DEFAULT, ID_SETCOLOR, _T("Set background color"));
+    menudesc->Set(ID_SETCOLOR,
+                  "Choose the background color for this UI element");
+
+    settings.AppendMenu(MF_DEFAULT, ID_RESETCOLOR, _T("Use default color"));
+    menudesc->Set(ID_RESETCOLOR, "Use the default UI element background");
+
+    settings.AppendMenu(MF_DEFAULT, ID_SPLITTERCOLOR, _T("Use splitter color"));
+    menudesc->Set(ID_SPLITTERCOLOR, "Use the splitter background color");
+
+    menu->AppendMenu(MF_POPUP, settings, _T("Settings"));
   }
 
   void handle_menu_cmd(int cmd) {
+    CHOOSECOLOR cc = {};
+    static COLORREF acrCustClr[16];
+
     switch (cmd) {
       case ID_PIN:
         if (is_pinned()) {
@@ -127,6 +168,30 @@ struct CMpvDuiWindow : public ui_element_instance,
       case ID_POPOUT:
         unpin();
         RunMpvPopupWindow();
+        break;
+      case ID_SETCOLOR:
+        cc.lStructSize = sizeof(cc);
+        cc.hwndOwner = get_wnd();
+        cc.lpCustColors = (LPDWORD)acrCustClr;
+        cc.rgbResult = background_color;
+        cc.Flags = CC_FULLOPEN | CC_RGBINIT;
+
+        if (ChooseColor(&cc) == TRUE) {
+          background_color = cc.rgbResult;
+          background_color_enabled = true;
+          Invalidate();
+        }
+        break;
+      case ID_RESETCOLOR:
+        background_color_enabled = false;
+        Invalidate();
+        update();
+        break;
+      case ID_SPLITTERCOLOR:
+        background_color_enabled = true;
+        background_color = GetSysColor(COLOR_BTNFACE);
+        Invalidate();
+        update();
         break;
       default:
         break;
@@ -165,8 +230,17 @@ struct CMpvDuiWindow : public ui_element_instance,
     }
   }
 
+  void request_activation() override { m_callback->request_activation(this); }
+
+  t_ui_color get_background_color() override {
+    return background_color_enabled ? background_color
+                             : m_callback->query_std_color(ui_color_background);
+  }
+
  private:
   ui_element_config::ptr m_config;
+  t_ui_color background_color;
+  bool background_color_enabled;
 
  protected:
   const ui_element_instance_callback_ptr m_callback;

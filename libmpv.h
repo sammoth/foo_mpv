@@ -294,16 +294,20 @@ class mpv_player : play_callback_impl_base {
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
 
+ protected:
+  void update_background();
+  void mpv_update_visibility();
+  virtual bool mpv_is_visible() { return true; }
+  virtual t_ui_color mpv_get_background_color() { return 0; }
+
+  bool disabled;  // user override
+
  public:
   mpv_player();
   ~mpv_player();
 
   void mpv_set_wid(HWND wnd);
   void mpv_terminate();
-
-  bool disabled;  // user override
-  void mpv_update_visibility();
-  virtual bool mpv_is_visible() { return true; }
 };
 
 class mpv_container {
@@ -322,51 +326,14 @@ class mpv_container {
   void pin();
   void unpin();
   bool is_pinned();
-  virtual void add_menu_items(CMenu* menu,  CMenuDescriptionHybrid* menudesc) = 0;
+  virtual void add_menu_items(CMenu* menu,
+                              CMenuDescriptionHybrid* menudesc) = 0;
   virtual void handle_menu_cmd(int cmd) = 0;
+  virtual void request_activation() = 0;
   virtual double priority() = 0;
   virtual HWND container_wnd() = 0;
   virtual bool is_visible() = 0;
   virtual void on_fullscreen(bool fullscreen) = 0;
-};
-
-struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
-  DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
-                       CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
-
-  BEGIN_MSG_MAP_EX(CMpvWindow)
-  MSG_WM_CREATE(on_create)
-  MSG_WM_ERASEBKGND(on_erase_bg)
-  MSG_WM_DESTROY(on_destroy)
-  MSG_WM_LBUTTONDBLCLK(on_double_click)
-  MSG_WM_KEYDOWN(on_keydown)
-  MSG_WM_CONTEXTMENU(on_context_menu)
-  END_MSG_MAP()
-
-  void update();
-
-  BOOL on_erase_bg(CDCHandle dc);
-  void on_keydown(UINT, WPARAM, LPARAM);
-  void on_context_menu(CWindow wnd, CPoint point);
-  void on_double_click(UINT, CPoint);
-
-  bool mpv_is_visible() override;
-
-  bool fullscreen_ = false;
-  LONG saved_style;
-  LONG saved_ex_style;
-  void toggle_fullscreen();
-
-  void on_destroy();
-
-  LRESULT on_create(LPCREATESTRUCT lpcreate);
-
-  HWND get_wnd();
-
-  mpv_container* container;
-
- public:
-  CMpvWindow();
-  mpv_container* get_container();
+  virtual t_ui_color get_background_color() = 0;
 };
 }  // namespace mpv

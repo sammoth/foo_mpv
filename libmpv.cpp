@@ -1,6 +1,7 @@
 #include "stdafx.h"
 // PCH ^
 #include <algorithm>
+#include <iomanip>
 #include <mutex>
 #include <set>
 #include <thread>
@@ -71,9 +72,181 @@ static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
                                                       guid_cfg_mpv_branch, 0,
                                                       true);
 
+struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
+  DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
+                       CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
+
+  BEGIN_MSG_MAP_EX(CMpvWindow)
+  MSG_WM_CREATE(on_create)
+  MSG_WM_ERASEBKGND(on_erase_bg)
+  MSG_WM_DESTROY(on_destroy)
+  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_KEYDOWN(on_keydown)
+  MSG_WM_CONTEXTMENU(on_context_menu)
+  END_MSG_MAP()
+
+  BOOL on_erase_bg(CDCHandle dc) {
+    CRect rc;
+    WIN32_OP_D(GetClientRect(&rc));
+    CBrush brush;
+    WIN32_OP_D(brush.CreateSolidBrush(container->get_background_color()) !=
+               NULL);
+    WIN32_OP_D(dc.FillRect(&rc, brush));
+    return TRUE;
+  }
+  void on_keydown(UINT key, WPARAM, LPARAM) {
+    switch (key) {
+      case VK_ESCAPE:
+        if (fullscreen_) toggle_fullscreen();
+      default:
+        break;
+    }
+  }
+  void on_context_menu(CWindow wnd, CPoint point) {
+    try {
+      {
+        // handle the context menu key case - center the menu
+        if (point == CPoint(-1, -1)) {
+          CRect rc;
+          WIN32_OP(wnd.GetWindowRect(&rc));
+          point = rc.CenterPoint();
+        }
+
+        CMenuDescriptionHybrid menudesc(
+            *this);  // this class manages all the voodoo necessary for
+                     // descriptions of our menu items to show in the status
+                     // bar.
+
+        CMenu menu;
+        WIN32_OP(menu.CreatePopupMenu());
+        enum {
+          ID_ENABLED = 1,
+          ID_FULLSCREEN = 2,
+        };
+        menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
+                        _T("Enabled"));
+        menudesc.Set(ID_ENABLED, "Enable/disable video playback");
+        menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
+                        _T("Fullscreen"));
+        menudesc.Set(ID_FULLSCREEN, "Toggle video fullscreen");
+
+        if (!fullscreen_) {
+          container->add_menu_items(&menu, &menudesc);
+        }
+
+        int cmd =
+            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
+                                point.x, point.y, menudesc, 0);
+
+        if (cmd > 0) {
+          switch (cmd) {
+            case ID_ENABLED:
+              disabled = !disabled;
+              mpv_update_visibility();
+              break;
+            case ID_FULLSCREEN:
+              toggle_fullscreen();
+              break;
+            default:
+              container->handle_menu_cmd(cmd);
+              break;
+          }
+        }
+      }
+    } catch (std::exception const& e) {
+      console::complain("Context menu failure", e);  // rare
+    }
+  }
+
+  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
+
+  bool mpv_is_visible() override {
+    return fullscreen_ || container->is_visible();
+  }
+
+  bool fullscreen_ = false;
+  LONG saved_style;
+  LONG saved_ex_style;
+  void toggle_fullscreen() {
+    if (!fullscreen_) {
+      saved_style = GetWindowLong(GWL_STYLE);
+      saved_ex_style = GetWindowLong(GWL_EXSTYLE);
+    }
+    fullscreen_ = !fullscreen_;
+    update_background();
+    if (fullscreen_) {
+      SetParent(NULL);
+      SetWindowLong(GWL_STYLE,
+                    saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
+                        WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
+      SetWindowLong(GWL_EXSTYLE, saved_ex_style);
+
+      MONITORINFO monitor_info;
+      monitor_info.cbSize = sizeof(monitor_info);
+      GetMonitorInfoW(MonitorFromWindow(get_wnd(), MONITOR_DEFAULTTONEAREST),
+                      &monitor_info);
+      SetWindowPos(NULL, monitor_info.rcMonitor.left,
+                   monitor_info.rcMonitor.top,
+                   monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                   monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                   SWP_NOZORDER | SWP_FRAMECHANGED);
+    } else {
+      SetParent(container->container_wnd());
+      SetWindowLong(GWL_STYLE, saved_style);
+      SetWindowLong(GWL_EXSTYLE, saved_ex_style);
+      SetWindowPos(NULL, 0, 0, container->x, container->y,
+                   SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+      container->request_activation();
+    }
+    container->on_fullscreen(fullscreen_);
+  }
+
+  void on_destroy() { mpv_terminate(); }
+
+  LRESULT on_create(LPCREATESTRUCT lpcreate) {
+    ShowWindow(SW_SHOW);
+    return 0;
+  }
+
+  HWND get_wnd() { return m_hWnd; }
+
+  mpv_container* container;
+
+  void update() {
+    container = mpv_container::get_main();
+    if (!fullscreen_) {
+      if (GetParent() != container->container_wnd()) {
+        SetParent(container->container_wnd());
+      }
+      ResizeClient(container->x, container->y);
+    }
+
+    mpv_update_visibility();
+  }
+
+ public:
+  CMpvWindow() {
+    container = mpv_container::get_main();
+    if (!container) {
+      throw exception_messagebox(
+          "mpv: Exception creating player window - nowhere to place mpv");
+    } else {
+      HWND wid;
+      WIN32_OP(wid = Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
+      mpv_set_wid(wid);
+      mpv_update_visibility();
+    }
+  }
+  mpv_container* get_container() { return container; }
+
+  t_ui_color mpv_get_background_color() override {
+    if (fullscreen_) return (t_ui_color)0;
+    return container->get_background_color();
+  }
+};
+
 static std::vector<mpv_container*> mpv_containers;
 static std::unique_ptr<CMpvWindow> mpv_window;
-
 mpv_container* mpv_container::get_main() {
   std::sort(mpv_containers.begin(), mpv_containers.end(),
             [](mpv_container* a, mpv_container* b) {
@@ -199,6 +372,19 @@ mpv_player::~mpv_player() {
   sync_thread.join();
 }
 
+void mpv_player::update_background() {
+  if (!mpv_loaded || mpv == NULL) return;
+
+  std::stringstream colorstrings;
+  colorstrings << "#";
+  t_ui_color bgcolor = mpv_get_background_color();
+  colorstrings << std::setfill('0') << std::setw(2) << std::hex <<(unsigned)GetRValue(bgcolor);
+  colorstrings << std::setfill('0') << std::setw(2) << std::hex <<(unsigned)GetGValue(bgcolor);
+  colorstrings << std::setfill('0') << std::setw(2) << std::hex <<(unsigned)GetBValue(bgcolor);
+  std::string colorstring = colorstrings.str();
+  _mpv_set_option_string(mpv, "background", colorstring.c_str());
+}
+
 void mpv_player::mpv_init() {
   if (!mpv_loaded) return;
 
@@ -216,6 +402,8 @@ void mpv_player::mpv_init() {
     _mpv_set_option_string(mpv, "ytdl", "no");
     _mpv_set_option_string(mpv, "load-stats-overlay", "no");
     _mpv_set_option_string(mpv, "load-osd-console", "no");
+
+    update_background();
 
     _mpv_set_option_string(mpv, "config", "yes");
     _mpv_set_option_string(mpv, "config-dir", path.c_str());
@@ -271,6 +459,8 @@ void mpv_player::mpv_terminate() {
 
 void mpv_player::mpv_update_visibility() {
   if (!mpv_loaded) return;
+
+  update_background();
 
   if (!disabled && (mpv_is_visible() || !cfg_mpv_stop_hidden.get())) {
     bool starting = !enabled;
@@ -893,154 +1083,4 @@ bool mpv_player::load_mpv() {
 
   return true;
 }
-
-CMpvWindow::CMpvWindow() {
-  container = mpv_container::get_main();
-  if (!container) {
-    throw exception_messagebox(
-        "mpv: Exception creating player window - nowhere to place mpv");
-  } else {
-    HWND wid;
-    WIN32_OP(wid = Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
-    mpv_set_wid(wid);
-    mpv_update_visibility();
-  }
-}
-
-mpv_container* CMpvWindow::get_container() { return container; }
-
-void CMpvWindow::update() {
-  container = mpv_container::get_main();
-  if (!fullscreen_) {
-    if (GetParent() != container->container_wnd()) {
-      SetParent(container->container_wnd());
-    }
-    ResizeClient(container->x, container->y);
-  }
-
-  mpv_update_visibility();
-}
-
-bool CMpvWindow::mpv_is_visible() {
-  return fullscreen_ || container->is_visible();
-}
-
-BOOL CMpvWindow::on_erase_bg(CDCHandle dc) {
-  CRect rc;
-  WIN32_OP_D(GetClientRect(&rc));
-  CBrush brush;
-  WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
-  WIN32_OP_D(dc.FillRect(&rc, brush));
-  return TRUE;
-}
-
-void CMpvWindow::on_destroy() { mpv_terminate(); }
-
-void CMpvWindow::on_keydown(UINT key, WPARAM, LPARAM) {
-  switch (key) {
-    case VK_ESCAPE:
-      if (fullscreen_) toggle_fullscreen();
-    default:
-      break;
-  }
-}
-
-void CMpvWindow::toggle_fullscreen() {
-  if (!fullscreen_) {
-    saved_style = GetWindowLong(GWL_STYLE);
-    saved_ex_style = GetWindowLong(GWL_EXSTYLE);
-  }
-  fullscreen_ = !fullscreen_;
-  if (fullscreen_) {
-    SetParent(NULL);
-    SetWindowLong(GWL_STYLE,
-                  saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
-                      WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
-    SetWindowLong(GWL_EXSTYLE, saved_ex_style);
-
-    MONITORINFO monitor_info;
-    monitor_info.cbSize = sizeof(monitor_info);
-    GetMonitorInfoW(MonitorFromWindow(get_wnd(), MONITOR_DEFAULTTONEAREST),
-                    &monitor_info);
-    SetWindowPos(NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
-                 monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
-                 monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
-                 SWP_NOZORDER | SWP_FRAMECHANGED);
-  } else {
-    SetParent(container->container_wnd());
-    SetWindowLong(GWL_STYLE, saved_style);
-    SetWindowLong(GWL_EXSTYLE, saved_ex_style);
-    SetWindowPos(NULL, 0, 0, container->x, container->y,
-                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-    ::SetActiveWindow(container->container_wnd());
-    ::SetFocus(container->container_wnd());
-  }
-  container->on_fullscreen(fullscreen_);
-}
-
-void CMpvWindow::on_double_click(UINT, CPoint) { toggle_fullscreen(); }
-
-LRESULT CMpvWindow::on_create(LPCREATESTRUCT lpcreate) {
-  ShowWindow(SW_SHOW);
-  return 0;
-}
-
-void CMpvWindow::on_context_menu(CWindow wnd, CPoint point) {
-  try {
-    {
-      // handle the context menu key case - center the menu
-      if (point == CPoint(-1, -1)) {
-        CRect rc;
-        WIN32_OP(wnd.GetWindowRect(&rc));
-        point = rc.CenterPoint();
-      }
-
-      CMenuDescriptionHybrid menudesc(
-          *this);  // this class manages all the voodoo necessary for
-                   // descriptions of our menu items to show in the status bar.
-
-      static_api_ptr_t<contextmenu_manager> api;
-      CMenu menu;
-      WIN32_OP(menu.CreatePopupMenu());
-      enum {
-        ID_ENABLED = 1,
-        ID_FULLSCREEN = 2,
-      };
-      menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
-                      _T("Enabled"));
-      menudesc.Set(ID_ENABLED, "Enable/disable video playback");
-      menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
-                      _T("Fullscreen"));
-      menudesc.Set(ID_FULLSCREEN, "Toggle video fullscreen");
-
-      if (!fullscreen_) {
-        container->add_menu_items(&menu, &menudesc);
-      }
-
-      int cmd =
-          menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-                              point.x, point.y, menudesc, 0);
-
-      if (cmd > 0) {
-        switch (cmd) {
-          case ID_ENABLED:
-            disabled = !disabled;
-            mpv_update_visibility();
-            break;
-          case ID_FULLSCREEN:
-            toggle_fullscreen();
-            break;
-          default:
-            container->handle_menu_cmd(cmd);
-            break;
-        }
-      }
-    }
-  } catch (std::exception const& e) {
-    console::complain("Context menu failure", e);  // rare
-  }
-}
-
-HWND CMpvWindow::get_wnd() { return m_hWnd; }
-
 }  // namespace mpv
