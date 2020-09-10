@@ -25,6 +25,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
+  MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
@@ -69,27 +70,55 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   double priority() override { return 10e8 + (double)x * (double)y; }
 
   enum {
-    ID_CM_BASE,
+    ID_UNPIN = 1003,
+    ID_SETCOLOUR = 1004,
+    ID_STICK = 1005,
+    ID_ONTOP = 1006,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    //menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
-    //                 _T("Pin here"));
-    //menudesc->Set(ID_PIN, "Pin the video to this container");
+    if (!is_on()) {
+      menu->AppendMenu(ontop ? MF_CHECKED : MF_UNCHECKED, ID_UNPIN,
+                       _T("Unpin"));
+      menudesc->Set(ID_UNPIN, "Unpin elsewhere");
+    }
+    menu->AppendMenu(ontop ? MF_CHECKED : MF_UNCHECKED, ID_ONTOP,
+                     _T("Always on-top"));
+    menudesc->Set(ID_ONTOP, "Keep the video window above other windows");
+    menu->AppendMenu(stick ? MF_CHECKED : MF_UNCHECKED, ID_STICK,
+                     _T("Stick to foobar"));
+    menudesc->Set(ID_STICK,
+                  "Minimize/restore window with foobar2000 main window");
   }
 
+  bool ontop = false;
+  bool stick = false;
+
   void handle_menu_cmd(int cmd) {
-    //switch (cmd) {
-    //  case ID_PIN:
-    //    if (is_pinned()) {
-    //      unpin();
-    //    } else {
-    //      pin();
-    //    }
-    //    break;
-    //  default:
-    //    break;
-    //}
+    switch (cmd) {
+      case ID_ONTOP:
+        ontop = !ontop;
+        if (ontop) {
+          SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        } else {
+          SetWindowPos(HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        }
+        break;
+      case ID_STICK:
+        stick = !stick;
+        if (stick) {
+          SetWindowLongPtr(GWLP_HWNDPARENT,
+                           (LONG_PTR)core_api::get_main_window());
+        } else {
+          SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
+        }
+        break;
+      case ID_UNPIN:
+        unpin();
+        break;
+      default:
+        break;
+    }
   }
 
   void on_context_menu(CWindow wnd, CPoint point) {
@@ -168,9 +197,7 @@ struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
 
   void destroy_owner() override { DestroyWindow(); }
 
-  void pop() override {
-    child->BringWindowToTop();
-  }
+  void pop() override { child->BringWindowToTop(); }
 
  private:
   CMpvPopupWindow* child;

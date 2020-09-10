@@ -8,6 +8,8 @@
 #include "libmpv.h"
 #include "resource.h"
 
+void RunMpvPopupWindow();
+
 namespace mpv {
 static const GUID guid_mpv_dui_panel = {
     0x777a523a, 0x1ed, 0x48b9, {0xb9, 0x1, 0xda, 0xb1, 0xbe, 0x31, 0x7c, 0xa4}};
@@ -78,13 +80,17 @@ struct CMpvDuiWindow : public ui_element_instance,
     ID_PIN = 1003,
     ID_POPOUT = 1004,
     ID_SETCOLOUR = 1005,
-    ID_CM_BASE,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
                      _T("Pin here"));
     menudesc->Set(ID_PIN, "Pin the video to this container");
+
+    if (is_on()) {
+      menu->AppendMenu(MF_DEFAULT, ID_POPOUT, _T("Pop out"));
+      menudesc->Set(ID_POPOUT, "Open video in popup");
+    }
   }
 
   void handle_menu_cmd(int cmd) {
@@ -95,6 +101,10 @@ struct CMpvDuiWindow : public ui_element_instance,
         } else {
           pin();
         }
+        break;
+      case ID_POPOUT:
+        unpin();
+        RunMpvPopupWindow();
         break;
       default:
         break;

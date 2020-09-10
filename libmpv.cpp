@@ -108,7 +108,10 @@ void mpv_container::update() {
 bool mpv_container::is_pinned() { return pinned; }
 
 void mpv_container::unpin() {
-  pinned = false;
+  for (auto it = mpv_containers.begin(); it != mpv_containers.end(); ++it) {
+    (**it).pinned = false;
+  }
+
   if (mpv_window) {
     mpv_window->update();
   }
@@ -982,11 +985,10 @@ void CMpvWindow::on_context_menu(CWindow wnd, CPoint point) {
       enum {
         ID_ENABLED = 1,
         ID_FULLSCREEN = 2,
-        ID_CM_BASE,
       };
-      // menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
-      //                _T("Enabled"));
-      // menudesc.Set(ID_ENABLED, "Enable/disable video playback");
+      menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
+                      _T("Enabled"));
+      menudesc.Set(ID_ENABLED, "Enable/disable video playback");
       menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
                       _T("Fullscreen"));
       menudesc.Set(ID_FULLSCREEN, "Toggle video fullscreen");
@@ -1000,21 +1002,18 @@ void CMpvWindow::on_context_menu(CWindow wnd, CPoint point) {
                               point.x, point.y, menudesc, 0);
 
       if (cmd > 0) {
-        if (cmd >= ID_CM_BASE) {
-          api->execute_by_id(cmd - ID_CM_BASE);
-        } else
-          switch (cmd) {
-            // case ID_ENABLED:
-            //  disabled = !disabled;
-            //  mpv_update_visibility();
-            //  break;
-            case ID_FULLSCREEN:
-              toggle_fullscreen();
-              break;
-            default:
-              container->handle_menu_cmd(cmd);
-              break;
-          }
+        switch (cmd) {
+          case ID_ENABLED:
+            disabled = !disabled;
+            mpv_update_visibility();
+            break;
+          case ID_FULLSCREEN:
+            toggle_fullscreen();
+            break;
+          default:
+            container->handle_menu_cmd(cmd);
+            break;
+        }
       }
     }
   } catch (std::exception const& e) {
