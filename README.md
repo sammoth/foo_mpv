@@ -10,7 +10,7 @@ mpv video player UI element for foobar2000.
 - DefaultUI element and popup (ColumnsUI panel later)
 - Fullscreen via double click
 - Works in Wine
-- Can read mpv.conf from <Profile Folder>/mpv/mpv.conf
+- Can read mpv.conf from `mpv/mpv.conf` in your foobar2000 profile folder
 
 NB: go easy on the options in mpv.conf, you probably don't want to override any of the options set by the component or weird things might happen. Good options to set might be scaling, video filters, deinterlacing, etc. For example:
 
