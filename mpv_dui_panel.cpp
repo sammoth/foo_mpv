@@ -137,20 +137,16 @@ struct CMpvDuiWindow : public ui_element_instance,
       menudesc->Set(ID_POPOUT, "Open video in popup");
     }
 
-    CMenu settings;
-    WIN32_OP(settings.CreateMenu());
-
-    settings.AppendMenu(MF_DEFAULT, ID_SETCOLOR, _T("Set background color"));
+    menu->AppendMenu(MF_SEPARATOR);
+    menu->AppendMenu(MF_DEFAULT, ID_SETCOLOR, _T("Set background color"));
     menudesc->Set(ID_SETCOLOR,
                   "Choose the background color for this UI element");
 
-    settings.AppendMenu(MF_DEFAULT, ID_RESETCOLOR, _T("Use default color"));
+    menu->AppendMenu(MF_DEFAULT, ID_RESETCOLOR, _T("Use default color"));
     menudesc->Set(ID_RESETCOLOR, "Use the default UI element background");
 
-    settings.AppendMenu(MF_DEFAULT, ID_SPLITTERCOLOR, _T("Use splitter color"));
+    menu->AppendMenu(MF_DEFAULT, ID_SPLITTERCOLOR, _T("Use splitter color"));
     menudesc->Set(ID_SPLITTERCOLOR, "Use the splitter background color");
-
-    menu->AppendMenu(MF_POPUP, settings, _T("Settings"));
   }
 
   void handle_menu_cmd(int cmd) {
@@ -180,6 +176,7 @@ struct CMpvDuiWindow : public ui_element_instance,
           background_color = cc.rgbResult;
           background_color_enabled = true;
           Invalidate();
+          update();
         }
         break;
       case ID_RESETCOLOR:
