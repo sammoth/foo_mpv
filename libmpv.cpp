@@ -675,6 +675,18 @@ void mpv_player::mpv_first_frame_sync() {
     console::info("mpv: Initial sync");
   }
 
+  visualisation_stream::ptr vis_stream = NULL;
+  visualisation_manager::get()->create_stream(vis_stream, 0);
+  if (!vis_stream.is_valid()) {
+    console::error(
+        "mpv: Video disabled: this output has no timing information");
+    fb2k::inMainThread([this]() {
+      disabled = true;
+      mpv_update_visibility();
+    });
+    return;
+  }
+
   const int64_t userdata = 208341047;
   if (_mpv_observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) < 0) {
     if (cfg_mpv_logging.get()) {
@@ -750,10 +762,18 @@ void mpv_player::mpv_first_frame_sync() {
   _mpv_unobserve_property(mpv, userdata);
 
   // wait for fb to catch up to the first frame
-  double vis_time = 0.0;
-  visualisation_stream::ptr vis_stream;
-  visualisation_manager::get()->create_stream(vis_stream, 0);
+  double vis_time = -1.0;
   vis_stream->get_absolute_time(vis_time);
+  if (vis_time < 0) {
+    console::error(
+        "mpv: Video disabled: this output has no timing information");
+
+    fb2k::inMainThread([this]() {
+      disabled = true;
+      mpv_update_visibility();
+    });
+    return;
+  }
 
   if (cfg_mpv_logging.get()) {
     msg.str("");
