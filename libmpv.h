@@ -266,7 +266,7 @@ class mpv_player : play_callback_impl_base {
 
   void mpv_init();
   bool mpv_loaded;
-  bool enabled;
+  bool enabled;  // current state
 
   void mpv_play(metadb_handle_ptr metadb, bool new_track);
   void mpv_stop();
@@ -284,6 +284,7 @@ class mpv_player : play_callback_impl_base {
   enum class sync_task_type { Wait, Stop, Quit, FirstFrameSync };
   std::atomic<sync_task_type> sync_task;
   void mpv_first_frame_sync();
+  bool check_for_idle();
 
   void on_playback_starting(play_control::t_track_command p_command,
                             bool p_paused);
@@ -300,10 +301,32 @@ class mpv_player : play_callback_impl_base {
   void mpv_set_wid(HWND wnd);
   void mpv_terminate();
 
+  bool disabled;  // user override
   void mpv_update_visibility();
   virtual bool mpv_is_visible() { return true; }
 };
 
+class mpv_container {
+  bool pinned = false;
+
+ public:
+  static mpv_container* get_main();
+
+  long x;
+  long y;
+  void resize(long p_x, long p_y);
+  void update();
+  void create();
+  void destroy();
+  bool is_main();
+  void pin();
+  void unpin();
+  bool is_pinned();
+  virtual double priority() = 0;
+  virtual HWND container_wnd() = 0;
+  virtual bool is_visible() = 0;
+  virtual void on_fullscreen(bool fullscreen) = 0;
+};
 
 struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
@@ -315,12 +338,15 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_LBUTTONDBLCLK(on_double_click)
   MSG_WM_KEYDOWN(on_keydown)
+  MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
   void update();
 
   BOOL on_erase_bg(CDCHandle dc);
   void on_keydown(UINT, WPARAM, LPARAM);
+  void on_context_menu(CWindow wnd, CPoint point);
+  void on_double_click(UINT, CPoint);
 
   bool mpv_is_visible() override;
 
@@ -335,23 +361,10 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
 
   HWND get_wnd();
 
+  mpv_container* container;
+
  public:
   CMpvWindow();
-  void on_double_click(UINT, CPoint);
-};
-
-class mpv_container {
- public:
-  static mpv_container* get_main();
-
-  long x;
-  long y;
-  void resize(long p_x, long p_y);
-  void update();
-  void create();
-  void destroy();
-  virtual double priority() = 0;
-  virtual HWND container_wnd() = 0;
-  virtual bool is_visible() = 0;
+  mpv_container* get_container();
 };
 }  // namespace mpv

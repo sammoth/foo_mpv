@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "libmpv.h"
+#include "resource.h"
 
 namespace mpv {
 static const GUID guid_mpv_dui_panel = {
@@ -22,6 +23,7 @@ struct CMpvDuiWindow : public ui_element_instance,
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
+  MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
   CMpvDuiWindow(ui_element_config::ptr config,
@@ -37,20 +39,20 @@ struct CMpvDuiWindow : public ui_element_instance,
     return TRUE;
   }
 
-  void on_destroy() { destroy(); }
-
-  void on_size(UINT wparam, CSize size) { resize(size.cx, size.cy); }
-
-  double priority() override {
-      return x*y;
-  }
-
-  HWND container_wnd() override { return m_hWnd; }
-
   void initialize_window(HWND parent) {
     WIN32_OP(Create(parent, 0, 0, WS_CHILD, 0));
     create();
   }
+
+  void on_destroy() { destroy(); }
+
+  void on_size(UINT wparam, CSize size) { resize(size.cx, size.cy); }
+
+  double priority() override { return x * y; }
+
+  void on_fullscreen(bool fullscreen) override {}
+
+  HWND container_wnd() override { return m_hWnd; }
 
   bool is_visible() override { return m_callback->is_elem_visible_(this); }
 
@@ -72,6 +74,57 @@ struct CMpvDuiWindow : public ui_element_instance,
     }
   };
 
+  void on_context_menu(CWindow wnd, CPoint point) {
+    try {
+      {
+        // handle the context menu key case - center the menu
+        if (point == CPoint(-1, -1)) {
+          CRect rc;
+          WIN32_OP(wnd.GetWindowRect(&rc));
+          point = rc.CenterPoint();
+        }
+
+        CMenuDescriptionHybrid menudesc(
+            *this);  // this class manages all the voodoo necessary for
+                     // descriptions of our menu items to show in the status
+                     // bar.
+
+        static_api_ptr_t<contextmenu_manager> api;
+        CMenu menu;
+        WIN32_OP(menu.CreatePopupMenu());
+        enum {
+          ID_PIN = 4,
+          ID_SETCOLOUR = 5,
+          ID_CM_BASE,
+        };
+      menu.AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED,
+                      ID_PIN, _T("Pin here"));
+      menudesc.Set(ID_PIN, "Pin the video to this container");
+
+        int cmd =
+            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
+                                point.x, point.y, menudesc, 0);
+
+        if (cmd > 0) {
+          if (cmd >= ID_CM_BASE) {
+            api->execute_by_id(cmd - ID_CM_BASE);
+          } else
+            switch (cmd) {
+              case ID_PIN:
+                if (is_pinned()) {
+                  unpin();
+                } else {
+                  pin();
+                }
+                break;
+            }
+        }
+      }
+    } catch (std::exception const& e) {
+      console::complain("Context menu failure", e);  // rare
+    }
+  }
+
  private:
   ui_element_config::ptr m_config;
 
@@ -79,7 +132,7 @@ struct CMpvDuiWindow : public ui_element_instance,
   const ui_element_instance_callback_ptr m_callback;
 };
 
-class ui_element_mpvimpl : public ui_element_impl_withpopup<CMpvDuiWindow> {};
+class ui_element_mpvimpl : public ui_element_impl<CMpvDuiWindow> {};
 static service_factory_single_t<ui_element_mpvimpl>
     g_ui_element_mpvimpl_factory;
 }  // namespace mpv

@@ -5,6 +5,7 @@
 #include <set>
 #include <thread>
 
+#include "helpers/atl-misc.h"
 #include "helpers/win32_misc.h"
 #include "libmpv.h"
 
@@ -76,14 +77,18 @@ static std::unique_ptr<CMpvWindow> mpv_window;
 mpv_container* mpv_container::get_main() {
   std::sort(mpv_containers.begin(), mpv_containers.end(),
             [](mpv_container* a, mpv_container* b) {
+              if (a->is_pinned()) return true;
+              if (b->is_pinned()) return false;
               if (!a->is_visible()) return false;
-
               if (!b->is_visible()) return true;
-
               return a->priority() > b->priority();
             });
 
   return *mpv_containers.begin();
+}
+
+bool mpv_container::is_main() {
+  return mpv_window != NULL && mpv_window->get_container() == this;
 }
 
 void mpv_container::resize(long p_x, long p_y) {
@@ -95,6 +100,27 @@ void mpv_container::resize(long p_x, long p_y) {
 }
 
 void mpv_container::update() {
+  if (mpv_window) {
+    mpv_window->update();
+  }
+}
+
+bool mpv_container::is_pinned() { return pinned; }
+
+void mpv_container::unpin() {
+  pinned = false;
+  if (mpv_window) {
+    mpv_window->update();
+  }
+}
+
+void mpv_container::pin() {
+  for (auto it = mpv_containers.begin(); it != mpv_containers.end(); ++it) {
+    (**it).pinned = false;
+  }
+
+  pinned = true;
+
   if (mpv_window) {
     mpv_window->update();
   }
@@ -132,6 +158,7 @@ mpv_player::mpv_player()
       sync_task(sync_task_type::Wait),
       sync_on_unpause(false),
       last_mpv_seek(0),
+      disabled(false),
       time_base(0) {
   mpv_loaded = load_mpv();
   sync_thread = std::thread([this]() {
@@ -242,7 +269,7 @@ void mpv_player::mpv_terminate() {
 void mpv_player::mpv_update_visibility() {
   if (!mpv_loaded) return;
 
-  if (mpv_is_visible() || !cfg_mpv_stop_hidden.get()) {
+  if (!disabled && (mpv_is_visible() || !cfg_mpv_stop_hidden.get())) {
     bool starting = !enabled;
     enabled = true;
 
@@ -353,7 +380,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 
       double start_time =
           new_file ? 0.0 : playback_control::get()->playback_get_position();
-      last_mpv_seek = ceil(1000 * start_time)/1000.0;
+      last_mpv_seek = ceil(1000 * start_time) / 1000.0;
 
       std::stringstream time_sstring;
       time_sstring.setf(std::ios::fixed);
@@ -407,7 +434,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 void mpv_player::mpv_stop() {
   if (!mpv_loaded) return;
 
-  if (mpv == NULL || !enabled) return;
+  if (mpv == NULL) return;
 
   sync_on_unpause = false;
 
@@ -430,19 +457,19 @@ void mpv_player::mpv_stop() {
   cv.notify_all();
 }
 
+bool mpv_player::check_for_idle() {
+  int idle = 0;
+  _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
+
+  return idle == 1;
+}
+
 void mpv_player::mpv_pause(bool state) {
   if (!mpv_loaded) return;
 
   if (mpv == NULL || !enabled) return;
 
-  {
-    int idle = 0;
-    _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-
-    if (idle == 1) {
-      return;
-    }
-  }
+  if (check_for_idle()) return;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -474,14 +501,7 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
 
   if (mpv == NULL || !enabled) return;
 
-  {
-    int idle = 0;
-    _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-
-    if (idle == 1) {
-      return;
-    }
-  }
+  if (check_for_idle()) return;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -532,14 +552,9 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
         for (int i = 0; i < 100; i++) {
           mpv_event* event = _mpv_wait_event(mpv, 0.05);
 
-          {
-            int idle = 0;
-            _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-
-            if (idle == 1) {
-              _mpv_unobserve_property(mpv, userdata);
-              return;
-            }
+          if (check_for_idle()) {
+            _mpv_unobserve_property(mpv, userdata);
+            return;
           }
 
           if (event->event_id == MPV_EVENT_SHUTDOWN) {
@@ -589,14 +604,7 @@ void mpv_player::mpv_sync(double debug_time) {
 
   if (mpv == NULL || !enabled) return;
 
-  {
-    int idle = 0;
-    _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-
-    if (idle == 1) {
-      return;
-    }
-  }
+  if (check_for_idle()) return;
 
   if (sync_task == sync_task_type::FirstFrameSync) {
     if (cfg_mpv_logging.get()) {
@@ -686,15 +694,11 @@ void mpv_player::mpv_first_frame_sync() {
     }
 
     mpv_event* event = _mpv_wait_event(mpv, 0.01);
-    {
-      int idle = 0;
-      _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-
-      if (idle == 1) {
-        _mpv_unobserve_property(mpv, userdata);
-        return;
-      }
+    if (check_for_idle()) {
+      _mpv_unobserve_property(mpv, userdata);
+      return;
     }
+
     if (event->event_id == MPV_EVENT_SHUTDOWN) {
       _mpv_unobserve_property(mpv, userdata);
       return;
@@ -721,8 +725,8 @@ void mpv_player::mpv_first_frame_sync() {
         // frame decoded, wait for fb
         if (cfg_mpv_logging.get()) {
           msg.str("");
-          msg << "mpv: First frame found at timestamp " << mpv_time << " after seek to " << last_mpv_seek
-              << ", pausing";
+          msg << "mpv: First frame found at timestamp " << mpv_time
+              << " after seek to " << last_mpv_seek << ", pausing";
           console::info(msg.str().c_str());
         }
 
@@ -868,7 +872,7 @@ bool mpv_player::load_mpv() {
 }
 
 CMpvWindow::CMpvWindow() {
-  mpv_container* container = mpv_container::get_main();
+  container = mpv_container::get_main();
   if (!container) {
     throw exception_messagebox(
         "mpv: Exception creating player window - nowhere to place mpv");
@@ -880,8 +884,10 @@ CMpvWindow::CMpvWindow() {
   }
 }
 
+mpv_container* CMpvWindow::get_container() { return container; }
+
 void CMpvWindow::update() {
-  mpv_container* container = mpv_container::get_main();
+  container = mpv_container::get_main();
   if (!fullscreen_) {
     if (GetParent() != container->container_wnd()) {
       SetParent(container->container_wnd());
@@ -893,7 +899,6 @@ void CMpvWindow::update() {
 }
 
 bool CMpvWindow::mpv_is_visible() {
-  mpv_container* container = mpv_container::get_main();
   return fullscreen_ || container->is_visible();
 }
 
@@ -939,7 +944,6 @@ void CMpvWindow::toggle_fullscreen() {
                  monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
                  SWP_NOZORDER | SWP_FRAMECHANGED);
   } else {
-    mpv_container* container = mpv_container::get_main();
     SetParent(container->container_wnd());
     SetWindowLong(GWL_STYLE, saved_style);
     SetWindowLong(GWL_EXSTYLE, saved_ex_style);
@@ -948,6 +952,7 @@ void CMpvWindow::toggle_fullscreen() {
     ::SetActiveWindow(container->container_wnd());
     ::SetFocus(container->container_wnd());
   }
+  container->on_fullscreen(fullscreen_);
 }
 
 void CMpvWindow::on_double_click(UINT, CPoint) { toggle_fullscreen(); }
@@ -955,6 +960,72 @@ void CMpvWindow::on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 LRESULT CMpvWindow::on_create(LPCREATESTRUCT lpcreate) {
   ShowWindow(SW_SHOW);
   return 0;
+}
+
+void CMpvWindow::on_context_menu(CWindow wnd, CPoint point) {
+  try {
+    {
+      // handle the context menu key case - center the menu
+      if (point == CPoint(-1, -1)) {
+        CRect rc;
+        WIN32_OP(wnd.GetWindowRect(&rc));
+        point = rc.CenterPoint();
+      }
+
+      CMenuDescriptionHybrid menudesc(
+          *this);  // this class manages all the voodoo necessary for
+                   // descriptions of our menu items to show in the status bar.
+
+      static_api_ptr_t<contextmenu_manager> api;
+      CMenu menu;
+      WIN32_OP(menu.CreatePopupMenu());
+      enum {
+        ID_ENABLED = 1,
+        ID_FULLSCREEN = 2,
+        ID_PIN = 3,
+        ID_POPOUT = 4,
+        ID_SETCOLOUR = 5,
+        ID_CM_BASE,
+      };
+      menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
+                      _T("Enabled"));
+      menudesc.Set(ID_ENABLED, "Enable/disable video playback");
+      menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
+                      _T("Fullscreen"));
+      menudesc.Set(ID_FULLSCREEN, "Toggle video fullscreen");
+      menu.AppendMenu(container->is_pinned() ? MF_CHECKED : MF_UNCHECKED,
+                      ID_PIN, _T("Pin here"));
+      menudesc.Set(ID_PIN, "Pin the video to this container");
+
+      int cmd =
+          menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
+                              point.x, point.y, menudesc, 0);
+
+      if (cmd > 0) {
+        if (cmd >= ID_CM_BASE) {
+          api->execute_by_id(cmd - ID_CM_BASE);
+        } else
+          switch (cmd) {
+            case ID_ENABLED:
+              disabled = !disabled;
+              mpv_update_visibility();
+              break;
+            case ID_FULLSCREEN:
+              toggle_fullscreen();
+              break;
+            case ID_PIN:
+              if (container->is_pinned()) {
+                container->unpin();
+              } else {
+                container->pin();
+              }
+              break;
+          }
+      }
+    }
+  } catch (std::exception const& e) {
+    console::complain("Context menu failure", e);  // rare
+  }
 }
 
 HWND CMpvWindow::get_wnd() { return m_hWnd; }
