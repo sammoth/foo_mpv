@@ -74,6 +74,33 @@ struct CMpvDuiWindow : public ui_element_instance,
     }
   };
 
+  enum {
+    ID_PIN = 1003,
+    ID_POPOUT = 1004,
+    ID_SETCOLOUR = 1005,
+    ID_CM_BASE,
+  };
+
+  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
+    menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
+                     _T("Pin here"));
+    menudesc->Set(ID_PIN, "Pin the video to this container");
+  }
+
+  void handle_menu_cmd(int cmd) {
+    switch (cmd) {
+      case ID_PIN:
+        if (is_pinned()) {
+          unpin();
+        } else {
+          pin();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
   void on_context_menu(CWindow wnd, CPoint point) {
     try {
       {
@@ -92,33 +119,14 @@ struct CMpvDuiWindow : public ui_element_instance,
         static_api_ptr_t<contextmenu_manager> api;
         CMenu menu;
         WIN32_OP(menu.CreatePopupMenu());
-        enum {
-          ID_PIN = 4,
-          ID_SETCOLOUR = 5,
-          ID_CM_BASE,
-        };
-      menu.AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED,
-                      ID_PIN, _T("Pin here"));
-      menudesc.Set(ID_PIN, "Pin the video to this container");
+
+        add_menu_items(&menu, &menudesc);
 
         int cmd =
             menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
                                 point.x, point.y, menudesc, 0);
 
-        if (cmd > 0) {
-          if (cmd >= ID_CM_BASE) {
-            api->execute_by_id(cmd - ID_CM_BASE);
-          } else
-            switch (cmd) {
-              case ID_PIN:
-                if (is_pinned()) {
-                  unpin();
-                } else {
-                  pin();
-                }
-                break;
-            }
-        }
+        handle_menu_cmd(cmd);
       }
     } catch (std::exception const& e) {
       console::complain("Context menu failure", e);  // rare

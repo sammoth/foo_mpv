@@ -87,7 +87,7 @@ mpv_container* mpv_container::get_main() {
   return *mpv_containers.begin();
 }
 
-bool mpv_container::is_main() {
+bool mpv_container::is_on() {
   return mpv_window != NULL && mpv_window->get_container() == this;
 }
 
@@ -982,20 +982,18 @@ void CMpvWindow::on_context_menu(CWindow wnd, CPoint point) {
       enum {
         ID_ENABLED = 1,
         ID_FULLSCREEN = 2,
-        ID_PIN = 3,
-        ID_POPOUT = 4,
-        ID_SETCOLOUR = 5,
         ID_CM_BASE,
       };
-      menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
-                      _T("Enabled"));
-      menudesc.Set(ID_ENABLED, "Enable/disable video playback");
+      // menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
+      //                _T("Enabled"));
+      // menudesc.Set(ID_ENABLED, "Enable/disable video playback");
       menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
                       _T("Fullscreen"));
       menudesc.Set(ID_FULLSCREEN, "Toggle video fullscreen");
-      menu.AppendMenu(container->is_pinned() ? MF_CHECKED : MF_UNCHECKED,
-                      ID_PIN, _T("Pin here"));
-      menudesc.Set(ID_PIN, "Pin the video to this container");
+
+      if (!fullscreen_) {
+        container->add_menu_items(&menu, &menudesc);
+      }
 
       int cmd =
           menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
@@ -1006,19 +1004,15 @@ void CMpvWindow::on_context_menu(CWindow wnd, CPoint point) {
           api->execute_by_id(cmd - ID_CM_BASE);
         } else
           switch (cmd) {
-            case ID_ENABLED:
-              disabled = !disabled;
-              mpv_update_visibility();
-              break;
+            // case ID_ENABLED:
+            //  disabled = !disabled;
+            //  mpv_update_visibility();
+            //  break;
             case ID_FULLSCREEN:
               toggle_fullscreen();
               break;
-            case ID_PIN:
-              if (container->is_pinned()) {
-                container->unpin();
-              } else {
-                container->pin();
-              }
+            default:
+              container->handle_menu_cmd(cmd);
               break;
           }
       }

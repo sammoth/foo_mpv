@@ -66,7 +66,63 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void on_size(UINT wparam, CSize size) { resize(size.cx, size.cy); }
 
-  double priority() override { return 10e8 + x * y; }
+  double priority() override { return 10e8 + (double)x * (double)y; }
+
+  enum {
+    ID_CM_BASE,
+  };
+
+  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
+    //menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
+    //                 _T("Pin here"));
+    //menudesc->Set(ID_PIN, "Pin the video to this container");
+  }
+
+  void handle_menu_cmd(int cmd) {
+    //switch (cmd) {
+    //  case ID_PIN:
+    //    if (is_pinned()) {
+    //      unpin();
+    //    } else {
+    //      pin();
+    //    }
+    //    break;
+    //  default:
+    //    break;
+    //}
+  }
+
+  void on_context_menu(CWindow wnd, CPoint point) {
+    try {
+      {
+        // handle the context menu key case - center the menu
+        if (point == CPoint(-1, -1)) {
+          CRect rc;
+          WIN32_OP(wnd.GetWindowRect(&rc));
+          point = rc.CenterPoint();
+        }
+
+        CMenuDescriptionHybrid menudesc(
+            *this);  // this class manages all the voodoo necessary for
+                     // descriptions of our menu items to show in the status
+                     // bar.
+
+        static_api_ptr_t<contextmenu_manager> api;
+        CMenu menu;
+        WIN32_OP(menu.CreatePopupMenu());
+
+        add_menu_items(&menu, &menudesc);
+
+        int cmd =
+            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
+                                point.x, point.y, menudesc, 0);
+
+        handle_menu_cmd(cmd);
+      }
+    } catch (std::exception const& e) {
+      console::complain("Context menu failure", e);  // rare
+    }
+  }
 
   HWND container_wnd() override { return m_hWnd; }
 

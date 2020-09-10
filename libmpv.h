@@ -318,10 +318,12 @@ class mpv_container {
   void update();
   void create();
   void destroy();
-  bool is_main();
+  bool is_on();
   void pin();
   void unpin();
   bool is_pinned();
+  virtual void add_menu_items(CMenu* menu,  CMenuDescriptionHybrid* menudesc) = 0;
+  virtual void handle_menu_cmd(int cmd) = 0;
   virtual double priority() = 0;
   virtual HWND container_wnd() = 0;
   virtual bool is_visible() = 0;
