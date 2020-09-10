@@ -43,6 +43,7 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   void initialize_window(HWND parent) {
     WIN32_OP(Create(parent, 0, 0, WS_CHILD, 0));
+    apply_configuration();
     create();
   }
 
@@ -60,8 +61,29 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   HWND get_wnd() { return m_hWnd; }
 
-  void set_configuration(ui_element_config::ptr config) { m_config = config; }
-  ui_element_config::ptr get_configuration() { return m_config; }
+  void apply_configuration() {
+    try {
+      ::ui_element_config_parser in(m_config);
+      bool cfg_pinned;
+      in >> cfg_pinned;
+      if (cfg_pinned) {
+        pin();
+      }
+    } catch (exception_io_data) {
+    }
+  };
+
+  void set_configuration(ui_element_config::ptr config) {
+    m_config = config;
+    apply_configuration();
+  }
+
+  ui_element_config::ptr get_configuration() {
+    ui_element_config_builder out;
+    out << is_pinned();
+    return out.finish(g_get_guid());
+  }
+
   static GUID g_get_guid() { return guid_mpv_dui_panel; }
   static GUID g_get_subclass() { return ui_element_subclass_utility; }
   static void g_get_name(pfc::string_base& out) { out = "mpv Video"; }
