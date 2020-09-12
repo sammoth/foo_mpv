@@ -45,6 +45,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     SetClassLong(get_wnd(), GCL_HICON,
                  (LONG)LoadIcon(core_api::get_my_instance(),
                                 MAKEINTRESOURCE(IDI_ICON1)));
+    SetWindowText(L"foobar2000");
 
     MONITORINFO monitor_info;
     monitor_info.cbSize = sizeof(monitor_info);
@@ -55,29 +56,29 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     SetWindowPos(NULL, monitor_info.rcMonitor.left + width / 4,
                  monitor_info.rcMonitor.top + height / 4, width / 2, height / 2,
                  SWP_NOZORDER | SWP_FRAMECHANGED);
-    create();
+    container_create();
     return 0;
   }
 
   void on_destroy() {
     ShowWindow(SW_HIDE);
-    destroy();
+    container_destroy();
     owner->destroy_owner();
   }
 
-  void on_size(UINT wparam, CSize size) { resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
   double priority() override { return 10e8 + (double)x * (double)y; }
 
   enum {
     ID_UNPIN = 1003,
     ID_SETCOLOUR = 1004,
-    ID_STICK = 1005,
+    ID_SEPARATE = 1005,
     ID_ONTOP = 1006,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    if (!is_on()) {
+    if (!container_is_on()) {
       menu->AppendMenu(ontop ? MF_CHECKED : MF_UNCHECKED, ID_UNPIN,
                        _T("Unpin"));
       menudesc->Set(ID_UNPIN, "Unpin elsewhere");
@@ -85,14 +86,14 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     menu->AppendMenu(ontop ? MF_CHECKED : MF_UNCHECKED, ID_ONTOP,
                      _T("Always on-top"));
     menudesc->Set(ID_ONTOP, "Keep the video window above other windows");
-    menu->AppendMenu(stick ? MF_CHECKED : MF_UNCHECKED, ID_STICK,
-                     _T("Stick to main window"));
-    menudesc->Set(ID_STICK,
-                  "Minimize/restore window with foobar2000 main window and always keep above");
+    menu->AppendMenu(separate ? MF_CHECKED : MF_UNCHECKED, ID_SEPARATE,
+                     _T("Separate from main window"));
+    menudesc->Set(ID_SEPARATE,
+                  "Allow window to separate from the foobar2000 main window");
   }
 
   bool ontop = false;
-  bool stick = false;
+  bool separate = true;
 
   void handle_menu_cmd(int cmd) {
     switch (cmd) {
@@ -104,17 +105,20 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
           SetWindowPos(HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
         break;
-      case ID_STICK:
-        stick = !stick;
-        if (stick) {
+      case ID_SEPARATE:
+        separate = !separate;
+        // TODO recreate the window instead
+        ShowWindow(SW_HIDE);
+        if (separate) {
+          SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
+        } else {
           SetWindowLongPtr(GWLP_HWNDPARENT,
                            (LONG_PTR)core_api::get_main_window());
-        } else {
-          SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
         }
+        ShowWindow(SW_SHOW);
         break;
       case ID_UNPIN:
-        unpin();
+        container_unpin();
         break;
       default:
         break;
@@ -164,10 +168,6 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
   t_ui_color get_background_color() override { return (t_ui_color)0; }
-  void request_activation() override {
-    ::SetActiveWindow(get_wnd());
-    ::SetFocus(get_wnd());
-  }
 
  private:
   popup_owner* owner;

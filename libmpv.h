@@ -284,7 +284,6 @@ class mpv_player : play_callback_impl_base {
   enum class sync_task_type { Wait, Stop, Quit, FirstFrameSync };
   std::atomic<sync_task_type> sync_task;
   void mpv_first_frame_sync();
-  bool check_for_idle();
 
   void on_playback_starting(play_control::t_track_command p_command,
                             bool p_paused);
@@ -295,10 +294,16 @@ class mpv_player : play_callback_impl_base {
   void on_playback_time(double p_time);
 
  protected:
+  bool check_for_idle();
+  bool is_mpv_loaded();
   void update_background();
   void mpv_update_visibility();
   virtual bool mpv_is_visible() { return true; }
   virtual t_ui_color mpv_get_background_color() { return 0; }
+
+  const char* get_string(const char* name);
+  bool get_bool(const char* name);
+  double get_double(const char* name);
 
   bool disabled;  // user override
 
@@ -318,18 +323,17 @@ class mpv_container {
 
   long x;
   long y;
-  void resize(long p_x, long p_y);
-  void update();
-  void create();
-  void destroy();
-  bool is_on();
-  void pin();
-  void unpin();
-  bool is_pinned();
+  void container_resize(long p_x, long p_y);
+  void container_update();
+  void container_create();
+  void container_destroy();
+  bool container_is_on();
+  void container_pin();
+  void container_unpin();
+  bool container_is_pinned();
   virtual void add_menu_items(CMenu* menu,
                               CMenuDescriptionHybrid* menudesc) = 0;
   virtual void handle_menu_cmd(int cmd) = 0;
-  virtual void request_activation() = 0;
   virtual double priority() = 0;
   virtual HWND container_wnd() = 0;
   virtual bool is_visible() = 0;

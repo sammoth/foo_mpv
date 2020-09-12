@@ -56,11 +56,11 @@ static advconfig_integer_factory cfg_mpv_max_drift(
     0, 20, 0, 1000, 0);
 static advconfig_integer_factory cfg_mpv_hard_sync("Hard sync threshold (ms)",
                                                    guid_cfg_mpv_hard_sync,
-                                                   guid_cfg_mpv_branch, 0, 800,
+                                                   guid_cfg_mpv_branch, 0, 2000,
                                                    0, 10000, 0);
 static advconfig_integer_factory cfg_mpv_hard_sync_interval(
     "Minimum time between hard syncs (seconds)",
-    guid_cfg_mpv_hard_sync_interval, guid_cfg_mpv_branch, 0, 5, 0, 30, 0);
+    guid_cfg_mpv_hard_sync_interval, guid_cfg_mpv_branch, 0, 10, 0, 30, 0);
 static advconfig_checkbox_factory cfg_mpv_logging(
     "Enable verbose console logging", guid_cfg_mpv_logging, guid_cfg_mpv_branch,
     0, false);
@@ -119,10 +119,28 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
 
         CMenu menu;
         WIN32_OP(menu.CreatePopupMenu());
-        enum {
-          ID_ENABLED = 1,
-          ID_FULLSCREEN = 2,
-        };
+        enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
+
+        if (is_mpv_loaded()) {
+          if (check_for_idle()) {
+            menu.AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
+          } else {
+            std::wstringstream text;
+            text.setf(std::ios::fixed);
+            text.precision(3);
+            text << get_string("video-codec") << " "
+                 << get_string("video-params/pixelformat");
+            menu.AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+            text.str(L"");
+            text << get_string("width") << "x" << get_string("height") << " "
+                 << get_double("container-fps") << "fps (display "
+                 << get_double("estimated-vf-fps") << "fps)";
+            menu.AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+
+            menu.AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+          }
+        }
+
         menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
                         _T("Enabled"));
         menudesc.Set(ID_ENABLED, "Enable/disable video playback");
@@ -196,7 +214,6 @@ struct CMpvWindow : public mpv_player, CWindowImpl<CMpvWindow> {
       SetWindowLong(GWL_EXSTYLE, saved_ex_style);
       SetWindowPos(NULL, 0, 0, container->x, container->y,
                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-      container->request_activation();
     }
     container->on_fullscreen(fullscreen_);
   }
@@ -250,8 +267,8 @@ static std::unique_ptr<CMpvWindow> mpv_window;
 mpv_container* mpv_container::get_main() {
   std::sort(mpv_containers.begin(), mpv_containers.end(),
             [](mpv_container* a, mpv_container* b) {
-              if (a->is_pinned()) return true;
-              if (b->is_pinned()) return false;
+              if (a->container_is_pinned()) return true;
+              if (b->container_is_pinned()) return false;
               if (!a->is_visible()) return false;
               if (!b->is_visible()) return true;
               return a->priority() > b->priority();
@@ -260,27 +277,27 @@ mpv_container* mpv_container::get_main() {
   return *mpv_containers.begin();
 }
 
-bool mpv_container::is_on() {
+bool mpv_container::container_is_on() {
   return mpv_window != NULL && mpv_window->get_container() == this;
 }
 
-void mpv_container::resize(long p_x, long p_y) {
-  x = p_x;
-  y = p_y;
+void mpv_container::container_resize(long p_x, long p_y) {
+  if (p_x > 0) x = p_x;
+  if (p_y > 0) y = p_y;
   if (mpv_window) {
     mpv_window->update();
   }
 }
 
-void mpv_container::update() {
+void mpv_container::container_update() {
   if (mpv_window) {
     mpv_window->update();
   }
 }
 
-bool mpv_container::is_pinned() { return pinned; }
+bool mpv_container::container_is_pinned() { return pinned; }
 
-void mpv_container::unpin() {
+void mpv_container::container_unpin() {
   for (auto it = mpv_containers.begin(); it != mpv_containers.end(); ++it) {
     (**it).pinned = false;
   }
@@ -290,7 +307,7 @@ void mpv_container::unpin() {
   }
 }
 
-void mpv_container::pin() {
+void mpv_container::container_pin() {
   for (auto it = mpv_containers.begin(); it != mpv_containers.end(); ++it) {
     (**it).pinned = false;
   }
@@ -302,7 +319,7 @@ void mpv_container::pin() {
   }
 }
 
-void mpv_container::create() {
+void mpv_container::container_create() {
   mpv_containers.push_back(this);
 
   if (!mpv_window) {
@@ -312,7 +329,7 @@ void mpv_container::create() {
   }
 }
 
-void mpv_container::destroy() {
+void mpv_container::container_destroy() {
   mpv_containers.erase(
       std::remove(mpv_containers.begin(), mpv_containers.end(), this),
       mpv_containers.end());
@@ -378,9 +395,12 @@ void mpv_player::update_background() {
   std::stringstream colorstrings;
   colorstrings << "#";
   t_ui_color bgcolor = mpv_get_background_color();
-  colorstrings << std::setfill('0') << std::setw(2) << std::hex <<(unsigned)GetRValue(bgcolor);
-  colorstrings << std::setfill('0') << std::setw(2) << std::hex <<(unsigned)GetGValue(bgcolor);
-  colorstrings << std::setfill('0') << std::setw(2) << std::hex <<(unsigned)GetBValue(bgcolor);
+  colorstrings << std::setfill('0') << std::setw(2) << std::hex
+               << (unsigned)GetRValue(bgcolor);
+  colorstrings << std::setfill('0') << std::setw(2) << std::hex
+               << (unsigned)GetGValue(bgcolor);
+  colorstrings << std::setfill('0') << std::setw(2) << std::hex
+               << (unsigned)GetBValue(bgcolor);
   std::string colorstring = colorstrings.str();
   _mpv_set_option_string(mpv, "background", colorstring.c_str());
 }
@@ -650,10 +670,10 @@ void mpv_player::mpv_stop() {
   cv.notify_all();
 }
 
+static abort_callback_impl cb;
 bool mpv_player::check_for_idle() {
   int idle = 0;
   _mpv_get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-
   return idle == 1;
 }
 
@@ -806,6 +826,11 @@ void mpv_player::mpv_sync(double debug_time) {
     return;
   }
 
+  if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
+      cfg_mpv_logging.get()) {
+    console::error("mpv: Error pausing");
+  }
+
   double mpv_time = -1.0;
   if (_mpv_get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
     return;
@@ -844,7 +869,7 @@ void mpv_player::mpv_sync(double debug_time) {
       console::error("mpv: Error setting speed");
     }
   }
-}
+}  // namespace mpv
 
 void mpv_player::mpv_first_frame_sync() {
   if (!mpv_loaded) return;
@@ -863,18 +888,6 @@ void mpv_player::mpv_first_frame_sync() {
 
   if (cfg_mpv_logging.get()) {
     console::info("mpv: Initial sync");
-  }
-
-  visualisation_stream::ptr vis_stream = NULL;
-  visualisation_manager::get()->create_stream(vis_stream, 0);
-  if (!vis_stream.is_valid()) {
-    console::error(
-        "mpv: Video disabled: this output has no timing information");
-    fb2k::inMainThread([this]() {
-      disabled = true;
-      mpv_update_visibility();
-    });
-    return;
   }
 
   const int64_t userdata = 208341047;
@@ -952,18 +965,19 @@ void mpv_player::mpv_first_frame_sync() {
   _mpv_unobserve_property(mpv, userdata);
 
   // wait for fb to catch up to the first frame
-  double vis_time = -1.0;
-  vis_stream->get_absolute_time(vis_time);
-  if (vis_time < 0) {
+  double vis_time = 0.0;
+  visualisation_stream::ptr vis_stream = NULL;
+  visualisation_manager::get()->create_stream(vis_stream, 0);
+  if (!vis_stream.is_valid()) {
     console::error(
         "mpv: Video disabled: this output has no timing information");
-
     fb2k::inMainThread([this]() {
       disabled = true;
       mpv_update_visibility();
     });
     return;
   }
+  vis_stream->get_absolute_time(vis_time);
 
   if (cfg_mpv_logging.get()) {
     msg.str("");
@@ -973,6 +987,7 @@ void mpv_player::mpv_first_frame_sync() {
     console::info(msg.str().c_str());
   }
 
+  int count = 0;
   while (time_base + g_timing_info.load().last_fb_seek + vis_time -
              g_timing_info.load().last_seek_vistime <
          mpv_time) {
@@ -981,6 +996,16 @@ void mpv_player::mpv_first_frame_sync() {
     }
     Sleep(10);
     vis_stream->get_absolute_time(vis_time);
+    if (count++ > 500 && !vis_stream->get_absolute_time(vis_time)) {
+      console::error(
+          "mpv: Initial seek failed, maybe this output does not have accurate "
+          "timing info");
+      if (_mpv_set_property_string(mpv, "pause", "no") < 0 &&
+          cfg_mpv_logging.get()) {
+        console::error("mpv: Error pausing");
+      }
+      return;
+    }
   }
 
   if (sync_task != sync_task_type::FirstFrameSync) {
@@ -999,6 +1024,27 @@ void mpv_player::mpv_first_frame_sync() {
                g_timing_info.load().last_seek_vistime;
     console::info(msg.str().c_str());
   }
+}
+
+const char* mpv_player::get_string(const char* name) {
+  if (!mpv_loaded || mpv == NULL) return "Error";
+  return _mpv_get_property_string(mpv, name);
+}
+
+bool mpv_player::is_mpv_loaded() { return mpv_loaded && mpv != NULL; }
+
+bool mpv_player::get_bool(const char* name) {
+  if (!mpv_loaded || mpv == NULL) return false;
+  int flag = 0;
+  _mpv_get_property(mpv, name, MPV_FORMAT_FLAG, &flag);
+  return flag == 1;
+}
+
+double mpv_player::get_double(const char* name) {
+  if (!mpv_loaded || mpv == NULL) return 0;
+  double num = 0;
+  _mpv_get_property(mpv, name, MPV_FORMAT_DOUBLE, &num);
+  return num;
 }
 
 bool mpv_player::load_mpv() {

@@ -1,61 +1,66 @@
 #include "stdafx.h"
 // PCH ^
 
+#include <commctrl.h>
 #include <helpers/BumpableElem.h>
+#include <windows.h>
+#include <windowsx.h>
 
-#include <sstream>
-
+#include "columns_ui-sdk/ui_extension.h"
+#include "foobar2000/SDK/foobar2000.h"
 #include "libmpv.h"
 #include "resource.h"
 
 void RunMpvPopupWindow();
 
 namespace mpv {
-static const GUID guid_mpv_dui_panel = {
-    0x777a523a, 0x1ed, 0x48b9, {0xb9, 0x1, 0xda, 0xb1, 0xbe, 0x31, 0x7c, 0xa4}};
+static const GUID g_guid_mpv_cui_panel = {
+    0xd784f81,
+    0x76c1,
+    0x48e2,
+    {0xa1, 0x39, 0x37, 0x6c, 0x39, 0xff, 0xe3, 0x3c}};
 
-struct CMpvDuiWindow : public ui_element_instance,
-                       public mpv_container,
-                       CWindowImpl<CMpvDuiWindow> {
+struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
  public:
   DECLARE_WND_CLASS_EX(TEXT("{9D6179F4-0A94-4F76-B7EB-C4A853853DCB}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
 
-  BEGIN_MSG_MAP_EX(CMpvDuiWindow)
+  BEGIN_MSG_MAP_EX(CMpvCuiWindow)
   MSG_WM_ERASEBKGND(on_erase_bg)
+  MSG_WM_CREATE(on_create)
   MSG_WM_SIZE(on_size)
+  MSG_WM_SHOWWINDOW(on_show)
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
-  CMpvDuiWindow(ui_element_config::ptr config,
-                ui_element_instance_callback_ptr p_callback)
-      : m_callback(p_callback),
-        m_config(config),
-        background_color_enabled(false),
-        background_color(0) {}
+  static DWORD GetWndStyle(DWORD style) { return WS_CHILD | WS_VISIBLE; }
+
+  CMpvCuiWindow() : background_color_enabled(false), background_color(0) {}
 
   BOOL on_erase_bg(CDCHandle dc) {
     CRect rc;
     WIN32_OP_D(GetClientRect(&rc));
     CBrush brush;
-    WIN32_OP_D(brush.CreateSolidBrush(background_color_enabled
-                                          ? background_color
-                                          : m_callback->query_std_color(
-                                                ui_color_background)) != NULL);
+    WIN32_OP_D(brush.CreateSolidBrush(
+                   background_color_enabled ? background_color : 0) != NULL);
     WIN32_OP_D(dc.FillRect(&rc, brush));
     return TRUE;
   }
 
-  void initialize_window(HWND parent) {
-    WIN32_OP(Create(parent, 0, 0, WS_CHILD, 0));
-    apply_configuration();
+  LRESULT on_create(LPCREATESTRUCT lp) {
     container_create();
+    return 0;
   }
 
   void on_destroy() { container_destroy(); }
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
+
+  LRESULT on_show(UINT wparam, UINT lparam) {
+    container_update();
+    return 0;
+  }
 
   double priority() override { return x * y; }
 
@@ -63,61 +68,11 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   HWND container_wnd() override { return m_hWnd; }
 
-  bool is_visible() override { return m_callback->is_elem_visible_(this); }
+  bool is_visible() override {
+    return IsWindowVisible() && !::IsIconic(core_api::get_main_window());
+  }
 
   HWND get_wnd() { return m_hWnd; }
-
-  void apply_configuration() {
-    try {
-      ::ui_element_config_parser in(m_config);
-      bool cfg_pinned;
-      in >> cfg_pinned;
-      if (cfg_pinned) {
-        container_pin();
-      }
-      in >> background_color_enabled;
-      in >> background_color;
-    } catch (exception_io_data) {
-    }
-  };
-
-  void set_configuration(ui_element_config::ptr config) {
-    m_config = config;
-    apply_configuration();
-  }
-
-  ui_element_config::ptr get_configuration() {
-    ui_element_config_builder out;
-    out << container_is_pinned();
-    out << background_color_enabled;
-    out << background_color;
-    return out.finish(g_get_guid());
-  }
-
-  static GUID g_get_guid() { return guid_mpv_dui_panel; }
-  static GUID g_get_subclass() { return ui_element_subclass_utility; }
-  static void g_get_name(pfc::string_base& out) { out = "mpv"; }
-  static ui_element_config::ptr g_get_default_configuration() {
-    ui_element_config_builder out;
-    out << false;
-    out << false;
-    out << (t_ui_color)0;
-    return out.finish(g_get_guid());
-  }
-  static const char* g_get_description() { return "mpv Video"; }
-  void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
-              t_size p_param2size) {
-    if (p_what == ui_element_notify_visibility_changed) {
-      container_update();
-    }
-
-    if (p_what == ui_element_notify_colors_changed ||
-        p_what == ui_element_notify_font_changed) {
-      // we use global colors and fonts - trigger a repaint whenever these
-      // change.
-      Invalidate();
-    }
-  };
 
   enum {
     ID_PIN = 1003,
@@ -228,20 +183,52 @@ struct CMpvDuiWindow : public ui_element_instance,
   }
 
   t_ui_color get_background_color() override {
-    return background_color_enabled ? background_color
-                             : m_callback->query_std_color(ui_color_background);
+    return background_color_enabled ? background_color : 0;
   }
 
  private:
-  ui_element_config::ptr m_config;
   t_ui_color background_color;
   bool background_color_enabled;
-
- protected:
-  const ui_element_instance_callback_ptr m_callback;
 };
 
-class ui_element_mpvimpl : public ui_element_impl<CMpvDuiWindow> {};
-static service_factory_single_t<ui_element_mpvimpl>
-    g_ui_element_mpvimpl_factory;
+class MpvCuiWindow : public uie::container_ui_extension {
+ public:
+  const GUID& get_extension_guid() const override {
+    return g_guid_mpv_cui_panel;
+  }
+  void get_name(pfc::string_base& out) const override { out = "mpv"; }
+  void get_category(pfc::string_base& out) const override { out = "Panels"; }
+  unsigned get_type() const override { return uie::type_panel; }
+
+ private:
+  class_data& get_class_data() const override {
+    __implement_get_class_data(_T("{EF25F318-A1F7-46CB-A86E-70F568ADDCE6}"),
+                               false);
+  }
+
+  LRESULT on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) override;
+
+  CWindowAutoLifetime<mpv::CMpvCuiWindow>* wnd_child;
+};
+
+LRESULT MpvCuiWindow::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
+  WORD cx, cy;
+  switch (msg) {
+    case WM_CREATE:
+      wnd_child = new CWindowAutoLifetime<CMpvCuiWindow>(wnd);
+      break;
+    case WM_SHOWWINDOW:
+      wnd_child->ShowWindow(wp);
+      break;
+    case WM_SIZE:
+      wnd_child->SetWindowPos(0, 0, 0, LOWORD(lp), HIWORD(lp), SWP_NOZORDER);
+      break;
+    case WM_DESTROY:
+      wnd_child = NULL;
+      break;
+  }
+  return DefWindowProc(wnd, msg, wp, lp);
+}
+
+static uie::window_factory<MpvCuiWindow> mpv_cui_window_factory;
 }  // namespace mpv
