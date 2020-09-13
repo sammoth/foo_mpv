@@ -13,6 +13,8 @@
 
 namespace mpv {
 
+void get_popup_title(pfc::string8& s);
+
 class mpv_container {
   bool pinned = false;
 
@@ -20,14 +22,15 @@ class mpv_container {
   long cx = 0;
   long cy = 0;
   void container_resize(long cx, long cy);
-  void container_update();
+  void update_player_window();
   void container_create();
   void container_destroy();
   bool container_is_on();
   void container_pin();
   void container_unpin();
   bool container_is_pinned();
-  bool current_visible = false;
+
+  t_ui_color get_bg();
 
   virtual void add_menu_items(CMenu* menu,
                               CMenuDescriptionHybrid* menudesc) = 0;
@@ -36,7 +39,7 @@ class mpv_container {
   virtual bool is_visible() = 0;
   virtual bool is_popup() = 0;
   virtual void on_fullscreen(bool fullscreen) = 0;
-  virtual t_ui_color get_background_color() = 0;
+  virtual void invalidate() = 0;
 };
 
 class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
@@ -321,6 +324,7 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   mpv_container* container;
   void update_container();
   void update_window();
+  void set_background();
 
   // callbacks
   void on_playback_starting(play_control::t_track_command p_command,

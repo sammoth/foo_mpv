@@ -9,8 +9,34 @@
 #include "helpers/atl-misc.h"
 #include "helpers/win32_misc.h"
 #include "libmpv.h"
+#include "resource.h"
 
 namespace mpv {
+static const GUID g_guid_cfg_mpv_bg_color = {
+    0xb62c3ef, 0x3c6e, 0x4620, {0xbf, 0xa2, 0x24, 0xa, 0x5e, 0xdd, 0xbc, 0x4b}};
+static const GUID g_guid_cfg_mpv_popup_titleformat = {
+    0x811a9299,
+    0x833d,
+    0x4d38,
+    {0xb3, 0xee, 0x89, 0x19, 0x8d, 0xed, 0x20, 0x77}};
+static const GUID g_guid_cfg_mpv_black_fullscreen = {
+    0x2e633cfd,
+    0xbb88,
+    0x4e69,
+    {0xa0, 0xe4, 0x7f, 0x23, 0x2a, 0xdc, 0x5a, 0xd6}};
+static const GUID guid_cfg_mpv_stop_hidden = {
+    0x9de7e631,
+    0x64f8,
+    0x4047,
+    {0x88, 0x39, 0x8f, 0x4a, 0x50, 0xa0, 0xb7, 0x2f}};
+
+static cfg_bool cfg_mpv_black_fullscreen(g_guid_cfg_mpv_black_fullscreen, true);
+static cfg_string cfg_mpv_popup_titleformat(g_guid_cfg_mpv_popup_titleformat,
+                                            "%title% - %artist%[ (%album%)]");
+static cfg_uint cfg_mpv_bg_color(g_guid_cfg_mpv_bg_color, 0);
+static cfg_bool cfg_mpv_stop_hidden(guid_cfg_mpv_stop_hidden, true);
+
+static titleformat_object::ptr popup_titlefomat_script;
 
 static const GUID guid_cfg_mpv_branch = {
     0xa8d3b2ca,
@@ -43,11 +69,6 @@ static const GUID guid_cfg_mpv_native_logging = {
     0x239,
     0x441d,
     {0x8a, 0x8e, 0x99, 0x83, 0x2a, 0xda, 0xe7, 0xd0}};
-static const GUID guid_cfg_mpv_stop_hidden = {
-    0x9de7e631,
-    0x64f8,
-    0x4047,
-    {0x88, 0x39, 0x8f, 0x4a, 0x50, 0xa0, 0xb7, 0x2f}};
 
 static advconfig_branch_factory g_mpv_branch(
     "mpv", guid_cfg_mpv_branch, advconfig_branch::guid_branch_playback, 0);
@@ -67,10 +88,6 @@ static advconfig_checkbox_factory cfg_mpv_logging(
 static advconfig_checkbox_factory cfg_mpv_native_logging(
     "Enable mpv log file", guid_cfg_mpv_native_logging, guid_cfg_mpv_branch, 0,
     false);
-static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
-                                                      guid_cfg_mpv_stop_hidden,
-                                                      guid_cfg_mpv_branch, 0,
-                                                      true);
 
 static const GUID guid_cfg_mpv_video_enabled = {
     0xe3a285f2,
@@ -83,17 +100,36 @@ static cfg_bool cfg_mpv_video_enabled(guid_cfg_mpv_video_enabled, true);
 static std::vector<mpv_container*> g_mpv_containers;
 static std::unique_ptr<mpv_player> g_mpv_player;
 
+static void invalidate_all_containers() {
+  for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
+    (**it).invalidate();
+  }
+}
+
 bool mpv_container::container_is_on() {
   return g_mpv_player != NULL && g_mpv_player->contained_in(this);
 }
 
-void mpv_container::container_update() {
+void mpv_container::update_player_window() {
   if (g_mpv_player) {
     g_mpv_player->update();
   }
 }
 
 bool mpv_container::container_is_pinned() { return pinned; }
+
+t_ui_color mpv_container::get_bg() { return cfg_mpv_bg_color; }
+
+void get_popup_title(pfc::string8& s) {
+  if (popup_titlefomat_script.is_empty()) {
+    static_api_ptr_t<titleformat_compiler>()->compile_safe(
+        popup_titlefomat_script, cfg_mpv_popup_titleformat);
+  }
+
+  playback_control::get()->playback_format_title(
+      NULL, s, popup_titlefomat_script, NULL,
+      playback_control::t_display_level::display_level_all);
+}
 
 void mpv_container::container_unpin() {
   for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
@@ -120,7 +156,7 @@ void mpv_container::container_pin() {
 void mpv_container::container_resize(long p_x, long p_y) {
   cx = p_x;
   cy = p_y;
-  container_update();
+  update_player_window();
 }
 
 void mpv_container::container_create() {
@@ -202,7 +238,7 @@ BOOL mpv_player::on_erase_bg(CDCHandle dc) {
   CRect rc;
   WIN32_OP_D(GetClientRect(&rc));
   CBrush brush;
-  WIN32_OP_D(brush.CreateSolidBrush(container->get_background_color()) != NULL);
+  WIN32_OP_D(brush.CreateSolidBrush(cfg_mpv_bg_color) != NULL);
   WIN32_OP_D(dc.FillRect(&rc, brush));
   return TRUE;
 }
@@ -332,7 +368,11 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
 void mpv_player::update_container() {
   double top_priority = -1.0;
   mpv_container* main = NULL;
+  bool keep = false;
   for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
+    if ((*it) == container) {
+      keep = true;
+    }
     if ((*it)->container_is_pinned() ||
         ((*it)->is_popup() && (main == NULL || !main->container_is_pinned()))) {
       main = (*it);
@@ -348,7 +388,11 @@ void mpv_player::update_container() {
     }
   }
 
-  container = main == NULL ? *g_mpv_containers.begin() : main;
+  if (main != NULL) {
+    container = main;
+  } else if (!keep) {
+    container = *g_mpv_containers.begin();
+  }
 }
 
 void mpv_player::update() {
@@ -365,8 +409,9 @@ void mpv_player::update_window() {
     ResizeClient(container->cx, container->cy);
   }
 
+  bool vis = container->is_visible();
   if (cfg_mpv_video_enabled &&
-      (fullscreen_ || container->is_visible() || !cfg_mpv_stop_hidden.get())) {
+      (fullscreen_ || container->is_visible() || !cfg_mpv_stop_hidden)) {
     bool starting = !enabled;
     enabled = true;
 
@@ -386,9 +431,19 @@ void mpv_player::update_window() {
 
   if (!mpv_loaded || mpv == NULL) return;
 
+  set_background();
+}
+
+bool mpv_player::contained_in(mpv_container* p_container) {
+  return container == p_container;
+}
+
+void mpv_player::set_background() {
   std::stringstream colorstrings;
   colorstrings << "#";
-  t_ui_color bgcolor = fullscreen_ ? 0 : container->get_background_color();
+  t_uint32 bgcolor = fullscreen_ && cfg_mpv_black_fullscreen
+                         ? 0
+                         : cfg_mpv_bg_color.get_value();
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
                << (unsigned)GetRValue(bgcolor);
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
@@ -397,10 +452,6 @@ void mpv_player::update_window() {
                << (unsigned)GetBValue(bgcolor);
   std::string colorstring = colorstrings.str();
   _mpv_set_option_string(mpv, "background", colorstring.c_str());
-}
-
-bool mpv_player::contained_in(mpv_container* p_container) {
-  return container == p_container;
 }
 
 void mpv_player::mpv_init() {
@@ -421,17 +472,8 @@ void mpv_player::mpv_init() {
     _mpv_set_option_string(mpv, "load-stats-overlay", "no");
     _mpv_set_option_string(mpv, "load-osd-console", "no");
 
-    std::stringstream colorstrings;
-    colorstrings << "#";
-    t_ui_color bgcolor = fullscreen_ ? 0 : container->get_background_color();
-    colorstrings << std::setfill('0') << std::setw(2) << std::hex
-                 << (unsigned)GetRValue(bgcolor);
-    colorstrings << std::setfill('0') << std::setw(2) << std::hex
-                 << (unsigned)GetGValue(bgcolor);
-    colorstrings << std::setfill('0') << std::setw(2) << std::hex
-                 << (unsigned)GetBValue(bgcolor);
-    std::string colorstring = colorstrings.str();
-    _mpv_set_option_string(mpv, "background", colorstring.c_str());
+    set_background();
+
     _mpv_set_option_string(mpv, "config", "yes");
     _mpv_set_option_string(mpv, "config-dir", path.c_str());
 
@@ -1111,4 +1153,160 @@ bool mpv_player::load_mpv() {
 
   return true;
 }
+
+class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
+                        public preferences_page_instance {
+ public:
+  CMpvPreferences(preferences_page_callback::ptr callback)
+      : m_callback(callback),
+        button_brush(CreateSolidBrush(cfg_mpv_bg_color)) {}
+
+  enum { IDD = IDD_MPV_PREFS };
+
+  t_uint32 get_state();
+  void apply();
+  void reset();
+
+  BEGIN_MSG_MAP_EX(CMyPreferences)
+  MSG_WM_INITDIALOG(OnInitDialog)
+  MSG_WM_CTLCOLORBTN(on_color_button)
+  COMMAND_HANDLER_EX(IDC_BUTTON_BG, BN_CLICKED, OnBgClick);
+  COMMAND_HANDLER_EX(IDC_CHECK_FSBG, EN_CHANGE, OnEditChange)
+  COMMAND_HANDLER_EX(IDC_CHECK_STOP, EN_CHANGE, OnEditChange)
+  COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditTextChange)
+  END_MSG_MAP()
+
+ private:
+  BOOL OnInitDialog(CWindow, LPARAM);
+  void OnBgClick(UINT, int, CWindow);
+  void OnEditChange(UINT, int, CWindow);
+  void OnEditTextChange(UINT, int, CWindow);
+  bool HasChanged();
+  void OnChanged();
+  CBrush button_brush;
+  HBRUSH on_color_button(HDC wp, HWND lp);
+  bool edit_dirty = false;
+
+  const preferences_page_callback::ptr m_callback;
+
+  COLORREF bg_col = 0;
+};
+
+HBRUSH CMpvPreferences::on_color_button(HDC wp, HWND lp) {
+  if (lp == GetDlgItem(IDC_BUTTON_BG)) {
+    return button_brush;
+  }
+  return NULL;
+}
+
+BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
+  bg_col = cfg_mpv_bg_color.get_value();
+  button_brush = CreateSolidBrush(bg_col);
+
+  CheckDlgButton(IDC_CHECK_FSBG, cfg_mpv_black_fullscreen);
+  CheckDlgButton(IDC_CHECK_STOP, cfg_mpv_stop_hidden);
+
+  std::wstringstream ws;
+  ws << cfg_mpv_popup_titleformat;
+  std::wstring wstr = ws.str();
+  SetDlgItemText(IDC_EDIT_POPUP, wstr.c_str());
+
+  edit_dirty = false;
+
+  return FALSE;
+}
+
+void CMpvPreferences::OnBgClick(UINT, int, CWindow) {
+  CHOOSECOLOR cc = {};
+  static COLORREF acrCustClr[16];
+  cc.lStructSize = sizeof(cc);
+  cc.hwndOwner = get_wnd();
+  cc.lpCustColors = (LPDWORD)acrCustClr;
+  cc.rgbResult = bg_col;
+  cc.Flags = CC_FULLOPEN | CC_RGBINIT;
+
+  if (ChooseColor(&cc) == TRUE) {
+    bg_col = cc.rgbResult;
+    button_brush = CreateSolidBrush(bg_col);
+    OnChanged();
+  }
+}
+
+void CMpvPreferences::OnEditChange(UINT, int, CWindow) { OnChanged(); }
+void CMpvPreferences::OnEditTextChange(UINT, int, CWindow) {
+  edit_dirty = true;
+  OnChanged();
+}
+
+t_uint32 CMpvPreferences::get_state() {
+  t_uint32 state = preferences_state::resettable;
+  if (HasChanged()) state |= preferences_state::changed;
+  return state;
+}
+
+void CMpvPreferences::reset() {
+  bg_col = 0;
+  button_brush = CreateSolidBrush(bg_col);
+  SetDlgItemTextW(IDC_EDIT_POPUP, L"%title% - %artist%[ (%album%)]");
+  CheckDlgButton(IDC_CHECK_FSBG, true);
+  CheckDlgButton(IDC_CHECK_STOP, true);
+  OnChanged();
+}
+
+void CMpvPreferences::apply() {
+  cfg_mpv_bg_color = bg_col;
+
+  cfg_mpv_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
+  cfg_mpv_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
+
+  auto length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_POPUP));
+  WCHAR* buf = new WCHAR[length + 1];
+  GetDlgItemTextW(IDC_EDIT_POPUP, buf, length + 1);
+  cfg_mpv_popup_titleformat.reset();
+  cfg_mpv_popup_titleformat << buf;
+  delete[] buf;
+
+  static_api_ptr_t<titleformat_compiler>()->compile_safe(
+      popup_titlefomat_script, cfg_mpv_popup_titleformat);
+  invalidate_all_containers();
+
+  edit_dirty = false;
+
+  OnChanged();
+}
+
+bool CMpvPreferences::HasChanged() {
+  auto length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_POPUP));
+  WCHAR* buf = new WCHAR[length + 1];
+  GetDlgItemTextW(IDC_EDIT_POPUP, buf, length + 1);
+  pfc::string8 str;
+  str << buf;
+  return edit_dirty ||
+         IsDlgButtonChecked(IDC_CHECK_FSBG) != cfg_mpv_black_fullscreen ||
+         IsDlgButtonChecked(IDC_CHECK_STOP) != cfg_mpv_stop_hidden ||
+         bg_col != cfg_mpv_bg_color;
+}
+
+void CMpvPreferences::OnChanged() {
+  m_callback->on_state_changed();
+  Invalidate();
+}
+
+class preferences_page_mpv_impl
+    : public preferences_page_impl<CMpvPreferences> {
+ public:
+  const char* get_name() { return "mpv"; }
+  GUID get_guid() {
+    static const GUID guid = {0x11c90957,
+                              0xf691,
+                              0x4c23,
+                              {0xb5, 0x87, 0x8, 0x9e, 0x5d, 0xfa, 0x14, 0x7a}};
+
+    return guid;
+  }
+  GUID get_parent_guid() { return guid_tools; }
+};
+
+static preferences_page_factory_t<preferences_page_mpv_impl>
+    g_preferences_page_mpv_impl_factory;
 }  // namespace mpv

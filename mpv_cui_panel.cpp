@@ -28,7 +28,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_CREATE(on_create)
   MSG_WM_SIZE(on_size)
-  MSG_WM_SHOWWINDOW(on_show)
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
@@ -37,14 +36,13 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
     return WS_CHILD | WS_VISIBLE | WS_EX_LAYOUTRTL;
   }
 
-  CMpvCuiWindow() : background_color_enabled(false), background_color(0) {}
+  CMpvCuiWindow() {}
 
   BOOL on_erase_bg(CDCHandle dc) {
     CRect rc;
     WIN32_OP_D(GetClientRect(&rc));
     CBrush brush;
-    WIN32_OP_D(brush.CreateSolidBrush(
-                   background_color_enabled ? background_color : 0) != NULL);
+    WIN32_OP_D(brush.CreateSolidBrush(get_bg()) != NULL);
     WIN32_OP_D(dc.FillRect(&rc, brush));
     return TRUE;
   }
@@ -58,14 +56,11 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
-  LRESULT on_show(UINT wparam, UINT lparam) {
-    container_update();
-    return 0;
-  }
-
   void on_fullscreen(bool fullscreen) override {}
 
   HWND container_wnd() override { return m_hWnd; }
+
+  void invalidate() override { Invalidate(); }
 
   bool is_visible() override {
     return IsWindowVisible() && !::IsIconic(core_api::get_main_window());
@@ -78,9 +73,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   enum {
     ID_PIN = 1003,
     ID_POPOUT = 1004,
-    ID_SETCOLOR = 1005,
-    ID_RESETCOLOR = 1006,
-    ID_SPLITTERCOLOR = 1007,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
@@ -92,17 +84,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
       menu->AppendMenu(MF_DEFAULT, ID_POPOUT, _T("Pop out"));
       menudesc->Set(ID_POPOUT, "Open video in popup");
     }
-
-    menu->AppendMenu(MF_SEPARATOR);
-    menu->AppendMenu(MF_DEFAULT, ID_SETCOLOR, _T("Set background color"));
-    menudesc->Set(ID_SETCOLOR,
-                  "Choose the background color for this UI element");
-
-    menu->AppendMenu(MF_DEFAULT, ID_RESETCOLOR, _T("Default color"));
-    menudesc->Set(ID_RESETCOLOR, "Use the default UI element background");
-
-    menu->AppendMenu(MF_DEFAULT, ID_SPLITTERCOLOR, _T("Splitter color"));
-    menudesc->Set(ID_SPLITTERCOLOR, "Use the splitter background color");
   }
 
   void handle_menu_cmd(int cmd) {
@@ -120,31 +101,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
       case ID_POPOUT:
         container_unpin();
         RunMpvPopupWindow();
-        break;
-      case ID_SETCOLOR:
-        cc.lStructSize = sizeof(cc);
-        cc.hwndOwner = get_wnd();
-        cc.lpCustColors = (LPDWORD)acrCustClr;
-        cc.rgbResult = background_color;
-        cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-
-        if (ChooseColor(&cc) == TRUE) {
-          background_color = cc.rgbResult;
-          background_color_enabled = true;
-          Invalidate();
-          container_update();
-        }
-        break;
-      case ID_RESETCOLOR:
-        background_color_enabled = false;
-        Invalidate();
-        container_update();
-        break;
-      case ID_SPLITTERCOLOR:
-        background_color_enabled = true;
-        background_color = GetSysColor(COLOR_BTNFACE);
-        Invalidate();
-        container_update();
         break;
       default:
         break;
@@ -182,14 +138,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
       console::complain("Context menu failure", e);  // rare
     }
   }
-
-  t_ui_color get_background_color() override {
-    return background_color_enabled ? background_color : 0;
-  }
-
- private:
-  t_ui_color background_color;
-  bool background_color_enabled;
 };
 
 class MpvCuiWindow : public uie::container_ui_extension {

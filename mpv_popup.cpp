@@ -19,7 +19,8 @@ static const GUID guid_cfg_mpv_popup_rect = {
 static cfg_struct_t<RECT> cfg_mpv_popup_rect(guid_cfg_mpv_popup_rect, 0);
 
 struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
-                         public mpv::mpv_container {
+                         public mpv::mpv_container,
+                         public playback_event_notify {
  public:
   DECLARE_WND_CLASS_EX(TEXT("{1559A84E-8A42-4C06-A515-E8D61CEBB92A}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
@@ -40,16 +41,30 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     CRect rc;
     WIN32_OP_D(GetClientRect(&rc));
     CBrush brush;
-    WIN32_OP_D(brush.CreateSolidBrush(0x00000000) != NULL);
+    WIN32_OP_D(brush.CreateSolidBrush(get_bg()) != NULL);
     WIN32_OP_D(dc.FillRect(&rc, brush));
     return TRUE;
   }
+
+  void update_title() {
+    pfc::string8 title;
+    mpv::get_popup_title(title);
+    std::wstringstream ws;
+    ws << title;
+    std::wstring wss = ws.str();
+    SetWindowText(wss.c_str());
+  }
+
+	void on_playback_event() override {
+        update_title();
+    }
 
   LRESULT on_create(LPCREATESTRUCT st) {
     SetClassLong(get_wnd(), GCL_HICON,
                  (LONG)LoadIcon(core_api::get_my_instance(),
                                 MAKEINTRESOURCE(IDI_ICON1)));
-    SetWindowText(L"foobar2000");
+
+    update_title();
 
     if (standard_config_objects::query_remember_window_positions()) {
       RECT rect = cfg_mpv_popup_rect;
@@ -179,7 +194,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
   bool is_popup() override { return true; }
-  t_ui_color get_background_color() override { return (t_ui_color)0; }
+  void invalidate() override { Invalidate(); }
 
  private:
   popup_owner* owner;
@@ -220,6 +235,7 @@ struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
 
  protected:
 };
+
 }  // namespace
 
 void RunMpvPopupWindow() {
