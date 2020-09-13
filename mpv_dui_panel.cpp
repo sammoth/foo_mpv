@@ -53,17 +53,16 @@ struct CMpvDuiWindow : public ui_element_instance,
     container_create();
   }
 
-  void on_destroy() { container_destroy(); }
-
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
-  double priority() override { return x * y; }
+  void on_destroy() { container_destroy(); }
 
   void on_fullscreen(bool fullscreen) override {}
 
   HWND container_wnd() override { return m_hWnd; }
 
   bool is_visible() override { return m_callback->is_elem_visible_(this); }
+  bool is_popup() override { return false; }
 
   HWND get_wnd() { return m_hWnd; }
 
@@ -228,8 +227,9 @@ struct CMpvDuiWindow : public ui_element_instance,
   }
 
   t_ui_color get_background_color() override {
-    return background_color_enabled ? background_color
-                             : m_callback->query_std_color(ui_color_background);
+    return background_color_enabled
+               ? background_color
+               : m_callback->query_std_color(ui_color_background);
   }
 
  private:

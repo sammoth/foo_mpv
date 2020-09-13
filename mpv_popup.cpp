@@ -68,8 +68,6 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
-  double priority() override { return 10e8 + (double)x * (double)y; }
-
   enum {
     ID_UNPIN = 1003,
     ID_SETCOLOUR = 1004,
@@ -167,6 +165,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
+  bool is_popup() override { return true; }
   t_ui_color get_background_color() override { return (t_ui_color)0; }
 
  private:

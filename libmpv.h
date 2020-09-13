@@ -11,7 +11,34 @@
 #include <thread>
 
 namespace mpv {
-class mpv_player : play_callback_impl_base {
+
+class mpv_container {
+  bool pinned = false;
+
+ public:
+  long cx = 0;
+  long cy = 0;
+  void container_resize(long cx, long cy);
+  void container_update();
+  void container_create();
+  void container_destroy();
+  bool container_is_on();
+  void container_pin();
+  void container_unpin();
+  bool container_is_pinned();
+
+  virtual void add_menu_items(CMenu* menu,
+                              CMenuDescriptionHybrid* menudesc) = 0;
+  virtual void handle_menu_cmd(int cmd) = 0;
+  virtual HWND container_wnd() = 0;
+  virtual bool is_visible() = 0;
+  virtual bool is_popup() = 0;
+  virtual void on_fullscreen(bool fullscreen) = 0;
+  virtual t_ui_color get_background_color() = 0;
+};
+
+class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
+  // libmpv
   bool load_mpv();
   typedef unsigned long(__cdecl* mpv_client_api_version)();
   typedef struct mpv_handle mpv_handle;
@@ -261,12 +288,16 @@ class mpv_player : play_callback_impl_base {
   mpv_hook_add _mpv_hook_add;
   mpv_hook_continue _mpv_hook_continue;
 
+  // player
   mpv_handle* mpv;
   HWND wid;
 
   void mpv_init();
   bool mpv_loaded;
   bool enabled;  // current state
+
+  void mpv_set_wid(HWND wnd);
+  void mpv_terminate();
 
   void mpv_play(metadb_handle_ptr metadb, bool new_track);
   void mpv_stop();
@@ -285,6 +316,11 @@ class mpv_player : play_callback_impl_base {
   std::atomic<sync_task_type> sync_task;
   void mpv_first_frame_sync();
 
+  mpv_container* container;
+  void update_container();
+  void update_window();
+
+  // callbacks
   void on_playback_starting(play_control::t_track_command p_command,
                             bool p_paused);
   void on_playback_new_track(metadb_handle_ptr p_track);
@@ -293,13 +329,21 @@ class mpv_player : play_callback_impl_base {
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
 
- protected:
+  LRESULT on_create(LPCREATESTRUCT lpcreate);
+  BOOL on_erase_bg(CDCHandle dc);
+  void on_keydown(UINT key, WPARAM, LPARAM);
+  void on_context_menu(CWindow wnd, CPoint point);
+  void on_double_click(UINT, CPoint);
+  void on_destroy();
+
+  bool fullscreen_ = false;
+  LONG saved_style;
+  LONG saved_ex_style;
+
+  void toggle_fullscreen();
+
   bool check_for_idle();
   bool is_mpv_loaded();
-  void update_background();
-  void mpv_update_visibility();
-  virtual bool mpv_is_visible() { return true; }
-  virtual t_ui_color mpv_get_background_color() { return 0; }
 
   const char* get_string(const char* name);
   bool get_bool(const char* name);
@@ -311,33 +355,21 @@ class mpv_player : play_callback_impl_base {
   mpv_player();
   ~mpv_player();
 
-  void mpv_set_wid(HWND wnd);
-  void mpv_terminate();
-};
+  void update();
+  void destroy();
+  bool contained_in(mpv_container* container);
 
-class mpv_container {
-  bool pinned = false;
+  // window
+  DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
+                       CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
 
- public:
-  static mpv_container* get_main();
-
-  long x;
-  long y;
-  void container_resize(long p_x, long p_y);
-  void container_update();
-  void container_create();
-  void container_destroy();
-  bool container_is_on();
-  void container_pin();
-  void container_unpin();
-  bool container_is_pinned();
-  virtual void add_menu_items(CMenu* menu,
-                              CMenuDescriptionHybrid* menudesc) = 0;
-  virtual void handle_menu_cmd(int cmd) = 0;
-  virtual double priority() = 0;
-  virtual HWND container_wnd() = 0;
-  virtual bool is_visible() = 0;
-  virtual void on_fullscreen(bool fullscreen) = 0;
-  virtual t_ui_color get_background_color() = 0;
+  BEGIN_MSG_MAP_EX(CMpvWindow)
+  MSG_WM_CREATE(on_create)
+  MSG_WM_ERASEBKGND(on_erase_bg)
+  MSG_WM_DESTROY(on_destroy)
+  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_KEYDOWN(on_keydown)
+  MSG_WM_CONTEXTMENU(on_context_menu)
+  END_MSG_MAP()
 };
 }  // namespace mpv

@@ -21,7 +21,6 @@ static const GUID g_guid_mpv_cui_panel = {
     {0xa1, 0x39, 0x37, 0x6c, 0x39, 0xff, 0xe3, 0x3c}};
 
 struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
- public:
   DECLARE_WND_CLASS_EX(TEXT("{9D6179F4-0A94-4F76-B7EB-C4A853853DCB}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
 
@@ -34,7 +33,9 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
-  static DWORD GetWndStyle(DWORD style) { return WS_CHILD | WS_VISIBLE; }
+  static DWORD GetWndStyle(DWORD style) {
+    return WS_CHILD | WS_VISIBLE | WS_EX_LAYOUTRTL;
+  }
 
   CMpvCuiWindow() : background_color_enabled(false), background_color(0) {}
 
@@ -62,8 +63,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
     return 0;
   }
 
-  double priority() override { return x * y; }
-
   void on_fullscreen(bool fullscreen) override {}
 
   HWND container_wnd() override { return m_hWnd; }
@@ -71,6 +70,8 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   bool is_visible() override {
     return IsWindowVisible() && !::IsIconic(core_api::get_main_window());
   }
+
+  bool is_popup() override { return false; }
 
   HWND get_wnd() { return m_hWnd; }
 
@@ -212,7 +213,6 @@ class MpvCuiWindow : public uie::container_ui_extension {
 };
 
 LRESULT MpvCuiWindow::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
-  WORD cx, cy;
   switch (msg) {
     case WM_CREATE:
       wnd_child = new CWindowAutoLifetime<CMpvCuiWindow>(wnd);
