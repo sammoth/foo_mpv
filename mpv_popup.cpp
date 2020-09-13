@@ -16,7 +16,21 @@ struct popup_owner {
 
 static const GUID guid_cfg_mpv_popup_rect = {
     0x6f8a673, 0x3861, 0x43fb, {0xa4, 0xfe, 0xe8, 0xdf, 0xc7, 0x1, 0x45, 0x70}};
+static const GUID guid_cfg_mpv_popup_alwaysontop = {
+    0xc93067e,
+    0xaa41,
+    0x4145,
+    {0x8d, 0x75, 0x3f, 0xab, 0x81, 0xf5, 0xcb, 0xf1}};
+static const GUID guid_cfg_mpv_popup_separate = {
+    0x52b44a9e,
+    0x202d,
+    0x4e23,
+    {0xac, 0x24, 0xab, 0x34, 0x78, 0x65, 0x8b, 0xa5}};
+
 static cfg_struct_t<RECT> cfg_mpv_popup_rect(guid_cfg_mpv_popup_rect, 0);
+static cfg_bool cfg_mpv_popup_alwaysontop(guid_cfg_mpv_popup_alwaysontop,
+                                          false);
+static cfg_bool cfg_mpv_popup_separate(guid_cfg_mpv_popup_separate, true);
 
 struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
                          public mpv::mpv_container,
@@ -55,19 +69,27 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     SetWindowText(wss.c_str());
   }
 
-	void on_playback_event() override {
-        update_title();
-    }
+  void on_playback_event() override { update_title(); }
 
   LRESULT on_create(LPCREATESTRUCT st) {
+    if (cfg_mpv_popup_alwaysontop) {
+      SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    }
+
+    if (cfg_mpv_popup_separate) {
+      SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
+    }
+
     SetClassLong(get_wnd(), GCL_HICON,
                  (LONG)LoadIcon(core_api::get_my_instance(),
                                 MAKEINTRESOURCE(IDI_ICON1)));
 
     update_title();
 
-    if (standard_config_objects::query_remember_window_positions()) {
-      RECT rect = cfg_mpv_popup_rect;
+    RECT rect = cfg_mpv_popup_rect;
+    if (standard_config_objects::query_remember_window_positions() &&
+            rect.bottom != 0 ||
+        rect.right != 0 || rect.left != 0 || rect.top != 0) {
       SetWindowPos(NULL, &rect, SWP_NOZORDER | SWP_FRAMECHANGED);
     } else {
       MONITORINFO monitor_info;
@@ -105,37 +127,33 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     if (!container_is_on()) {
-      menu->AppendMenu(ontop ? MF_CHECKED : MF_UNCHECKED, ID_UNPIN,
-                       _T("Unpin"));
+      menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
+                       ID_UNPIN, _T("Unpin"));
       menudesc->Set(ID_UNPIN, "Unpin elsewhere");
     }
-    menu->AppendMenu(ontop ? MF_CHECKED : MF_UNCHECKED, ID_ONTOP,
-                     _T("Always on-top"));
+    menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
+                     ID_ONTOP, _T("Always on-top"));
     menudesc->Set(ID_ONTOP, "Keep the video window above other windows");
-    menu->AppendMenu(separate ? MF_CHECKED : MF_UNCHECKED, ID_SEPARATE,
-                     _T("Separate from main window"));
+    menu->AppendMenu(cfg_mpv_popup_separate ? MF_CHECKED : MF_UNCHECKED,
+                     ID_SEPARATE, _T("Separate from main window"));
     menudesc->Set(ID_SEPARATE,
                   "Allow window to separate from the foobar2000 main window");
   }
 
-  bool ontop = false;
-  bool separate = true;
-
   void handle_menu_cmd(int cmd) {
     switch (cmd) {
       case ID_ONTOP:
-        ontop = !ontop;
-        if (ontop) {
+        cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
+        if (cfg_mpv_popup_alwaysontop) {
           SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         } else {
           SetWindowPos(HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
         }
         break;
       case ID_SEPARATE:
-        separate = !separate;
-        // TODO recreate the window instead
+        cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
         ShowWindow(SW_HIDE);
-        if (separate) {
+        if (cfg_mpv_popup_separate) {
           SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
         } else {
           SetWindowLongPtr(GWLP_HWNDPARENT,
@@ -232,10 +250,7 @@ struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
 
  private:
   CMpvPopupWindow* child;
-
- protected:
 };
-
 }  // namespace
 
 void RunMpvPopupWindow() {

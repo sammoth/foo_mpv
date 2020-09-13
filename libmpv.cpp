@@ -32,7 +32,7 @@ static const GUID guid_cfg_mpv_stop_hidden = {
 
 static cfg_bool cfg_mpv_black_fullscreen(g_guid_cfg_mpv_black_fullscreen, true);
 static cfg_string cfg_mpv_popup_titleformat(g_guid_cfg_mpv_popup_titleformat,
-                                            "%title% - %artist%[ (%album%)]");
+                                            "%title% - %artist%[' ('%album%')']");
 static cfg_uint cfg_mpv_bg_color(g_guid_cfg_mpv_bg_color, 0);
 static cfg_bool cfg_mpv_stop_hidden(guid_cfg_mpv_stop_hidden, true);
 
