@@ -14,6 +14,10 @@ struct popup_owner {
   virtual void pop() = 0;
 };
 
+static const GUID guid_cfg_mpv_popup_rect = {
+    0x6f8a673, 0x3861, 0x43fb, {0xa4, 0xfe, 0xe8, 0xdf, 0xc7, 0x1, 0x45, 0x70}};
+static cfg_struct_t<RECT> cfg_mpv_popup_rect(guid_cfg_mpv_popup_rect, 0);
+
 struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
                          public mpv::mpv_container {
  public:
@@ -47,20 +51,29 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
                                 MAKEINTRESOURCE(IDI_ICON1)));
     SetWindowText(L"foobar2000");
 
-    MONITORINFO monitor_info;
-    monitor_info.cbSize = sizeof(monitor_info);
-    GetMonitorInfoW(MonitorFromWindow(get_wnd(), MONITOR_DEFAULTTONEAREST),
-                    &monitor_info);
-    long height = monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
-    long width = monitor_info.rcMonitor.right - monitor_info.rcMonitor.left;
-    SetWindowPos(NULL, monitor_info.rcMonitor.left + width / 4,
-                 monitor_info.rcMonitor.top + height / 4, width / 2, height / 2,
-                 SWP_NOZORDER | SWP_FRAMECHANGED);
+    if (standard_config_objects::query_remember_window_positions()) {
+      RECT rect = cfg_mpv_popup_rect;
+      SetWindowPos(NULL, &rect, SWP_NOZORDER | SWP_FRAMECHANGED);
+    } else {
+      MONITORINFO monitor_info;
+      monitor_info.cbSize = sizeof(monitor_info);
+      GetMonitorInfoW(MonitorFromWindow(get_wnd(), MONITOR_DEFAULTTONEAREST),
+                      &monitor_info);
+      long height = monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top;
+      long width = monitor_info.rcMonitor.right - monitor_info.rcMonitor.left;
+      SetWindowPos(NULL, monitor_info.rcMonitor.left + width / 4,
+                   monitor_info.rcMonitor.top + height / 4, width / 2,
+                   height / 2, SWP_NOZORDER | SWP_FRAMECHANGED);
+    }
+
     container_create();
     return 0;
   }
 
   void on_destroy() {
+    RECT client_rect = {};
+    GetWindowRect(&client_rect);
+    cfg_mpv_popup_rect = client_rect;
     ShowWindow(SW_HIDE);
     container_destroy();
     owner->destroy_owner();

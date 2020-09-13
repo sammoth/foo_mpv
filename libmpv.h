@@ -7,6 +7,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <functional>
+#include <map>
 #include <sstream>
 #include <thread>
 
@@ -26,6 +27,7 @@ class mpv_container {
   void container_pin();
   void container_unpin();
   bool container_is_pinned();
+  bool current_visible = false;
 
   virtual void add_menu_items(CMenu* menu,
                               CMenuDescriptionHybrid* menudesc) = 0;
@@ -348,8 +350,6 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   const char* get_string(const char* name);
   bool get_bool(const char* name);
   double get_double(const char* name);
-
-  bool disabled;  // user override
 
  public:
   mpv_player();

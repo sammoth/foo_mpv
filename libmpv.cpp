@@ -72,16 +72,24 @@ static advconfig_checkbox_factory cfg_mpv_stop_hidden("Stop when hidden",
                                                       guid_cfg_mpv_branch, 0,
                                                       true);
 
+static const GUID guid_cfg_mpv_video_enabled = {
+    0xe3a285f2,
+    0x6804,
+    0x4291,
+    {0xa6, 0x8d, 0xb6, 0xac, 0x41, 0x89, 0x8c, 0x1d}};
+
+static cfg_bool cfg_mpv_video_enabled(guid_cfg_mpv_video_enabled, true);
+
 static std::vector<mpv_container*> g_mpv_containers;
-static std::unique_ptr<mpv_player> g_mpv_window;
+static std::unique_ptr<mpv_player> g_mpv_player;
 
 bool mpv_container::container_is_on() {
-  return g_mpv_window != NULL && g_mpv_window->contained_in(this);
+  return g_mpv_player != NULL && g_mpv_player->contained_in(this);
 }
 
 void mpv_container::container_update() {
-  if (g_mpv_window) {
-    g_mpv_window->update();
+  if (g_mpv_player) {
+    g_mpv_player->update();
   }
 }
 
@@ -92,8 +100,8 @@ void mpv_container::container_unpin() {
     (**it).pinned = false;
   }
 
-  if (g_mpv_window) {
-    g_mpv_window->update();
+  if (g_mpv_player) {
+    g_mpv_player->update();
   }
 }
 
@@ -104,8 +112,8 @@ void mpv_container::container_pin() {
 
   pinned = true;
 
-  if (g_mpv_window) {
-    g_mpv_window->update();
+  if (g_mpv_player) {
+    g_mpv_player->update();
   }
 }
 
@@ -118,10 +126,10 @@ void mpv_container::container_resize(long p_x, long p_y) {
 void mpv_container::container_create() {
   g_mpv_containers.push_back(this);
 
-  if (!g_mpv_window) {
-    g_mpv_window = std::unique_ptr<mpv_player>(new mpv_player());
+  if (!g_mpv_player) {
+    g_mpv_player = std::unique_ptr<mpv_player>(new mpv_player());
   } else {
-    g_mpv_window->update();
+    g_mpv_player->update();
   }
 }
 
@@ -131,13 +139,61 @@ void mpv_container::container_destroy() {
       g_mpv_containers.end());
 
   if (g_mpv_containers.empty()) {
-    if (g_mpv_window != NULL) g_mpv_window->destroy();
-    g_mpv_window = NULL;
+    if (g_mpv_player != NULL) g_mpv_player->destroy();
+    g_mpv_player = NULL;
   }
 
-  if (g_mpv_window) {
-    g_mpv_window->update();
+  if (g_mpv_player) {
+    g_mpv_player->update();
   }
+}
+
+mpv_player::mpv_player()
+    : wid(NULL),
+      enabled(false),
+      mpv(NULL),
+      sync_task(sync_task_type::Wait),
+      sync_on_unpause(false),
+      last_mpv_seek(0),
+      time_base(0),
+      mpv_loaded(load_mpv()) {
+  update_container();
+  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
+  update_window();
+
+  sync_thread = std::thread([this]() {
+    while (true) {
+      std::unique_lock<std::mutex> lock(cv_mutex);
+      cv.wait(lock, [this] { return sync_task != sync_task_type::Wait; });
+      if (sync_task == sync_task_type::Stop) {
+        sync_task = sync_task_type::Wait;
+        lock.unlock();
+        cv.notify_all();
+      } else {
+        sync_task_type task = sync_task;
+        lock.unlock();
+        switch (task) {
+          case sync_task_type::Quit:
+            return;
+          case sync_task_type::FirstFrameSync:
+            mpv_first_frame_sync();
+            sync_task = sync_task_type::Stop;
+            break;
+          default:
+            break;
+        }
+      }
+    }
+  });
+}
+
+mpv_player::~mpv_player() {
+  {
+    std::lock_guard<std::mutex> lock(cv_mutex);
+    sync_task = sync_task_type::Quit;
+  }
+  cv.notify_all();
+  sync_thread.join();
 }
 
 void mpv_player::destroy() { DestroyWindow(); }
@@ -197,8 +253,8 @@ void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
         }
       }
 
-      menu.AppendMenu(disabled ? MF_UNCHECKED : MF_CHECKED, ID_ENABLED,
-                      _T("Enabled"));
+      menu.AppendMenu(cfg_mpv_video_enabled ? MF_CHECKED : MF_UNCHECKED,
+                      ID_ENABLED, _T("Enabled"));
       menudesc.Set(ID_ENABLED, "Enable/disable video playback");
       menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
                       _T("Fullscreen"));
@@ -215,7 +271,7 @@ void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
       if (cmd > 0) {
         switch (cmd) {
           case ID_ENABLED:
-            disabled = !disabled;
+            cfg_mpv_video_enabled = !cfg_mpv_video_enabled;
             update();
             break;
           case ID_FULLSCREEN:
@@ -309,7 +365,7 @@ void mpv_player::update_window() {
     ResizeClient(container->cx, container->cy);
   }
 
-  if (!disabled &&
+  if (cfg_mpv_video_enabled &&
       (fullscreen_ || container->is_visible() || !cfg_mpv_stop_hidden.get())) {
     bool starting = !enabled;
     enabled = true;
@@ -345,55 +401,6 @@ void mpv_player::update_window() {
 
 bool mpv_player::contained_in(mpv_container* p_container) {
   return container == p_container;
-}
-
-mpv_player::mpv_player()
-    : wid(NULL),
-      enabled(false),
-      mpv(NULL),
-      sync_task(sync_task_type::Wait),
-      sync_on_unpause(false),
-      last_mpv_seek(0),
-      disabled(false),
-      time_base(0),
-      mpv_loaded(load_mpv()) {
-  update_container();
-  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
-  update_window();
-
-  sync_thread = std::thread([this]() {
-    while (true) {
-      std::unique_lock<std::mutex> lock(cv_mutex);
-      cv.wait(lock, [this] { return sync_task != sync_task_type::Wait; });
-      if (sync_task == sync_task_type::Stop) {
-        sync_task = sync_task_type::Wait;
-        lock.unlock();
-        cv.notify_all();
-      } else {
-        sync_task_type task = sync_task;
-        lock.unlock();
-        switch (task) {
-          case sync_task_type::Quit:
-            return;
-          case sync_task_type::FirstFrameSync:
-            mpv_first_frame_sync();
-            sync_task = sync_task_type::Stop;
-            break;
-          default:
-            break;
-        }
-      }
-    }
-  });
-}
-
-mpv_player::~mpv_player() {
-  {
-    std::lock_guard<std::mutex> lock(cv_mutex);
-    sync_task = sync_task_type::Quit;
-  }
-  cv.notify_all();
-  sync_thread.join();
 }
 
 void mpv_player::mpv_init() {
@@ -947,7 +954,7 @@ void mpv_player::mpv_first_frame_sync() {
     console::error(
         "mpv: Video disabled: this output has no timing information");
     fb2k::inMainThread([this]() {
-      disabled = true;
+      cfg_mpv_video_enabled = false;
       update();
     });
     return;
