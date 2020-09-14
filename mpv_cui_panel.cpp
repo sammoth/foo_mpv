@@ -34,7 +34,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
-    return WS_CHILD | WS_VISIBLE | WS_EX_LAYOUTRTL;
+    return WS_CHILD | WS_VISIBLE;
   }
 
   CMpvCuiWindow() {}

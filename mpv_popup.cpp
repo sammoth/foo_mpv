@@ -11,12 +11,8 @@
 void RunMpvPopupWindow();
 
 namespace {
-struct popup_owner {
-  virtual void destroy_owner() = 0;
-  virtual void pop() = 0;
-};
-
-static popup_owner* g_open_mpv_popup_owner;
+struct CMpvPopupWindow;
+static CMpvPopupWindow* g_open_mpv_popup;
 
 static const GUID guid_cfg_mpv_popup_rect = {
     0x6f8a673, 0x3861, 0x43fb, {0xa4, 0xfe, 0xe8, 0xdf, 0xc7, 0x1, 0x45, 0x70}};
@@ -55,6 +51,13 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   static DWORD GetWndStyle(DWORD style) {
     return WS_POPUP | WS_OVERLAPPEDWINDOW | WS_VISIBLE;
   }
+  static DWORD GetWndExStyle(DWORD dwExStyle) {
+    if (cfg_mpv_popup_alwaysontop) {
+      return WS_EX_TOPMOST;
+    } else {
+      return 0;
+    }
+  };
 
   BOOL on_erase_bg(CDCHandle dc) {
     CRect rc;
@@ -62,12 +65,6 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     CBrush brush;
     WIN32_OP_D(brush.CreateSolidBrush(get_bg()) != NULL);
     WIN32_OP_D(dc.FillRect(&rc, brush));
-
-    if (cfg_mpv_popup_alwaysontop) {
-      SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    } else {
-      SetWindowPos(HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    }
 
     return TRUE;
   }
@@ -119,9 +116,8 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     RECT client_rect = {};
     GetWindowRect(&client_rect);
     cfg_mpv_popup_rect = client_rect;
-    ShowWindow(SW_HIDE);
     container_destroy();
-    owner->destroy_owner();
+    g_open_mpv_popup = NULL;
   }
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
@@ -135,8 +131,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     if (!container_is_on()) {
-      menu->AppendMenu(MF_DEFAULT,
-                       ID_UNPIN, _T("Unpin"));
+      menu->AppendMenu(MF_DEFAULT, ID_UNPIN, _T("Unpin"));
       menudesc->Set(ID_UNPIN, "Unpin elsewhere");
     }
     menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
@@ -153,18 +148,12 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     switch (cmd) {
       case ID_ONTOP:
         cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
-        if (cfg_mpv_popup_alwaysontop) {
-          SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        } else {
-          SetWindowPos(HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        }
+        DestroyWindow();
+        RunMpvPopupWindow();
         break;
       case ID_SEPARATE:
         cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
-        GetWindowRect(&client_rect);
-        cfg_mpv_popup_rect = client_rect;
-
-        owner->destroy_owner();
+        DestroyWindow();
         RunMpvPopupWindow();
         break;
       case ID_UNPIN:
@@ -183,60 +172,35 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void on_double_click(UINT, CPoint) { container_toggle_fullscreen(); }
 
-  void set_owner(popup_owner* p_owner) { owner = p_owner; }
-
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
   bool is_popup() override { return true; }
   void invalidate() override { Invalidate(); }
 
  private:
-  popup_owner* owner;
-
  protected:
 };
 
-struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
-                              public popup_owner {
+class close_popup_handler : public initquit {
  public:
-  DECLARE_WND_CLASS_EX(TEXT("{551A3229-D929-44A2-8022-161B39CDBCDF}"), 0, (-1));
-
-  BEGIN_MSG_MAP(CMpvPopupOwnerWindow)
-  MSG_WM_CREATE(on_create)
-  MSG_WM_DESTROY(on_destroy)
-  END_MSG_MAP()
-
-  static DWORD GetWndStyle(DWORD style) { return WS_CHILD | WS_EX_NOACTIVATE; }
-
-  LRESULT on_create(LPCREATESTRUCT st) {
-    child = new CWindowAutoLifetime<CMpvPopupWindow>(NULL);
-    child->set_owner(this);
-    return 0;
+  void on_quit() override {
+    if (g_open_mpv_popup != NULL) {
+      g_open_mpv_popup->DestroyWindow();
+    }
   }
-
-  void on_destroy() {
-    child->DestroyWindow();
-    g_open_mpv_popup_owner = NULL;
-  }
-
-  void destroy_owner() override { DestroyWindow(); }
-
-  void pop() override { child->BringWindowToTop(); }
-
- private:
-  CMpvPopupWindow* child;
 };
+
+static initquit_factory_t<close_popup_handler> popup_closer;
 }  // namespace
 
 void RunMpvPopupWindow() {
-  if (g_open_mpv_popup_owner != NULL) {
-    g_open_mpv_popup_owner->pop();
+  if (g_open_mpv_popup != NULL) {
+    g_open_mpv_popup->BringWindowToTop();
     return;
   }
 
   try {
-    g_open_mpv_popup_owner = new CWindowAutoLifetime<CMpvPopupOwnerWindow>(
-        core_api::get_main_window());
+    g_open_mpv_popup = new CWindowAutoLifetime<CMpvPopupWindow>(NULL);
   } catch (std::exception const& e) {
     popup_message::g_complain("Popup creation failure", e);
   }
