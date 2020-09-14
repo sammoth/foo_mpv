@@ -311,8 +311,8 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void mpv_seek(double time, bool sync_after);
   void mpv_sync(double debug_time);
 
-  double time_base;  // start time of the current track/subsong within its file
-  double last_mpv_seek;
+  std::atomic<double> time_base;  // start time of the current track/subsong within its file
+  std::atomic<double> last_mpv_seek;
   bool sync_on_unpause;
 
   std::thread sync_thread;

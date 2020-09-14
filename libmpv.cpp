@@ -678,17 +678,18 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 
       bool paused = playback_control::get()->is_paused();
 
-      time_base = 0.0;
+      double time_base_l = 0.0;
       if (metadb->get_subsong_index() > 1) {
         for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
           playable_location_impl tmp = metadb->get_location();
           tmp.set_subsong(s);
           metadb_handle_ptr subsong = metadb::get()->handle_create(tmp);
           if (subsong.is_valid()) {
-            time_base += subsong->get_length();
+            time_base_l += subsong->get_length();
           }
         }
       }
+      time_base = time_base_l;
 
       double start_time =
           new_file ? 0.0 : playback_control::get()->playback_get_position();
