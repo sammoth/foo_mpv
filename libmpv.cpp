@@ -407,6 +407,9 @@ void mpv_player::toggle_fullscreen() {
 void mpv_player::on_destroy() { mpv_terminate(); }
 
 LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
+  SetClassLong(
+      m_hWnd, GCL_HICON,
+      (LONG)LoadIcon(core_api::get_my_instance(), MAKEINTRESOURCE(IDI_ICON1)));
   ShowWindow(SW_SHOW);
   return 0;
 }
@@ -451,6 +454,7 @@ void mpv_player::update_window() {
   if (!fullscreen_) {
     if (GetParent() != container->container_wnd()) {
       SetParent(container->container_wnd());
+      invalidate_all_containers();
     }
     ResizeClient(container->cx, container->cy);
   }
@@ -610,17 +614,32 @@ void mpv_player::mpv_set_wid(HWND wnd) { wid = wnd; }
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {}
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
+  update_title();
   update();
   mpv_play(p_track, true);
 }
 void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
+  update_title();
   mpv_stop();
 }
-void mpv_player::on_playback_seek(double p_time) { mpv_seek(p_time, true); }
-void mpv_player::on_playback_pause(bool p_state) { mpv_pause(p_state); }
+void mpv_player::on_playback_seek(double p_time) {
+  update_title();
+  mpv_seek(p_time, true);
+}
+void mpv_player::on_playback_pause(bool p_state) {
+  update_title();
+  mpv_pause(p_state);
+}
 void mpv_player::on_playback_time(double p_time) {
+  update_title();
   update();
   mpv_sync(p_time);
+}
+
+void mpv_player::update_title() {
+  pfc::string8 title;
+  mpv::get_popup_title(title);
+  uSetWindowText(m_hWnd, title);
 }
 
 void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {

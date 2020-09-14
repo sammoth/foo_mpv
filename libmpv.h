@@ -325,6 +325,7 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   mpv_container* container;
   void update_container();
   void update_window();
+  void update_title();
   void set_background();
 
   // callbacks
