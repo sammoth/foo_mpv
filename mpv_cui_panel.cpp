@@ -120,7 +120,21 @@ class MpvCuiWindow : public uie::container_ui_extension {
   void get_category(pfc::string_base& out) const override { out = "Panels"; }
   unsigned get_type() const override { return uie::type_panel; }
 
+  void set_config(stream_reader* p_reader, t_size p_size,
+                  abort_callback& p_abort) override {
+    p_reader->read(&cfg_pinned, sizeof(bool), p_abort);
+    if (cfg_pinned && wnd_child != NULL) {
+      wnd_child->container_pin();
+    }
+  }
+
+  void get_config(stream_writer* p_writer, abort_callback& p_abort) const {
+    bool pinned = wnd_child == NULL ? false : wnd_child->container_is_pinned();
+    p_writer->write(&pinned, sizeof(bool), p_abort);
+  }
+
  private:
+  bool cfg_pinned = false;
   class_data& get_class_data() const override {
     __implement_get_class_data(_T("{EF25F318-A1F7-46CB-A86E-70F568ADDCE6}"),
                                false);
@@ -128,13 +142,16 @@ class MpvCuiWindow : public uie::container_ui_extension {
 
   LRESULT on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) override;
 
-  CWindowAutoLifetime<mpv::CMpvCuiWindow>* wnd_child;
+  CWindowAutoLifetime<mpv::CMpvCuiWindow>* wnd_child = NULL;
 };
 
 LRESULT MpvCuiWindow::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
   switch (msg) {
     case WM_CREATE:
       wnd_child = new CWindowAutoLifetime<CMpvCuiWindow>(wnd);
+      if (cfg_pinned) {
+        wnd_child->container_pin();
+      }
       break;
     case WM_SHOWWINDOW:
       wnd_child->ShowWindow(wp);

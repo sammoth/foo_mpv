@@ -8,11 +8,15 @@
 #include "libmpv.h"
 #include "resource.h"
 
+void RunMpvPopupWindow();
+
 namespace {
 struct popup_owner {
   virtual void destroy_owner() = 0;
   virtual void pop() = 0;
 };
+
+static popup_owner* g_open_mpv_popup_owner;
 
 static const GUID guid_cfg_mpv_popup_rect = {
     0x6f8a673, 0x3861, 0x43fb, {0xa4, 0xfe, 0xe8, 0xdf, 0xc7, 0x1, 0x45, 0x70}};
@@ -58,6 +62,13 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     CBrush brush;
     WIN32_OP_D(brush.CreateSolidBrush(get_bg()) != NULL);
     WIN32_OP_D(dc.FillRect(&rc, brush));
+
+    if (cfg_mpv_popup_alwaysontop) {
+      SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    } else {
+      SetWindowPos(HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    }
+
     return TRUE;
   }
 
@@ -70,12 +81,10 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   void on_playback_event() override { update_title(); }
 
   LRESULT on_create(LPCREATESTRUCT st) {
-    if (cfg_mpv_popup_alwaysontop) {
-      SetWindowPos(HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-    }
-
     if (cfg_mpv_popup_separate) {
       SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
+    } else {
+      SetWindowLongPtr(GWLP_HWNDPARENT, (LONG_PTR)core_api::get_main_window());
     }
 
     SetClassLong(get_wnd(), GCL_HICON,
@@ -102,6 +111,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     }
 
     container_create();
+
     return 0;
   }
 
@@ -139,6 +149,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   }
 
   void handle_menu_cmd(int cmd) {
+    RECT client_rect = {};
     switch (cmd) {
       case ID_ONTOP:
         cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
@@ -150,14 +161,11 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
         break;
       case ID_SEPARATE:
         cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
-        ShowWindow(SW_HIDE);
-        if (cfg_mpv_popup_separate) {
-          SetWindowLongPtr(GWLP_HWNDPARENT, NULL);
-        } else {
-          SetWindowLongPtr(GWLP_HWNDPARENT,
-                           (LONG_PTR)core_api::get_main_window());
-        }
-        ShowWindow(SW_SHOW);
+        GetWindowRect(&client_rect);
+        cfg_mpv_popup_rect = client_rect;
+
+        owner->destroy_owner();
+        RunMpvPopupWindow();
         break;
       case ID_UNPIN:
         container_unpin();
@@ -188,7 +196,6 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
  protected:
 };
 
-static popup_owner* open_owner;
 struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
                               public popup_owner {
  public:
@@ -209,7 +216,7 @@ struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
 
   void on_destroy() {
     child->DestroyWindow();
-    open_owner = NULL;
+    g_open_mpv_popup_owner = NULL;
   }
 
   void destroy_owner() override { DestroyWindow(); }
@@ -222,13 +229,13 @@ struct CMpvPopupOwnerWindow : public CWindowImpl<CMpvPopupOwnerWindow>,
 }  // namespace
 
 void RunMpvPopupWindow() {
-  if (open_owner != NULL) {
-    open_owner->pop();
+  if (g_open_mpv_popup_owner != NULL) {
+    g_open_mpv_popup_owner->pop();
     return;
   }
 
   try {
-    open_owner = new CWindowAutoLifetime<CMpvPopupOwnerWindow>(
+    g_open_mpv_popup_owner = new CWindowAutoLifetime<CMpvPopupOwnerWindow>(
         core_api::get_main_window());
   } catch (std::exception const& e) {
     popup_message::g_complain("Popup creation failure", e);

@@ -102,6 +102,7 @@ static std::vector<mpv_container*> g_mpv_containers;
 static std::unique_ptr<mpv_player> g_mpv_player;
 
 static void invalidate_all_containers() {
+  console::info("invalidate");
   for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
     (**it).invalidate();
   }
@@ -237,8 +238,7 @@ mpv_player::mpv_player()
       time_base(0),
       mpv_loaded(load_mpv()) {
   update_container();
-  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD,
-                     WS_EX_TRANSPARENT | WS_EX_LAYERED));
+  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
   update_window();
 
   sync_thread = std::thread([this]() {
@@ -313,6 +313,12 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
            << get_double("container-fps") << "fps (display "
            << get_double("estimated-vf-fps") << "fps)";
       menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+      std::string hwdec = get_string("hwdec-current");
+      if (hwdec != "no") {
+        text.str(L"");
+        text << "Hardware decoding: " << get_string("hwdec-current");
+        menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+      }
 
       menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
     }
@@ -341,31 +347,35 @@ void mpv_player::handle_menu_cmd(int cmd) {
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
-  try {
-    {
-      // handle the context menu key case - center the menu
-      if (point == CPoint(-1, -1)) {
-        CRect rc;
-        WIN32_OP(wnd.GetWindowRect(&rc));
-        point = rc.CenterPoint();
+  if (fullscreen_) {
+    try {
+      {
+        // handle the context menu key case - center the menu
+        if (point == CPoint(-1, -1)) {
+          CRect rc;
+          WIN32_OP(wnd.GetWindowRect(&rc));
+          point = rc.CenterPoint();
+        }
+
+        CMenuDescriptionHybrid menudesc(*this);
+
+        static_api_ptr_t<contextmenu_manager> api;
+        CMenu menu;
+        WIN32_OP(menu.CreatePopupMenu());
+
+        add_menu_items(&menu, &menudesc);
+
+        int cmd =
+            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
+                                point.x, point.y, menudesc, 0);
+
+        handle_menu_cmd(cmd);
       }
-
-      CMenuDescriptionHybrid menudesc(*this);
-
-      static_api_ptr_t<contextmenu_manager> api;
-      CMenu menu;
-      WIN32_OP(menu.CreatePopupMenu());
-
-      add_menu_items(&menu, &menudesc);
-
-      int cmd =
-          menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-                              point.x, point.y, menudesc, 0);
-
-      handle_menu_cmd(cmd);
+    } catch (std::exception const& e) {
+      console::complain("Context menu failure", e);
     }
-  } catch (std::exception const& e) {
-    console::complain("Context menu failure", e);
+  } else {
+    container->container_on_context_menu(wnd, point);
   }
 }
 
@@ -383,8 +393,8 @@ void mpv_player::toggle_fullscreen() {
     SetWindowLong(GWL_STYLE,
                   saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
                       WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
-    SetWindowLong(GWL_EXSTYLE,
-                  saved_ex_style & ~(WS_EX_TRANSPARENT | WS_EX_LAYERED));
+    //SetWindowLong(GWL_EXSTYLE,
+    //              saved_ex_style);
 
     MONITORINFO monitor_info;
     monitor_info.cbSize = sizeof(monitor_info);
