@@ -43,21 +43,22 @@ static const GUID guid_cfg_mpv_branch = {
     0xa9a,
     0x4efc,
     {0xa4, 0x33, 0x32, 0x4d, 0x76, 0xcc, 0x8a, 0x33}};
-static const GUID guid_cfg_mpv_max_drift = {
-    0xa799d117,
-    0x7e68,
-    0x4d1e,
-    {0x9d, 0xc2, 0xe8, 0x16, 0x1e, 0xf1, 0xf5, 0xfe}};
-static const GUID guid_cfg_mpv_hard_sync = {
-    0x240d9ab0,
-    0xb58d,
-    0x4565,
-    {0x9e, 0xc0, 0x6b, 0x27, 0x99, 0xcd, 0x2d, 0xed}};
-static const GUID guid_cfg_mpv_hard_sync_interval = {
-    0x79009e9f,
-    0x11f0,
-    0x4518,
-    {0x9e, 0x75, 0xe1, 0x26, 0x99, 0xa8, 0x65, 0xcb}};
+
+static const GUID guid_cfg_mpv_max_drift
+    = {0x69ee4b45,
+       0x9688,
+       0x45e8,
+       {0x89, 0x44, 0x8a, 0xb0, 0x92, 0xd6, 0xf3, 0xf8}};
+static const GUID guid_cfg_mpv_hard_sync_interval
+    = {0xa095f426,
+       0x3df7,
+       0x434e,
+       {0x91, 0x13, 0x19, 0x1a, 0x1b, 0x5f, 0xc1, 0xe5}};
+static const GUID guid_cfg_mpv_hard_sync
+    = {0xeffb3f43,
+       0x60a0,
+       0x4a2f,
+       {0xbd, 0x78, 0x27, 0x43, 0xa1, 0x6d, 0xd2, 0xbb}};
 
 static const GUID guid_cfg_mpv_logging = {
     0x8b74d741,
@@ -1079,6 +1080,7 @@ bool mpv_player::load_mpv() {
   wpath_mpv << path << "mpv\\mpv-1.dll";
   dll = LoadLibraryExW(wpath_mpv.str().c_str(), NULL,
                        LOAD_WITH_ALTERED_SEARCH_PATH);
+
   if (dll == NULL) {
     std::stringstream error;
     error << "Could not load mpv-1.dll: error code " << GetLastError();
@@ -1206,10 +1208,7 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   CheckDlgButton(IDC_CHECK_FSBG, cfg_mpv_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_mpv_stop_hidden);
 
-  std::wstringstream ws;
-  ws << cfg_mpv_popup_titleformat;
-  std::wstring wstr = ws.str();
-  SetDlgItemText(IDC_EDIT_POPUP, wstr.c_str());
+  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_mpv_popup_titleformat);
 
   edit_dirty = false;
 
@@ -1247,7 +1246,7 @@ t_uint32 CMpvPreferences::get_state() {
 void CMpvPreferences::reset() {
   bg_col = 0;
   button_brush = CreateSolidBrush(bg_col);
-  SetDlgItemTextW(IDC_EDIT_POPUP, L"%title% - %artist%[ (%album%)]");
+  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, "%title% - %artist%[ (%album%)]");
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
   OnChanged();
@@ -1260,11 +1259,9 @@ void CMpvPreferences::apply() {
   cfg_mpv_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
 
   auto length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_POPUP));
-  WCHAR* buf = new WCHAR[length + 1];
-  GetDlgItemTextW(IDC_EDIT_POPUP, buf, length + 1);
+  pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_POPUP);
   cfg_mpv_popup_titleformat.reset();
-  cfg_mpv_popup_titleformat << buf;
-  delete[] buf;
+  cfg_mpv_popup_titleformat.set_string(format.get_ptr());
 
   static_api_ptr_t<titleformat_compiler>()->compile_safe(
       popup_titlefomat_script, cfg_mpv_popup_titleformat);

@@ -63,10 +63,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   void update_title() {
     pfc::string8 title;
     mpv::get_popup_title(title);
-    std::wstringstream ws;
-    ws << title;
-    std::wstring wss = ws.str();
-    SetWindowText(wss.c_str());
+    uSetWindowText(m_hWnd, title);
   }
 
   void on_playback_event() override { update_title(); }
