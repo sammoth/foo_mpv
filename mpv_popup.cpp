@@ -135,7 +135,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     if (!container_is_on()) {
-      menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
+      menu->AppendMenu(MF_DEFAULT,
                        ID_UNPIN, _T("Unpin"));
       menudesc->Set(ID_UNPIN, "Unpin elsewhere");
     }
