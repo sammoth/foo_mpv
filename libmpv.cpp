@@ -102,7 +102,6 @@ static std::vector<mpv_container*> g_mpv_containers;
 static std::unique_ptr<mpv_player> g_mpv_player;
 
 static void invalidate_all_containers() {
-  console::info("invalidate");
   for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
     (**it).invalidate();
   }
