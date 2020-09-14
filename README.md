@@ -7,7 +7,7 @@ mpv video player UI element for foobar2000.
 - Local files only
 - Aims to quickly and accurately sync video to the audio, being approximately as fast as standalone mpv
 - Supports files with chapters/subsongs
-- DefaultUI element and Columns UI panel, and standalone popup
+- DefaultUI element, Columns UI panel and standalone popup
 - Single video instance moves to the largest currently visible UI element unless manually pinned to one area via the context menu
 - Fullscreen mode
 - Works in Wine
