@@ -239,7 +239,6 @@ mpv_player::mpv_player()
       mpv_loaded(load_mpv()) {
   update_container();
   mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
-  update_window();
 
   sync_thread = std::thread([this]() {
     while (true) {
@@ -265,6 +264,8 @@ mpv_player::mpv_player()
       }
     }
   });
+
+  update_window();
 }
 
 mpv_player::~mpv_player() {
