@@ -29,17 +29,18 @@ class mpv_container {
   void container_pin();
   void container_unpin();
   bool container_is_pinned();
+  void container_toggle_fullscreen();
+  void container_on_context_menu(CWindow wnd, CPoint point);
 
   t_ui_color get_bg();
 
-  virtual void add_menu_items(CMenu* menu,
-                              CMenuDescriptionHybrid* menudesc) = 0;
-  virtual void handle_menu_cmd(int cmd) = 0;
   virtual HWND container_wnd() = 0;
   virtual bool is_visible() = 0;
   virtual bool is_popup() = 0;
   virtual void on_fullscreen(bool fullscreen) = 0;
   virtual void invalidate() = 0;
+  virtual void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) = 0;
+  virtual void handle_menu_cmd(int cmd) = 0;
 };
 
 class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
@@ -346,8 +347,6 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   LONG saved_style;
   LONG saved_ex_style;
 
-  void toggle_fullscreen();
-
   bool check_for_idle();
   bool is_mpv_loaded();
 
@@ -362,6 +361,11 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void update();
   void destroy();
   bool contained_in(mpv_container* container);
+
+  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
+  void handle_menu_cmd(int cmd);
+
+  void toggle_fullscreen();
 
   // window
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),

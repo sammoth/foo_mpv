@@ -31,8 +31,8 @@ static const GUID guid_cfg_mpv_stop_hidden = {
     {0x88, 0x39, 0x8f, 0x4a, 0x50, 0xa0, 0xb7, 0x2f}};
 
 static cfg_bool cfg_mpv_black_fullscreen(g_guid_cfg_mpv_black_fullscreen, true);
-static cfg_string cfg_mpv_popup_titleformat(g_guid_cfg_mpv_popup_titleformat,
-                                            "%title% - %artist%[' ('%album%')']");
+static cfg_string cfg_mpv_popup_titleformat(
+    g_guid_cfg_mpv_popup_titleformat, "%title% - %artist%[' ('%album%')']");
 static cfg_uint cfg_mpv_bg_color(g_guid_cfg_mpv_bg_color, 0);
 static cfg_bool cfg_mpv_stop_hidden(guid_cfg_mpv_stop_hidden, true);
 
@@ -44,21 +44,21 @@ static const GUID guid_cfg_mpv_branch = {
     0x4efc,
     {0xa4, 0x33, 0x32, 0x4d, 0x76, 0xcc, 0x8a, 0x33}};
 
-static const GUID guid_cfg_mpv_max_drift
-    = {0x69ee4b45,
-       0x9688,
-       0x45e8,
-       {0x89, 0x44, 0x8a, 0xb0, 0x92, 0xd6, 0xf3, 0xf8}};
-static const GUID guid_cfg_mpv_hard_sync_interval
-    = {0xa095f426,
-       0x3df7,
-       0x434e,
-       {0x91, 0x13, 0x19, 0x1a, 0x1b, 0x5f, 0xc1, 0xe5}};
-static const GUID guid_cfg_mpv_hard_sync
-    = {0xeffb3f43,
-       0x60a0,
-       0x4a2f,
-       {0xbd, 0x78, 0x27, 0x43, 0xa1, 0x6d, 0xd2, 0xbb}};
+static const GUID guid_cfg_mpv_max_drift = {
+    0x69ee4b45,
+    0x9688,
+    0x45e8,
+    {0x89, 0x44, 0x8a, 0xb0, 0x92, 0xd6, 0xf3, 0xf8}};
+static const GUID guid_cfg_mpv_hard_sync_interval = {
+    0xa095f426,
+    0x3df7,
+    0x434e,
+    {0x91, 0x13, 0x19, 0x1a, 0x1b, 0x5f, 0xc1, 0xe5}};
+static const GUID guid_cfg_mpv_hard_sync = {
+    0xeffb3f43,
+    0x60a0,
+    0x4a2f,
+    {0xbd, 0x78, 0x27, 0x43, 0xa1, 0x6d, 0xd2, 0xbb}};
 
 static const GUID guid_cfg_mpv_logging = {
     0x8b74d741,
@@ -154,6 +154,48 @@ void mpv_container::container_pin() {
   }
 }
 
+void mpv_container::container_on_context_menu(CWindow wnd, CPoint point) {
+  try {
+    {
+      // handle the context menu key case - center the menu
+      if (point == CPoint(-1, -1)) {
+        CRect rc;
+        WIN32_OP(wnd.GetWindowRect(&rc));
+        point = rc.CenterPoint();
+      }
+
+      CMenuDescriptionHybrid menudesc(container_wnd());
+
+      static_api_ptr_t<contextmenu_manager> api;
+      CMenu menu;
+      WIN32_OP(menu.CreatePopupMenu());
+
+      if (g_mpv_player) {
+        g_mpv_player->add_menu_items(&menu, &menudesc);
+      }
+
+      add_menu_items(&menu, &menudesc);
+
+      int cmd =
+          menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
+                              point.x, point.y, menudesc, 0);
+
+      if (g_mpv_player) {
+        g_mpv_player->handle_menu_cmd(cmd);
+      }
+      handle_menu_cmd(cmd);
+    }
+  } catch (std::exception const& e) {
+    console::complain("Context menu failure", e);
+  }
+}
+
+void mpv_container::container_toggle_fullscreen() {
+  if (g_mpv_player) {
+    g_mpv_player->toggle_fullscreen();
+  }
+}
+
 void mpv_container::container_resize(long p_x, long p_y) {
   cx = p_x;
   cy = p_y;
@@ -195,7 +237,8 @@ mpv_player::mpv_player()
       time_base(0),
       mpv_loaded(load_mpv()) {
   update_container();
-  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
+  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD,
+                     WS_EX_TRANSPARENT | WS_EX_LAYERED));
   update_window();
 
   sync_thread = std::thread([this]() {
@@ -251,6 +294,52 @@ void mpv_player::on_keydown(UINT key, WPARAM, LPARAM) {
       break;
   }
 }
+
+enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
+
+void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
+  if (is_mpv_loaded()) {
+    if (check_for_idle()) {
+      menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
+    } else {
+      std::wstringstream text;
+      text.setf(std::ios::fixed);
+      text.precision(3);
+      text << get_string("video-codec") << " "
+           << get_string("video-params/pixelformat");
+      menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+      text.str(L"");
+      text << get_string("width") << "x" << get_string("height") << " "
+           << get_double("container-fps") << "fps (display "
+           << get_double("estimated-vf-fps") << "fps)";
+      menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+
+      menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+    }
+  }
+
+  menu->AppendMenu(cfg_mpv_video_enabled ? MF_CHECKED : MF_UNCHECKED,
+                   ID_ENABLED, _T("Enabled"));
+  menudesc->Set(ID_ENABLED, "Enable/disable video playback");
+  menu->AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
+                   _T("Fullscreen"));
+  menudesc->Set(ID_FULLSCREEN, "Toggle video fullscreen");
+}
+
+void mpv_player::handle_menu_cmd(int cmd) {
+  switch (cmd) {
+    case ID_ENABLED:
+      cfg_mpv_video_enabled = !cfg_mpv_video_enabled;
+      update();
+      break;
+    case ID_FULLSCREEN:
+      toggle_fullscreen();
+      break;
+    default:
+      break;
+  }
+}
+
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
   try {
     {
@@ -261,67 +350,22 @@ void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
         point = rc.CenterPoint();
       }
 
-      CMenuDescriptionHybrid menudesc(
-          *this);  // this class manages all the voodoo necessary for
-                   // descriptions of our menu items to show in the status
-                   // bar.
+      CMenuDescriptionHybrid menudesc(*this);
 
+      static_api_ptr_t<contextmenu_manager> api;
       CMenu menu;
       WIN32_OP(menu.CreatePopupMenu());
-      enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
 
-      if (is_mpv_loaded()) {
-        if (check_for_idle()) {
-          menu.AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
-        } else {
-          std::wstringstream text;
-          text.setf(std::ios::fixed);
-          text.precision(3);
-          text << get_string("video-codec") << " "
-               << get_string("video-params/pixelformat");
-          menu.AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
-          text.str(L"");
-          text << get_string("width") << "x" << get_string("height") << " "
-               << get_double("container-fps") << "fps (display "
-               << get_double("estimated-vf-fps") << "fps)";
-          menu.AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
-
-          menu.AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
-        }
-      }
-
-      menu.AppendMenu(cfg_mpv_video_enabled ? MF_CHECKED : MF_UNCHECKED,
-                      ID_ENABLED, _T("Enabled"));
-      menudesc.Set(ID_ENABLED, "Enable/disable video playback");
-      menu.AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
-                      _T("Fullscreen"));
-      menudesc.Set(ID_FULLSCREEN, "Toggle video fullscreen");
-
-      if (!fullscreen_) {
-        container->add_menu_items(&menu, &menudesc);
-      }
+      add_menu_items(&menu, &menudesc);
 
       int cmd =
           menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
                               point.x, point.y, menudesc, 0);
 
-      if (cmd > 0) {
-        switch (cmd) {
-          case ID_ENABLED:
-            cfg_mpv_video_enabled = !cfg_mpv_video_enabled;
-            update();
-            break;
-          case ID_FULLSCREEN:
-            toggle_fullscreen();
-            break;
-          default:
-            container->handle_menu_cmd(cmd);
-            break;
-        }
-      }
+      handle_menu_cmd(cmd);
     }
   } catch (std::exception const& e) {
-    console::complain("Context menu failure", e);  // rare
+    console::complain("Context menu failure", e);
   }
 }
 
@@ -339,7 +383,8 @@ void mpv_player::toggle_fullscreen() {
     SetWindowLong(GWL_STYLE,
                   saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
                       WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
-    SetWindowLong(GWL_EXSTYLE, saved_ex_style);
+    SetWindowLong(GWL_EXSTYLE,
+                  saved_ex_style & ~(WS_EX_TRANSPARENT | WS_EX_LAYERED));
 
     MONITORINFO monitor_info;
     monitor_info.cbSize = sizeof(monitor_info);

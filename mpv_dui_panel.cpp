@@ -25,13 +25,13 @@ struct CMpvDuiWindow : public ui_element_instance,
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
-  MSG_WM_CONTEXTMENU(on_context_menu)
+  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_CONTEXTMENU(container_on_context_menu)
   END_MSG_MAP()
 
   CMpvDuiWindow(ui_element_config::ptr config,
                 ui_element_instance_callback_ptr p_callback)
-      : m_callback(p_callback),
-        m_config(config) {}
+      : m_callback(p_callback), m_config(config) {}
 
   BOOL on_erase_bg(CDCHandle dc) {
     CRect rc;
@@ -46,7 +46,13 @@ struct CMpvDuiWindow : public ui_element_instance,
     WIN32_OP(Create(parent, 0, 0, WS_CHILD, 0));
     apply_configuration();
     container_create();
+    if (m_callback->is_edit_mode_enabled()) {
+      SetWindowLong(GWL_EXSTYLE, GetWindowLong(GWL_EXSTYLE) |
+                                     WS_EX_TRANSPARENT | WS_EX_LAYERED);
+    }
   }
+
+  void on_double_click(UINT, CPoint) { container_toggle_fullscreen(); }
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
@@ -106,6 +112,16 @@ struct CMpvDuiWindow : public ui_element_instance,
         p_what == ui_element_notify_font_changed) {
       Invalidate();
     }
+
+    if (p_what == ui_element_notify_edit_mode_changed) {
+      if (p_param1 == 1) {
+        SetWindowLong(GWL_EXSTYLE, GetWindowLong(GWL_EXSTYLE) |
+                                       WS_EX_TRANSPARENT | WS_EX_LAYERED);
+      } else {
+        SetWindowLong(GWL_EXSTYLE, GetWindowLong(GWL_EXSTYLE) &
+                                       ~(WS_EX_TRANSPARENT | WS_EX_LAYERED));
+      }
+    }
   };
 
   enum {
@@ -142,38 +158,6 @@ struct CMpvDuiWindow : public ui_element_instance,
         break;
       default:
         break;
-    }
-  }
-
-  void on_context_menu(CWindow wnd, CPoint point) {
-    try {
-      {
-        // handle the context menu key case - center the menu
-        if (point == CPoint(-1, -1)) {
-          CRect rc;
-          WIN32_OP(wnd.GetWindowRect(&rc));
-          point = rc.CenterPoint();
-        }
-
-        CMenuDescriptionHybrid menudesc(
-            *this);  // this class manages all the voodoo necessary for
-                     // descriptions of our menu items to show in the status
-                     // bar.
-
-        static_api_ptr_t<contextmenu_manager> api;
-        CMenu menu;
-        WIN32_OP(menu.CreatePopupMenu());
-
-        add_menu_items(&menu, &menudesc);
-
-        int cmd =
-            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-                                point.x, point.y, menudesc, 0);
-
-        handle_menu_cmd(cmd);
-      }
-    } catch (std::exception const& e) {
-      console::complain("Context menu failure", e);  // rare
     }
   }
 

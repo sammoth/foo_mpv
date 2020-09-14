@@ -44,7 +44,8 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
-  MSG_WM_CONTEXTMENU(on_context_menu)
+  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_CONTEXTMENU(container_on_context_menu)
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
@@ -166,43 +167,13 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     }
   }
 
-  void on_context_menu(CWindow wnd, CPoint point) {
-    try {
-      {
-        // handle the context menu key case - center the menu
-        if (point == CPoint(-1, -1)) {
-          CRect rc;
-          WIN32_OP(wnd.GetWindowRect(&rc));
-          point = rc.CenterPoint();
-        }
-
-        CMenuDescriptionHybrid menudesc(
-            *this);  // this class manages all the voodoo necessary for
-                     // descriptions of our menu items to show in the status
-                     // bar.
-
-        static_api_ptr_t<contextmenu_manager> api;
-        CMenu menu;
-        WIN32_OP(menu.CreatePopupMenu());
-
-        add_menu_items(&menu, &menudesc);
-
-        int cmd =
-            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-                                point.x, point.y, menudesc, 0);
-
-        handle_menu_cmd(cmd);
-      }
-    } catch (std::exception const& e) {
-      console::complain("Context menu failure", e);  // rare
-    }
-  }
-
   HWND get_wnd() { return m_hWnd; }
 
   void on_fullscreen(bool fullscreen) override {
     ShowWindow(fullscreen ? SW_HIDE : SW_NORMAL);
   }
+
+  void on_double_click(UINT, CPoint) { container_toggle_fullscreen(); }
 
   void set_owner(popup_owner* p_owner) { owner = p_owner; }
 
