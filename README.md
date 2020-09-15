@@ -17,7 +17,7 @@ NB: go easy on the options in mpv.conf, you probably don't want to override any 
 
 ```
 vf-append=bwdif:deint=1
-scale=ewa_lanczos
+profile=gpu-hq
 ```
 
 The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths relative to this in `mpv.conf` by using `~~` as normal.
