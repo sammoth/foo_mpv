@@ -2,12 +2,12 @@
 // PCH ^
 
 #include <commctrl.h>
-#include <helpers/BumpableElem.h>
+#include <../helpers/BumpableElem.h>
 #include <windows.h>
 #include <windowsx.h>
 
-#include "columns_ui-sdk/ui_extension.h"
-#include "foobar2000/SDK/foobar2000.h"
+#include "../columns_ui-sdk/ui_extension.h"
+#include "../foobar2000/SDK/foobar2000.h"
 #include "libmpv.h"
 #include "resource.h"
 

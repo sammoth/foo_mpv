@@ -1,7 +1,7 @@
 #include "stdafx.h"
 // PCH ^
 
-#include <helpers/atl-misc.h>
+#include <../helpers/atl-misc.h>
 
 #include <sstream>
 

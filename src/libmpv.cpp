@@ -6,8 +6,8 @@
 #include <set>
 #include <thread>
 
-#include "helpers/atl-misc.h"
-#include "helpers/win32_misc.h"
+#include "../helpers/atl-misc.h"
+#include "../helpers/win32_misc.h"
 #include "libmpv.h"
 #include "resource.h"
 

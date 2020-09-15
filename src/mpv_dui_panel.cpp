@@ -1,7 +1,7 @@
 #include "stdafx.h"
 // PCH ^
 
-#include <helpers/BumpableElem.h>
+#include <../helpers/BumpableElem.h>
 
 #include <sstream>
 

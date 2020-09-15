@@ -1,5 +1,1 @@
-Debug*
-Release*
-.vs*
-*.user
-*.aps
+foobar-test/*
