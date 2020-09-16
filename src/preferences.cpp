@@ -77,7 +77,7 @@ advconfig_integer_factory cfg_max_drift(
     0, 20, 0, 1000, 0);
 advconfig_integer_factory cfg_hard_sync_threshold("Hard sync threshold (ms)",
                                                    guid_cfg_hard_sync,
-                                                   guid_cfg_branch, 0, 2000,
+                                                   guid_cfg_branch, 0, 3000,
                                                    0, 10000, 0);
 advconfig_integer_factory cfg_hard_sync_interval(
     "Minimum time between hard syncs (seconds)",

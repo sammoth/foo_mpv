@@ -28,6 +28,7 @@ mpv_player::mpv_player()
       sync_task(sync_task_type::Wait),
       sync_on_unpause(false),
       last_mpv_seek(0),
+      last_hard_sync(-99),
       time_base(0) {
   sync_thread = std::thread([this]() {
     while (true) {
@@ -363,7 +364,7 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 }
 void mpv_player::on_playback_seek(double p_time) {
   update_title();
-  mpv_seek(p_time, true);
+  mpv_seek(p_time);
 }
 void mpv_player::on_playback_pause(bool p_state) {
   update_title();
@@ -409,6 +410,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
       double start_time =
           new_file ? 0.0 : playback_control::get()->playback_get_position();
       last_mpv_seek = ceil(1000 * start_time) / 1000.0;
+      last_hard_sync = -99;
 
       std::stringstream time_sstring;
       time_sstring.setf(std::ios::fixed);
@@ -529,7 +531,7 @@ void mpv_player::mpv_pause(bool state) {
   cv.notify_all();
 }
 
-void mpv_player::mpv_seek(double time, bool sync_after) {
+void mpv_player::mpv_seek(double time) {
   if (!mpv_init() || !enabled || is_idle()) return;
 
   {
@@ -549,6 +551,7 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
     }
 
     last_mpv_seek = time;
+    last_hard_sync = -99;
     // reset speed
     double unity = 1.0;
     if (libmpv()->set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &unity) < 0 &&
@@ -612,17 +615,15 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
       }
     }
 
-    if (sync_after) {
-      if (playback_control::get()->is_paused()) {
-        sync_on_unpause = true;
-        if (cfg_logging) {
-          console::info("mpv: Queueing sync after paused seek");
-        }
-      } else {
-        sync_task = sync_task_type::FirstFrameSync;
-        if (cfg_logging) {
-          console::info("mpv: Starting first frame sync after seek");
-        }
+    if (playback_control::get()->is_paused()) {
+      sync_on_unpause = true;
+      if (cfg_logging) {
+        console::info("mpv: Queueing sync after paused seek");
+      }
+    } else {
+      sync_task = sync_task_type::FirstFrameSync;
+      if (cfg_logging) {
+        console::info("mpv: Starting first frame sync after seek");
       }
     }
 
@@ -647,10 +648,11 @@ void mpv_player::mpv_sync(double debug_time) {
   double new_speed = 1.0;
 
   if (abs(desync) > 0.001 * cfg_hard_sync_threshold &&
-      (fb_time - last_mpv_seek) > cfg_hard_sync_interval) {
+      (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
     timing_info::force_refresh();
-    mpv_seek(fb_time, true);
+    mpv_seek(fb_time);
+    last_hard_sync = fb_time;
     if (cfg_logging) {
       console::info("mpv: Hard a/v sync");
     }
