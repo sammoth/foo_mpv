@@ -22,8 +22,7 @@ extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
     cfg_hard_sync_interval;
 
 mpv_player::mpv_player()
-    : wid(NULL),
-      enabled(false),
+    : enabled(false),
       mpv(NULL),
       sync_task(sync_task_type::Wait),
       sync_on_unpause(false),
@@ -56,8 +55,6 @@ mpv_player::mpv_player()
   });
 
   update_container();
-  mpv_set_wid(Create(container->container_wnd(), 0, 0, WS_CHILD, 0));
-  update_window();
 }
 
 mpv_player::~mpv_player() {
@@ -88,9 +85,9 @@ void mpv_player::on_keydown(UINT key, WPARAM, LPARAM) {
   }
 }
 
-static enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
+enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
 void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-  if (mpv_init()) {
+  if (mpv != NULL) {
     if (is_idle()) {
       menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
     } else {
@@ -210,7 +207,7 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
   SetClassLong(
       m_hWnd, GCL_HICON,
       (LONG)LoadIcon(core_api::get_my_instance(), MAKEINTRESOURCE(IDI_ICON1)));
-  ShowWindow(SW_SHOW);
+  update();
   return 0;
 }
 
@@ -224,6 +221,9 @@ void mpv_player::update() {
 void mpv_player::update_window() {
   if (!fullscreen_) {
     if (GetParent() != container->container_wnd()) {
+      if (cfg_logging) {
+        console::info("mpv: Moving container");
+      }
       SetParent(container->container_wnd());
       invalidate_all_containers();
     }
@@ -264,7 +264,7 @@ void mpv_player::update_title() {
 }
 
 void mpv_player::set_background() {
-  if (!mpv_init()) return;
+  if (mpv == NULL) return;
 
   std::stringstream colorstrings;
   colorstrings << "#";
@@ -282,14 +282,14 @@ void mpv_player::set_background() {
 bool mpv_player::mpv_init() {
   if (!libmpv()->load_dll()) return false;
 
-  if (mpv == NULL && wid != NULL) {
+  if (mpv == NULL && m_hWnd != NULL) {
     pfc::string_formatter path;
     path.add_filename(core_api::get_profile_path());
     path.add_filename("mpv");
     path.replace_string("\\file://", "");
     mpv = libmpv()->create();
 
-    int64_t l_wid = (intptr_t)(wid);
+    int64_t l_wid = (intptr_t)(m_hWnd);
     libmpv()->set_option(mpv, "wid", MPV_FORMAT_INT64, &l_wid);
 
     libmpv()->set_option_string(mpv, "load-scripts", "no");
@@ -349,8 +349,6 @@ void mpv_player::mpv_terminate() {
   }
 };
 
-void mpv_player::mpv_set_wid(HWND wnd) { wid = wnd; }
-
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {}
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
@@ -377,7 +375,8 @@ void mpv_player::on_playback_time(double p_time) {
 }
 
 void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
-  if (!mpv_init() || !enabled) return;
+  if (!enabled) return;
+  if (mpv == NULL && !mpv_init()) return;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -471,7 +470,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 }
 
 void mpv_player::mpv_stop() {
-  if (!mpv_init()) return;
+  if (mpv == NULL) return;
 
   sync_on_unpause = false;
 
@@ -501,7 +500,7 @@ bool mpv_player::is_idle() {
 }
 
 void mpv_player::mpv_pause(bool state) {
-  if (!mpv_init() || !enabled || is_idle()) return;
+  if (mpv == NULL || !enabled || is_idle()) return;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -532,7 +531,7 @@ void mpv_player::mpv_pause(bool state) {
 }
 
 void mpv_player::mpv_seek(double time) {
-  if (!mpv_init() || !enabled || is_idle()) return;
+  if (mpv == NULL || !enabled || is_idle()) return;
 
   {
     std::lock_guard<std::mutex> lock(cv_mutex);
@@ -633,7 +632,7 @@ void mpv_player::mpv_seek(double time) {
 }
 
 void mpv_player::mpv_sync(double debug_time) {
-  if (!mpv_init() || !enabled || is_idle()) return;
+  if (mpv == NULL || !enabled || is_idle()) return;
 
   if (playback_control::get()->is_paused()) {
     return;
@@ -689,7 +688,7 @@ void mpv_player::mpv_sync(double debug_time) {
 }
 
 void mpv_player::sync_thread_sync() {
-  if (!mpv_init() || !enabled) return;
+  if (mpv == NULL || !enabled) return;
 
   sync_on_unpause = false;
 
@@ -859,19 +858,19 @@ void mpv_player::sync_thread_sync() {
 }
 
 const char* mpv_player::get_string(const char* name) {
-  if (!mpv_init()) return "Error";
+  if (mpv == NULL) return "Error";
   return libmpv()->get_property_string(mpv, name);
 }
 
 bool mpv_player::get_bool(const char* name) {
-  if (!mpv_init()) return false;
+  if (mpv == NULL) return false;
   int flag = 0;
   libmpv()->get_property(mpv, name, MPV_FORMAT_FLAG, &flag);
   return flag == 1;
 }
 
 double mpv_player::get_double(const char* name) {
-  if (!mpv_init()) return 0;
+  if (mpv == NULL) return 0;
   double num = 0;
   libmpv()->get_property(mpv, name, MPV_FORMAT_DOUBLE, &num);
   return num;

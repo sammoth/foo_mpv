@@ -9,7 +9,7 @@ namespace mpv {
 extern cfg_uint cfg_bg_color;
 
 static std::vector<mpv_container*> g_mpv_containers;
-static std::unique_ptr<mpv_player> g_mpv_player;
+static CWindowAutoLifetime<mpv_player>* g_mpv_player;
 
 void invalidate_all_containers() {
   for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it)
@@ -131,7 +131,7 @@ void mpv_container::container_create() {
   g_mpv_containers.push_back(this);
 
   if (!g_mpv_player) {
-    g_mpv_player = std::unique_ptr<mpv_player>(new mpv_player());
+    g_mpv_player = new CWindowAutoLifetime<mpv_player>(this->container_wnd());
   } else {
     g_mpv_player->update();
   }

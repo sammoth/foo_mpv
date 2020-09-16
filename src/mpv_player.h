@@ -21,11 +21,9 @@ void get_popup_title(pfc::string8& s);
 class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   // player
   mpv_handle* mpv;
-  HWND wid;
   bool enabled;
 
   bool mpv_init();
-  void mpv_set_wid(HWND wnd);
   void mpv_terminate();
   void mpv_play(metadb_handle_ptr metadb, bool new_track);
   void mpv_stop();
@@ -95,6 +93,10 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   // window
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
+
+  static DWORD GetWndStyle(DWORD style) {
+    return WS_CHILD | WS_VISIBLE;
+  }
 
   BEGIN_MSG_MAP_EX(CMpvWindow)
   MSG_WM_CREATE(on_create)
