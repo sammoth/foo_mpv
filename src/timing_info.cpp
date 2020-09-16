@@ -9,6 +9,15 @@ static std::atomic<timing_info> g_timing_info;
 
 timing_info get() { return g_timing_info.load(); }
 
+void force_refresh() {
+  visualisation_stream::ptr vis_stream;
+  visualisation_manager::get()->create_stream(vis_stream, 0);
+  double vistime;
+  vis_stream->get_absolute_time(vistime);
+  double fb_time = playback_control::get()->playback_get_position();
+  g_timing_info.store({0.0, vistime - fb_time});
+}
+
 class timing_info_callbacks : public play_callback_static {
   void on_playback_new_track(metadb_handle_ptr p_track) {
     visualisation_stream::ptr vis_stream;
@@ -37,4 +46,4 @@ class timing_info_callbacks : public play_callback_static {
 };
 
 static service_factory_single_t<timing_info_callbacks> g_timing_info_callbacks;
-}  // namespace mpv
+}  // namespace timing_info

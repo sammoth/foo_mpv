@@ -184,8 +184,6 @@ void mpv_player::toggle_fullscreen() {
     SetWindowLong(GWL_STYLE,
                   saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
                       WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
-    // SetWindowLong(GWL_EXSTYLE,
-    //              saved_ex_style);
 
     MONITORINFO monitor_info;
     monitor_info.cbSize = sizeof(monitor_info);
@@ -636,13 +634,6 @@ void mpv_player::mpv_seek(double time, bool sync_after) {
 void mpv_player::mpv_sync(double debug_time) {
   if (!mpv_init() || !enabled || is_idle()) return;
 
-  if (sync_task == sync_task_type::FirstFrameSync) {
-    if (cfg_logging) {
-      console::info("mpv: Skipping regular sync");
-    }
-    return;
-  }
-
   if (playback_control::get()->is_paused()) {
     return;
   }
@@ -658,11 +649,19 @@ void mpv_player::mpv_sync(double debug_time) {
   if (abs(desync) > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_mpv_seek) > cfg_hard_sync_interval) {
     // hard sync
+    timing_info::force_refresh();
     mpv_seek(fb_time, true);
     if (cfg_logging) {
-      console::info("mpv: A/V sync");
+      console::info("mpv: Hard a/v sync");
     }
   } else {
+    if (sync_task == sync_task_type::FirstFrameSync) {
+      if (cfg_logging) {
+        console::info("mpv: Skipping regular sync");
+      }
+      return;
+    }
+
     // soft sync
     if (abs(desync) > 0.001 * cfg_max_drift) {
       // aim to correct mpv internal timer in 1 second, then let mpv catch up
