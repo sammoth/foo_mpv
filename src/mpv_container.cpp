@@ -6,7 +6,7 @@
 #include "preferences.h"
 
 namespace mpv {
-extern cfg_uint cfg_mpv_bg_color;
+extern cfg_uint cfg_bg_color;
 
 static std::vector<mpv_container*> g_mpv_containers;
 static std::unique_ptr<mpv_player> g_mpv_player;
@@ -55,7 +55,7 @@ void mpv_container::update_player_window() {
 
 bool mpv_container::container_is_pinned() { return pinned; }
 
-t_ui_color mpv_container::get_bg() { return cfg_mpv_bg_color; }
+t_ui_color mpv_container::get_bg() { return cfg_bg_color; }
 
 void mpv_container::container_unpin() {
   for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
