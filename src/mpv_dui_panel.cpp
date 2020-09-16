@@ -5,8 +5,8 @@
 
 #include <sstream>
 
-#include "libmpv.h"
 #include "resource.h"
+#include "mpv_container.h"
 
 void RunMpvPopupWindow();
 

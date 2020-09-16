@@ -8,8 +8,8 @@
 
 #include "../columns_ui-sdk/ui_extension.h"
 #include "../foobar2000/SDK/foobar2000.h"
-#include "libmpv.h"
 #include "resource.h"
+#include "mpv_container.h"
 
 void RunMpvPopupWindow();
 
