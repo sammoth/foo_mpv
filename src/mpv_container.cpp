@@ -6,14 +6,13 @@
 #include "preferences.h"
 
 namespace mpv {
-extern cfg_uint cfg_bg_color;
+extern cfg_uint cfg_bg_color, cfg_panel_metric;
 
 static std::vector<mpv_container*> g_mpv_containers;
 static CWindowAutoLifetime<mpv_player>* g_mpv_player;
 
 void invalidate_all_containers() {
-  for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it)
-  {
+  for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
     (**it).invalidate();
   }
 }
@@ -29,7 +28,18 @@ mpv_container* get_main_container() {
     }
     if (!(*it)->is_visible()) continue;
 
-    double priority = (*it)->cx * (*it)->cy;
+    double priority = 0;
+    switch (cfg_panel_metric) {
+      case 0:
+        priority = (*it)->cx * (*it)->cy;
+        break;
+      case 1:
+        priority = (*it)->cx;
+        break;
+      case 2:
+        priority = (*it)->cy;
+        break;
+    }
     if (priority > top_priority) {
       main = *it;
       top_priority = priority;

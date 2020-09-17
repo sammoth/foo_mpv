@@ -33,12 +33,6 @@
     <ClCompile Include="mpv_cui_panel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="frame_extractor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="ffmpeg_art_provider.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="preferences.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -54,15 +48,36 @@
     <ClCompile Include="libmpv.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="sqlite3.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Backup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Column.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Database.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Exception.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Statement.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Transaction.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="thumbnailer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="frame_extractor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="timing_info.h">
@@ -78,6 +93,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="preferences.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="sqlite3.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="thumbnailer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

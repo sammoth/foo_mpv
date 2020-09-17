@@ -34,16 +34,48 @@ IDI_ICON1               ICON                    "icon.ico"
 // Dialog
 //
 
-IDD_MPV_PREFS DIALOGEX 0, 0, 321, 227
+IDD_MPV_PREFS DIALOGEX 0, 0, 321, 283
 STYLE DS_SETFONT | WS_CHILD
 FONT 8, "Microsoft Sans Serif", 400, 0, 0x0
 BEGIN
-    LTEXT           "Background",IDC_STATIC,7,14,40,9
-    CONTROL         "",IDC_BUTTON_BG,"Button",BS_OWNERDRAW | BS_BITMAP | BS_FLAT | WS_TABSTOP,59,11,38,15,WS_EX_CLIENTEDGE
-    EDITTEXT        IDC_EDIT_POPUP,7,49,297,13,ES_AUTOHSCROLL
-    LTEXT           "Popup window title format:",IDC_STATIC,7,37,84,8
-    CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,115,14,99,10
-    CONTROL         "Stop video when hidden",IDC_CHECK_STOP,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,73,93,10
+    LTEXT           "Custom background color:",IDC_STATIC,7,79,94,12
+    CONTROL         "",IDC_BUTTON_BG,"Button",BS_OWNERDRAW | BS_BITMAP | BS_FLAT | WS_TABSTOP,102,76,38,15,WS_EX_STATICEDGE
+    EDITTEXT        IDC_EDIT_POPUP,7,24,307,13,ES_AUTOHSCROLL
+    LTEXT           "Popup window title format:",IDC_STATIC,7,14,84,8
+    CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,96,157,10
+    CONTROL         "Stop video playback when not visible",IDC_CHECK_STOP,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,42,298,10
+    CONTROL         "Generate video thumbnails as artwork",IDC_CHECK_THUMBNAILS,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,122,193,10
+    CONTROL         "Cache thumbnails on disk",IDC_CHECK_THUMB_CACHE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,216,122,97,10
+    LTEXT           "Maximum cache size:",IDC_STATIC,216,163,94,8
+    LTEXT           "Thumbnail size:",IDC_STATIC,14,208,78,8
+    LTEXT           "Cache image quality:",IDC_STATIC,216,193,95,10
+    LTEXT           "Scaling method:",IDC_STATIC,14,236,79,8
+    COMBOBOX        IDC_COMBO_THUMBSIZE,14,219,77,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_CACHESIZE,216,174,83,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_SCALING,14,248,77,14,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "",IDC_SLIDER_CACHEQUALITY,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,221,206,79,15
+    LTEXT           "Disabling this will prevent the video needing to reload and resync when showing and hiding the video panel",IDC_STATIC,22,54,275,17
+    CONTROL         "Use first item in group of tracks for thumbnail",IDC_RADIO_FIRSTINGROUP,
+                    "Button",BS_AUTORADIOBUTTON | WS_GROUP,14,161,195,11
+    CONTROL         "Use longest item in group of tracks for thumbnail",IDC_RADIO_LONGESTINGROUP,
+                    "Button",BS_AUTORADIOBUTTON,14,173,196,11
+    CONTROL         "Avoid excessively dark/light video frames",IDC_CHECK_AVOIDDARK,
+                    "Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,104,262,192,10
+    LTEXT           "Thumbnail seek type:",IDC_STATIC,104,208,104,8
+    COMBOBOX        IDC_COMBO_SEEKTYPE,104,219,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "",IDC_SLIDER_SEEK,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,103,243,100,15
+    LTEXT           "Cover type to provide:",IDC_STATIC,14,142,86,8
+    COMBOBOX        IDC_COMBO_COVERTYPE,106,140,88,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Use any manual override from group",IDC_CHECK_GROUPOVERRIDE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,188,183,10
+    LTEXT           "Seek position:",IDC_STATIC,108,234,46,8
+    LTEXT           "Move video to panel with greatest:",IDC_STATIC,188,75,110,8
+    COMBOBOX        IDC_COMBO_PANELMETRIC,188,88,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Image format:",IDC_STATIC,216,135,98,8
+    COMBOBOX        IDC_COMBO_FORMAT,216,146,83,46,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "",IDC_STATIC,7,112,307,164
 END
 
 
@@ -60,7 +92,7 @@ BEGIN
         LEFTMARGIN, 7
         RIGHTMARGIN, 314
         TOPMARGIN, 7
-        BOTTOMMARGIN, 220
+        BOTTOMMARGIN, 276
     END
 END
 #endif    // APSTUDIO_INVOKED

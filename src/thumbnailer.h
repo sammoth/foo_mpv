@@ -12,9 +12,11 @@ extern "C" {
 }
 
 namespace mpv {
-class frame_extractor {
+class extractor {
   pfc::string8 filename;
   bool found;
+
+  bool set_output_quality;
 
   AVFormatContext* p_format_context;
   AVCodec* codec;
@@ -32,13 +34,9 @@ class frame_extractor {
   int stream_index;
 
  public:
-  enum art_image_format {
-    jpeg = 1,
-    bitmap = 2,
-  };
-
-  frame_extractor(art_image_format format, const char* path);
-  ~frame_extractor();
+  extractor(const char* path);
+  ~extractor();
+  void seek_default();
   void seek_percent(float percent);
 
   album_art_data_ptr get_art();

@@ -350,7 +350,9 @@ void mpv_player::mpv_terminate() {
 };
 
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
-                                      bool p_paused) {}
+                                      bool p_paused) {
+    mpv_pause(p_paused);
+}
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
   update_title();
   update();

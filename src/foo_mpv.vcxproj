@@ -124,8 +124,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ffmpeg_art_provider.cpp" />
-    <ClCompile Include="frame_extractor.cpp" />
+    <ClCompile Include="thumbnailer.cpp" />
     <ClCompile Include="libmpv.cpp" />
     <ClCompile Include="mpv_player.cpp" />
     <ClCompile Include="main.cpp" />
@@ -135,6 +134,34 @@
     <ClCompile Include="mpv_popup.cpp" />
     <ClCompile Include="mpv_cui_panel.cpp" />
     <ClCompile Include="preferences.cpp" />
+    <ClCompile Include="sqlite3.c">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Backup.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Column.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Database.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Exception.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Statement.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Transaction.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
@@ -142,12 +169,13 @@
     <ClCompile Include="timing_info.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="frame_extractor.h" />
+    <ClInclude Include="thumbnailer.h" />
     <ClInclude Include="preferences.h" />
     <ClInclude Include="libmpv.h" />
     <ClInclude Include="mpv_player.h" />
     <ClInclude Include="mpv_container.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="sqlite3.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="timing_info.h" />
   </ItemGroup>

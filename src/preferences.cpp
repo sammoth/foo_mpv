@@ -7,14 +7,14 @@
 #include "resource.h"
 
 namespace mpv {
-static const GUID g_guid_cfg_bg_color = {
+static const GUID guid_cfg_bg_color = {
     0xb62c3ef, 0x3c6e, 0x4620, {0xbf, 0xa2, 0x24, 0xa, 0x5e, 0xdd, 0xbc, 0x4b}};
-static const GUID g_guid_cfg_popup_titleformat = {
+static const GUID guid_cfg_popup_titleformat = {
     0x811a9299,
     0x833d,
     0x4d38,
     {0xb3, 0xee, 0x89, 0x19, 0x8d, 0xed, 0x20, 0x77}};
-static const GUID g_guid_cfg_black_fullscreen = {
+static const GUID guid_cfg_black_fullscreen = {
     0x2e633cfd,
     0xbb88,
     0x4e69,
@@ -59,36 +59,119 @@ static const GUID guid_cfg_video_enabled = {
     0x6804,
     0x4291,
     {0xa6, 0x8d, 0xb6, 0xac, 0x41, 0x89, 0x8c, 0x1d}};
+static const GUID guid_cfg_panel_metric = {
+    0xe8f4e209,
+    0x9583,
+    0x496d,
+    {0xb6, 0xa3, 0x8e, 0xed, 0x10, 0x86, 0xae, 0x44}};
+
+static const GUID guid_cfg_thumbnails = {
+    0xa06a6a79,
+    0xff21,
+    0x453f,
+    {0xa7, 0x6c, 0xbf, 0xf0, 0x3b, 0x3f, 0xee, 0x4b}};
+static const GUID guid_cfg_thum_cover_type = {
+    0xe2525d22,
+    0xabcc,
+    0x4ed4,
+    {0xa8, 0x9b, 0x16, 0x18, 0xa5, 0xfc, 0x6, 0x21}};
+static const GUID guid_cfg_item_in_group = {
+    0x9be7baa, 0x9e8f, 0x47cb, {0xb4, 0xc9, 0x8c, 0xcf, 0x6, 0x45, 0x2a, 0x1}};
+static const GUID guid_cfg_group_override = {
+    0xec868147,
+    0x4e80,
+    0x4703,
+    {0x86, 0x6f, 0xe4, 0x18, 0x3a, 0x89, 0x5b, 0x24}};
+static const GUID guid_cfg_thumb_size = {
+    0xc181478a,
+    0x2d69,
+    0x4933,
+    {0x96, 0x7, 0x5c, 0x52, 0x11, 0x55, 0xa5, 0xb6}};
+static const GUID guid_cfg_thumb_scaling = {
+    0x3723d7e0,
+    0xcc07,
+    0x40cf,
+    {0x9a, 0x2c, 0xed, 0x5c, 0x69, 0xf0, 0xe4, 0x5f}};
+static const GUID guid_cfg_thumb_seektype = {
+    0x47136c49,
+    0xbd28,
+    0x4cbd,
+    {0xaa, 0x2c, 0x6e, 0xb2, 0xab, 0x5c, 0x5a, 0x44}};
+static const GUID guid_cfg_thumb_seek = {
+    0x6e455d58,
+    0xe11a,
+    0x4158,
+    {0x92, 0x4c, 0x29, 0x50, 0xa4, 0x70, 0xb9, 0xe7}};
+static const GUID guid_cfg_thumb_avoid_dark = {
+    0xbf7cab8,
+    0x1365,
+    0x4f27,
+    {0xbd, 0x14, 0x22, 0xc6, 0x99, 0x7c, 0x22, 0x8e}};
+static const GUID guid_cfg_thumb_cache = {
+    0xd194fb34,
+    0x6a16,
+    0x4683,
+    {0xbe, 0x67, 0x41, 0x13, 0x5a, 0x35, 0x2, 0x2f}};
+static const GUID guid_cfg_thumb_cache_size = {
+    0x5163cef5,
+    0xd926,
+    0x4ce9,
+    {0x88, 0x18, 0xee, 0xa9, 0x19, 0x6f, 0xe7, 0x73}};
+static const GUID guid_cfg_cache_quality = {
+    0x5754e50a,
+    0x8d78,
+    0x432a,
+    {0xa6, 0x26, 0x4f, 0xeb, 0x7b, 0xd4, 0x41, 0x95}};
+static const GUID guid_cfg_cache_format = {
+    0xfc82870,
+    0x6b5f,
+    0x49a7,
+    {0x8c, 0xa1, 0xca, 0x98, 0xdd, 0x5b, 0xa9, 0x20}};
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
-cfg_uint cfg_bg_color(g_guid_cfg_bg_color, 0);
-cfg_bool cfg_black_fullscreen(g_guid_cfg_black_fullscreen, true);
+cfg_uint cfg_bg_color(guid_cfg_bg_color, 0);
+cfg_bool cfg_black_fullscreen(guid_cfg_black_fullscreen, true);
 cfg_bool cfg_stop_hidden(guid_cfg_stop_hidden, true);
+cfg_uint cfg_panel_metric(guid_cfg_panel_metric, 0);
 
-static cfg_string cfg_popup_titleformat(
-    g_guid_cfg_popup_titleformat, "%title% - %artist%[' ('%album%')']");
+static cfg_string cfg_popup_titleformat(guid_cfg_popup_titleformat,
+                                        "%title% - %artist%[' ('%album%')']");
+
+cfg_bool cfg_thumbs(guid_cfg_thumbnails, true);
+cfg_uint cfg_thumb_cover_type(guid_cfg_thum_cover_type, 0);
+cfg_bool cfg_thumb_group_longest(guid_cfg_item_in_group, true);
+cfg_bool cfg_thumb_group_override(guid_cfg_group_override, true);
+cfg_uint cfg_thumb_size(guid_cfg_thumb_size, 1);
+cfg_uint cfg_thumb_scaling(guid_cfg_thumb_scaling, 1);
+cfg_uint cfg_thumb_seektype(guid_cfg_thumb_seektype, 0);
+cfg_uint cfg_thumb_seek(guid_cfg_thumb_seek, 30);
+cfg_bool cfg_thumb_avoid_dark(guid_cfg_thumb_avoid_dark, true);
+cfg_bool cfg_thumb_cache(guid_cfg_thumb_cache, true);
+cfg_uint cfg_thumb_cache_size(guid_cfg_thumb_cache_size, 0);
+cfg_uint cfg_thumb_cache_quality(guid_cfg_cache_quality, 30);
+cfg_uint cfg_thumb_cache_format(guid_cfg_cache_format, 0);
 
 static advconfig_branch_factory g_mpv_branch(
     "mpv", guid_cfg_branch, advconfig_branch::guid_branch_playback, 0);
 
-advconfig_integer_factory cfg_max_drift(
-    "Permitted timing drift (ms)", guid_cfg_max_drift, guid_cfg_branch,
-    0, 20, 0, 1000, 0);
+advconfig_integer_factory cfg_max_drift("Permitted timing drift (ms)",
+                                        guid_cfg_max_drift, guid_cfg_branch, 0,
+                                        20, 0, 1000, 0);
 advconfig_integer_factory cfg_hard_sync_threshold("Hard sync threshold (ms)",
-                                                   guid_cfg_hard_sync,
-                                                   guid_cfg_branch, 0, 3000,
-                                                   0, 10000, 0);
+                                                  guid_cfg_hard_sync,
+                                                  guid_cfg_branch, 0, 3000, 0,
+                                                  10000, 0);
 advconfig_integer_factory cfg_hard_sync_interval(
-    "Minimum time between hard syncs (seconds)",
-    guid_cfg_hard_sync_interval, guid_cfg_branch, 0, 10, 0, 30, 0);
+    "Minimum time between hard syncs (seconds)", guid_cfg_hard_sync_interval,
+    guid_cfg_branch, 0, 10, 0, 30, 0);
 
-advconfig_checkbox_factory cfg_logging(
-    "Enable verbose console logging", guid_cfg_logging, guid_cfg_branch,
-    0, false);
-advconfig_checkbox_factory cfg_mpv_logfile(
-    "Enable mpv log file", guid_cfg_native_logging, guid_cfg_branch, 0,
-    false);
+advconfig_checkbox_factory cfg_logging("Enable verbose console logging",
+                                       guid_cfg_logging, guid_cfg_branch, 0,
+                                       false);
+advconfig_checkbox_factory cfg_mpv_logfile("Enable mpv log file",
+                                           guid_cfg_native_logging,
+                                           guid_cfg_branch, 0, false);
 
 static titleformat_object::ptr popup_titlefomat_script;
 
@@ -107,8 +190,7 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
                         public preferences_page_instance {
  public:
   CMpvPreferences(preferences_page_callback::ptr callback)
-      : m_callback(callback),
-        button_brush(CreateSolidBrush(cfg_bg_color)) {}
+      : m_callback(callback), button_brush(CreateSolidBrush(cfg_bg_color)) {}
 
   enum { IDD = IDD_MPV_PREFS };
 
@@ -117,24 +199,39 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   void reset();
 
   BEGIN_MSG_MAP_EX(CMyPreferences)
-  MSG_WM_INITDIALOG(OnInitDialog)
-  MSG_WM_CTLCOLORBTN(on_color_button)
+  MSG_WM_INITDIALOG(OnInitDialog);
+  MSG_WM_CTLCOLORBTN(on_color_button);
+  MSG_WM_HSCROLL(OnScroll);
   COMMAND_HANDLER_EX(IDC_BUTTON_BG, BN_CLICKED, OnBgClick);
-  COMMAND_HANDLER_EX(IDC_CHECK_FSBG, EN_CHANGE, OnEditChange)
-  COMMAND_HANDLER_EX(IDC_CHECK_STOP, EN_CHANGE, OnEditChange)
-  COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditTextChange)
+  COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_THUMBNAILS, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_THUMB_CACHE, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_RADIO_FIRSTINGROUP, BN_CLICKED, OnEditChange)
+  COMMAND_HANDLER_EX(IDC_CHECK_AVOIDDARK, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_COVERTYPE, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_GROUPOVERRIDE, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_CACHESIZE, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_FORMAT, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_THUMBSIZE, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_SCALING, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_SEEKTYPE, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_PANELMETRIC, CBN_SELCHANGE, OnEditChange);
   END_MSG_MAP()
 
  private:
   BOOL OnInitDialog(CWindow, LPARAM);
   void OnBgClick(UINT, int, CWindow);
   void OnEditChange(UINT, int, CWindow);
-  void OnEditTextChange(UINT, int, CWindow);
+  void OnScroll(UINT, int, CWindow);
   bool HasChanged();
   void OnChanged();
   CBrush button_brush;
   HBRUSH on_color_button(HDC wp, HWND lp);
-  bool edit_dirty = false;
+  bool dirty = false;
+
+  void set_controls_enabled();
 
   const preferences_page_callback::ptr m_callback;
 
@@ -149,15 +246,82 @@ HBRUSH CMpvPreferences::on_color_button(HDC wp, HWND lp) {
 }
 
 BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
+  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
+  dirty = false;
+
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
 
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
+  CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
+  CheckDlgButton(IDC_CHECK_AVOIDDARK, cfg_thumb_avoid_dark);
+  CheckDlgButton(IDC_CHECK_THUMB_CACHE, cfg_thumb_cache);
+  CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, cfg_thumb_group_override);
+  CheckDlgButton(IDC_RADIO_LONGESTINGROUP, cfg_thumb_group_longest);
+  CheckDlgButton(IDC_RADIO_FIRSTINGROUP, !cfg_thumb_group_longest);
 
-  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
+  CComboBox combo_covertype = (CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE);
+  combo_covertype.AddString(L"Front");
+  combo_covertype.AddString(L"Back");
+  combo_covertype.AddString(L"Disc");
+  combo_covertype.AddString(L"Artist");
+  combo_covertype.AddString(L"All");
+  combo_covertype.SetCurSel(cfg_thumb_cover_type);
 
-  edit_dirty = false;
+  CComboBox combo_panelmetric = (CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC);
+  combo_panelmetric.AddString(L"Area");
+  combo_panelmetric.AddString(L"Width");
+  combo_panelmetric.AddString(L"Height");
+  combo_panelmetric.SetCurSel(cfg_panel_metric);
+
+  CComboBox combo_scaling = (CComboBox)uGetDlgItem(IDC_COMBO_SCALING);
+  combo_scaling.AddString(L"Bilinear");
+  combo_scaling.AddString(L"Bicubic");
+  combo_scaling.AddString(L"Lanczos");
+  combo_scaling.AddString(L"Sinc");
+  combo_scaling.AddString(L"Spline");
+  combo_scaling.SetCurSel(cfg_thumb_scaling);
+
+  CComboBox combo_seektype = (CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE);
+  combo_seektype.AddString(L"Percent");
+  combo_seektype.AddString(L"Find good frame (slower)");
+  combo_seektype.SetCurSel(cfg_thumb_seektype);
+
+  CComboBox combo_thumbsize = (CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE);
+  combo_thumbsize.AddString(L"200px");
+  combo_thumbsize.AddString(L"400px");
+  combo_thumbsize.AddString(L"600px");
+  combo_thumbsize.AddString(L"1000px");
+  combo_thumbsize.AddString(L"Original");
+  combo_thumbsize.SetCurSel(cfg_thumb_size);
+
+  CComboBox combo_cachesize = (CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE);
+  combo_cachesize.AddString(L"200MB");
+  combo_cachesize.AddString(L"500MB");
+  combo_cachesize.AddString(L"1GB");
+  combo_cachesize.AddString(L"2GB");
+  combo_cachesize.AddString(L"Unlimited");
+  combo_cachesize.SetCurSel(cfg_thumb_cache_size);
+
+  CComboBox combo_cacheformat = (CComboBox)uGetDlgItem(IDC_COMBO_FORMAT);
+  combo_cacheformat.AddString(L"JPEG");
+  combo_cacheformat.AddString(L"PNG");
+  combo_cacheformat.AddString(L"RGB");
+  combo_cacheformat.SetCurSel(cfg_thumb_cache_format);
+
+  CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK);
+  slider_seek.SetRangeMin(1);
+  slider_seek.SetRangeMax(80);
+  slider_seek.SetPos(cfg_thumb_seek);
+
+  CTrackBarCtrl slider_quality =
+      (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_CACHEQUALITY);
+  slider_quality.SetRangeMin(1);
+  slider_quality.SetRangeMax(30);
+  slider_quality.SetPos(cfg_thumb_cache_quality);
+
+  set_controls_enabled();
 
   return FALSE;
 }
@@ -178,10 +342,14 @@ void CMpvPreferences::OnBgClick(UINT, int, CWindow) {
   }
 }
 
-void CMpvPreferences::OnEditChange(UINT, int, CWindow) { OnChanged(); }
-void CMpvPreferences::OnEditTextChange(UINT, int, CWindow) {
-  edit_dirty = true;
+void CMpvPreferences::OnEditChange(UINT, int, CWindow) {
+  dirty = true;
   OnChanged();
+}
+
+void CMpvPreferences::OnScroll(UINT, int, CWindow) {
+  dirty = true;
+  m_callback->on_state_changed();
 }
 
 t_uint32 CMpvPreferences::get_state() {
@@ -196,6 +364,23 @@ void CMpvPreferences::reset() {
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, "%title% - %artist%[ (%album%)]");
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
+  CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
+  CheckDlgButton(IDC_CHECK_AVOIDDARK, true);
+  CheckDlgButton(IDC_CHECK_THUMB_CACHE, true);
+  CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, true);
+  CheckDlgButton(IDC_RADIO_LONGESTINGROUP, true);
+
+  ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_SCALING)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).SetCurSel(0);
+
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).SetPos(30);
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_CACHEQUALITY)).SetPos(90);
+
   OnChanged();
 }
 
@@ -213,25 +398,60 @@ void CMpvPreferences::apply() {
   static_api_ptr_t<titleformat_compiler>()->compile_safe(
       popup_titlefomat_script, cfg_popup_titleformat);
 
+  cfg_thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
+  cfg_thumb_cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
+  cfg_thumb_avoid_dark = IsDlgButtonChecked(IDC_CHECK_AVOIDDARK);
+  cfg_thumb_group_longest = IsDlgButtonChecked(IDC_RADIO_LONGESTINGROUP);
+  cfg_thumb_group_override = IsDlgButtonChecked(IDC_CHECK_GROUPOVERRIDE);
+
+  cfg_thumb_cover_type =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).GetCurSel();
+  cfg_panel_metric =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
+  cfg_thumb_scaling = ((CComboBox)uGetDlgItem(IDC_COMBO_SCALING)).GetCurSel();
+  cfg_thumb_seektype = ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).GetCurSel();
+  cfg_thumb_size = ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).GetCurSel();
+  cfg_thumb_cache_size =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).GetCurSel();
+  cfg_thumb_cache_format =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).GetCurSel();
+
+  cfg_thumb_seek = ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).GetPos();
+  cfg_thumb_cache_quality =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_CACHEQUALITY)).GetPos();
+
   mpv::invalidate_all_containers();
-  edit_dirty = false;
+  dirty = false;
   OnChanged();
 }
 
-bool CMpvPreferences::HasChanged() {
-  auto length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_POPUP));
-  WCHAR* buf = new WCHAR[length + 1];
-  GetDlgItemTextW(IDC_EDIT_POPUP, buf, length + 1);
-  pfc::string8 str;
-  str << buf;
-  return edit_dirty ||
-         IsDlgButtonChecked(IDC_CHECK_FSBG) != cfg_black_fullscreen ||
-         IsDlgButtonChecked(IDC_CHECK_STOP) != cfg_stop_hidden ||
-         bg_col != cfg_bg_color;
+bool CMpvPreferences::HasChanged() { return dirty; }
+
+void CMpvPreferences::set_controls_enabled() {
+  bool thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
+  bool cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
+  bool jpeg = ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).GetCurSel() == 0;
+  bool percent = ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).GetCurSel() == 0;
+
+  ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_SCALING)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).EnableWindow(thumbs && cache);
+  ((CComboBox)uGetDlgItem(IDC_RADIO_LONGESTINGROUP)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_RADIO_FIRSTINGROUP)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_CHECK_AVOIDDARK)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_CHECK_GROUPOVERRIDE)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_CHECK_THUMB_CACHE)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).EnableWindow(thumbs && cache);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs && percent);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_CACHEQUALITY))
+      .EnableWindow(thumbs && cache && jpeg);
 }
 
 void CMpvPreferences::OnChanged() {
   m_callback->on_state_changed();
+  set_controls_enabled();
   Invalidate();
 }
 
