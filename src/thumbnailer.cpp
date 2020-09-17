@@ -15,13 +15,14 @@ extern "C" {
 }
 
 #include "SQLiteCpp/SQLiteCpp.h"
+#include "include/sqlite3.h"
 
 namespace mpv {
 
 extern cfg_uint cfg_thumb_size, cfg_thumb_scaling, cfg_thumb_avoid_dark,
     cfg_thumb_seektype, cfg_thumb_seek, cfg_thumb_cache_quality,
     cfg_thumb_cache_format;
-extern cfg_bool cfg_thumb_cache;
+extern cfg_bool cfg_thumb_cache, cfg_thumbs;
 extern advconfig_checkbox_factory cfg_logging;
 
 static std::unique_ptr<SQLite::Database> db_ptr;
@@ -39,18 +40,16 @@ class db_loader : public initquit {
       db_ptr.reset(new SQLite::Database(
           db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
 
-      db_ptr->exec("PRAGMA mmap_size=268435456;");
-
-      db_ptr->exec(
-          "CREATE TABLE IF NOT EXISTS thumbs(location TEXT PRIMARY KEY NOT "
-          "NULL, subsong INT, created INT, thumb BLOB)");
-
       query_get.reset(new SQLite::Statement(
           *db_ptr,
           "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?"));
       query_put.reset(new SQLite::Statement(*db_ptr,
                                             "INSERT INTO thumbs VALUES (?, ?, "
                                             "CURRENT_TIMESTAMP, ?)"));
+
+      db_ptr->exec(
+          "CREATE TABLE IF NOT EXISTS thumbs(location TEXT PRIMARY KEY NOT "
+          "NULL, subsong INT, created INT, thumb BLOB)");
 
     } catch (SQLite::Exception e) {
       std::stringstream msg;
@@ -60,6 +59,95 @@ class db_loader : public initquit {
   }
 };
 static initquit_factory_t<db_loader> g_db_loader;
+
+void clear_thumbnail_cache() {
+  if (db_ptr) {
+    try {
+      int deletes = db_ptr->exec("DELETE FROM thumbs");
+      std::stringstream msg;
+      msg << "mpv: Deleted " << deletes << " thumbnails from database";
+      console::info(msg.str().c_str());
+    } catch (SQLite::Exception e) {
+      std::stringstream msg;
+      msg << "mpv: Error clearing thumbnail cache: " << e.what();
+      console::error(msg.str().c_str());
+    }
+  } else {
+    console::error("mpv: Thumbnail cache not loaded");
+  }
+
+  compact_thumbnail_cache();
+}
+
+void sqlitefunction_missing(sqlite3_context* context, int num,
+                            sqlite3_value** val) {
+  const char* location = (const char*)sqlite3_value_text(val[0]);
+  try {
+    if (filesystem::g_exists(location, fb2k::noAbort)) {
+      sqlite3_result_int(context, 1);
+      return;
+    }
+  } catch (exception_io e) {
+  }
+  sqlite3_result_int(context, 0);
+}
+
+void clean_thumbnail_cache() {
+  if (db_ptr) {
+    try {
+      db_ptr->createFunction("missing", 1, true, nullptr,
+                             sqlitefunction_missing);
+      int deletes =
+          db_ptr->exec("DELETE FROM thumbs WHERE missing(location) IS 0");
+      std::stringstream msg;
+      msg << "mpv: Deleted " << deletes << " dead thumbnails from database";
+      console::info(msg.str().c_str());
+    } catch (SQLite::Exception e) {
+      std::stringstream msg;
+      msg << "mpv: Error clearing thumbnail cache: " << e.what();
+      console::error(msg.str().c_str());
+    }
+  } else {
+    console::error("mpv: Thumbnail cache not loaded");
+  }
+
+  compact_thumbnail_cache();
+}
+
+void regenerate_thumbnail_cache() {
+  if (db_ptr) {
+    try {
+    } catch (SQLite::Exception e) {
+      std::stringstream msg;
+      msg << "mpv: Error clearing thumbnail cache: " << e.what();
+      console::error(msg.str().c_str());
+    }
+  } else {
+    console::error("mpv: Thumbnail cache not loaded");
+  }
+}
+
+void compact_thumbnail_cache() {
+  if (db_ptr) {
+    try {
+      query_get.reset();
+      query_put.reset();
+      db_ptr->exec("VACUUM");
+      query_get.reset(new SQLite::Statement(
+          *db_ptr,
+          "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?"));
+      query_put.reset(new SQLite::Statement(*db_ptr,
+                                            "INSERT INTO thumbs VALUES (?, ?, "
+                                            "CURRENT_TIMESTAMP, ?)"));
+    } catch (SQLite::Exception e) {
+      std::stringstream msg;
+      msg << "mpv: Error clearing thumbnail cache: " << e.what();
+      console::error(msg.str().c_str());
+    }
+  } else {
+    console::error("mpv: Thumbnail cache not loaded");
+  }
+}
 
 static void libavtry(int error) {
   if (error < 0) {
@@ -72,15 +160,16 @@ static void libavtry(int error) {
   }
 }
 
-extractor::extractor(const char* path) : found(false) {
-  filename.add_filename(path);
+thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
+    : found(false), metadb(p_metadb) {
+  pfc::string8 filename;
+  filename.add_filename(metadb->get_path());
   if (filename.has_prefix("\\file://")) {
     filename.remove_chars(0, 8);
 
-    if (filename.is_empty()) return;
+    if (filename.is_empty()) throw exception_album_art_not_found();
   } else {
-    filename.reset();
-    return;
+    throw exception_album_art_not_found();
   }
 
   p_format_context = avformat_alloc_context();
@@ -140,7 +229,7 @@ extractor::extractor(const char* path) : found(false) {
   p_frame = av_frame_alloc();
 }
 
-extractor::~extractor() {
+thumbnailer::~thumbnailer() {
   av_frame_free(&outputformat_frame);
   av_packet_free(&output_packet);
   avcodec_free_context(&output_codeccontext);
@@ -148,10 +237,10 @@ extractor::~extractor() {
   av_packet_free(&p_packet);
   av_frame_free(&p_frame);
   avcodec_free_context(&p_codec_context);
-  avformat_free_context(p_format_context);
+  avformat_close_input(&p_format_context);
 }
 
-void extractor::seek_default() {
+void thumbnailer::seek_default() {
   if (cfg_thumb_seektype == 0) {
     seek_percent((float)cfg_thumb_seek);
   } else {
@@ -159,17 +248,17 @@ void extractor::seek_default() {
   }
 }
 
-void extractor::seek_percent(float percent) {
+void thumbnailer::seek_percent(float percent) {
   int64_t timebase_pos = (int64_t)(0.01 * percent * p_format_context->duration);
   libavtry(av_seek_frame(p_format_context, -1, timebase_pos, AVSEEK_FLAG_ANY));
 }
 
-album_art_data_ptr extractor::get_art() {
+album_art_data_ptr thumbnailer::get_art() {
   if (cfg_thumb_cache && query_get) {
     try {
       query_get->reset();
-      query_get->bind(1, filename.c_str());
-      query_get->bind(2, 1);
+      query_get->bind(1, metadb->get_path());
+      query_get->bind(2, metadb->get_subsong_index());
       if (query_get->executeStep()) {
         SQLite::Column blobcol = query_get->getColumn(0);
         auto pic = album_art_data_impl::g_create(blobcol.getBlob(),
@@ -177,7 +266,8 @@ album_art_data_ptr extractor::get_art() {
 
         if (cfg_logging) {
           std::stringstream msg;
-          msg << "mpv: Fetch from thumbnail cache: " << filename;
+          msg << "mpv: Fetch from thumbnail cache: " << metadb->get_path()
+              << "[" << metadb->get_subsong_index() << "]";
           console::info(msg.str().c_str());
         }
 
@@ -301,14 +391,15 @@ album_art_data_ptr extractor::get_art() {
   if (cfg_thumb_cache && query_put) {
     try {
       query_put->reset();
-      query_put->bind(1, filename.c_str());
-      query_put->bind(2, 1);
+      query_put->bind(1, metadb->get_path());
+      query_put->bind(2, metadb->get_subsong_index());
       query_put->bind(3, output_packet->data, output_packet->size);
       query_put->exec();
 
       if (cfg_logging) {
         std::stringstream msg;
-        msg << "mpv: Write to thumbnail cache: " << filename;
+        msg << "mpv: Write to thumbnail cache: " << metadb->get_path() << "["
+            << metadb->get_subsong_index() << "]";
         console::info(msg.str().c_str());
       }
     } catch (SQLite::Exception e) {
@@ -340,12 +431,11 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
 
   album_art_data_ptr query(const GUID& p_what,
                            abort_callback& p_abort) override {
-    if (items.get_size() == 0) throw exception_album_art_not_found();
+    if (!cfg_thumbs || items.get_size() == 0) throw exception_album_art_not_found();
 
     metadb_handle_ptr first_item = items.get_item(0);
-    const char* path = first_item->get_path();
 
-    extractor ex = extractor(path);
+    thumbnailer ex(first_item);
     ex.seek_default();
 
     album_art_data_ptr res = ex.get_art();
@@ -355,6 +445,7 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
 
     return res;
   }
+
   album_art_path_list::ptr query_paths(const GUID& p_what,
                                        foobar2000_io::abort_callback& p_abort) {
     empty_album_art_path_list_impl* my_list =

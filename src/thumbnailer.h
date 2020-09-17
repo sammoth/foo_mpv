@@ -12,8 +12,16 @@ extern "C" {
 }
 
 namespace mpv {
-class extractor {
-  pfc::string8 filename;
+void clear_thumbnail_cache();
+void clean_thumbnail_cache();
+void regenerate_thumbnail_cache();
+void compact_thumbnail_cache();
+
+class thumbnailer {
+  metadb_handle_ptr metadb;
+  float time_start_in_file;
+  float time_end_in_file;
+
   bool found;
 
   bool set_output_quality;
@@ -34,8 +42,8 @@ class extractor {
   int stream_index;
 
  public:
-  extractor(const char* path);
-  ~extractor();
+  thumbnailer(metadb_handle_ptr p_metadb);
+  ~thumbnailer();
   void seek_default();
   void seek_percent(float percent);
 
