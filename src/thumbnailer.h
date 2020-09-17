@@ -22,8 +22,6 @@ class thumbnailer {
   float time_start_in_file;
   float time_end_in_file;
 
-  bool found;
-
   bool set_output_quality;
 
   AVFormatContext* p_format_context;

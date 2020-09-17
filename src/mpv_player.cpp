@@ -221,9 +221,6 @@ void mpv_player::update() {
 void mpv_player::update_window() {
   if (!fullscreen_) {
     if (GetParent() != container->container_wnd()) {
-      if (cfg_logging) {
-        console::info("mpv: Moving container");
-      }
       SetParent(container->container_wnd());
       invalidate_all_containers();
     }
