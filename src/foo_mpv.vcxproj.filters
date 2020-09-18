@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav</Extensions>
     </Filter>
+    <Filter Include="Source Files\SQLiteCPP">
+      <UniqueIdentifier>{8c794002-e30e-453f-ad71-5a1e8a9f1216}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -51,26 +54,26 @@
     <ClCompile Include="sqlite3.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="SQLiteCpp\Backup.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SQLiteCpp\Column.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SQLiteCpp\Database.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SQLiteCpp\Exception.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SQLiteCpp\Statement.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SQLiteCpp\Transaction.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="thumbnailer.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Backup.cpp">
+      <Filter>Source Files\SQLiteCPP</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Column.cpp">
+      <Filter>Source Files\SQLiteCPP</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Database.cpp">
+      <Filter>Source Files\SQLiteCPP</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Exception.cpp">
+      <Filter>Source Files\SQLiteCPP</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Statement.cpp">
+      <Filter>Source Files\SQLiteCPP</Filter>
+    </ClCompile>
+    <ClCompile Include="SQLiteCpp\Transaction.cpp">
+      <Filter>Source Files\SQLiteCPP</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -93,9 +96,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="preferences.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="sqlite3.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="thumbnailer.h">

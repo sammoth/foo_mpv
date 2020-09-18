@@ -2,6 +2,7 @@
 #include "stdafx.h"
 // PCH ^
 
+#include <atomic>
 #include <sstream>
 
 #include "../SDK/foobar2000.h"
@@ -21,13 +22,31 @@ namespace mpv {
 
 extern cfg_uint cfg_thumb_size, cfg_thumb_scaling, cfg_thumb_avoid_dark,
     cfg_thumb_seektype, cfg_thumb_seek, cfg_thumb_cache_quality,
-    cfg_thumb_cache_format;
+    cfg_thumb_cache_format, cfg_thumb_cache_size;
 extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest;
 extern advconfig_checkbox_factory cfg_logging;
+
+static const char* query_create_str =
+    "CREATE TABLE IF NOT EXISTS thumbs(location TEXT NOT "
+    "NULL, subsong INT NOT NULL, created INT, thumb BLOB, PRIMARY "
+    "KEY(location, subsong))";
+static const char* query_get_str =
+    "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?";
+static const char* query_put_str =
+    "INSERT INTO thumbs VALUES (?, ?, CURRENT_TIMESTAMP, ?)";
+static const char* query_dbsize_str =
+    "SELECT sum(pgsize) FROM dbstat WHERE name='thumbs';";
+static const char* query_dbtrim_str =
+    "DELETE FROM thumbs WHERE created < (SELECT created FROM thumbs "
+    "ORDER BY created LIMIT 1 OFFSET (SELECT 2*count(1)/3 from "
+    "thumbs))";
 
 static std::unique_ptr<SQLite::Database> db_ptr;
 static std::unique_ptr<SQLite::Statement> query_get;
 static std::unique_ptr<SQLite::Statement> query_put;
+static std::unique_ptr<SQLite::Statement> query_size;
+static std::unique_ptr<SQLite::Statement> query_trim;
+static std::atomic_int64_t db_size;
 
 class db_loader : public initquit {
  public:
@@ -36,42 +55,31 @@ class db_loader : public initquit {
     db_path.add_filename("thumbcache.db");
     db_path.remove_chars(0, 7);
 
-    const char* create_str =
-        "CREATE TABLE IF NOT EXISTS thumbs(location TEXT NOT "
-        "NULL, subsong INT NOT NULL, created INT, thumb BLOB, PRIMARY "
-        "KEY(location, subsong))";
-    const char* get_str =
-        "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?";
-    const char* put_str =
-        "INSERT INTO thumbs VALUES (?, ?, CURRENT_TIMESTAMP, ?)";
-
     try {
       db_ptr.reset(new SQLite::Database(
           db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
 
       try {
-        db_ptr->exec(create_str);
-        query_get.reset(new SQLite::Statement(*db_ptr, get_str));
-        query_put.reset(new SQLite::Statement(*db_ptr, put_str));
+        db_ptr->exec(query_create_str);
+        query_get.reset(new SQLite::Statement(*db_ptr, query_get_str));
+        query_put.reset(new SQLite::Statement(*db_ptr, query_put_str));
+        query_size.reset(new SQLite::Statement(*db_ptr, query_dbsize_str));
+        query_trim.reset(new SQLite::Statement(*db_ptr, query_dbtrim_str));
       } catch (SQLite::Exception e) {
-        try {
-          console::error(
-              "mpv: Error reading thumbnail table, attempting to recreate "
-              "database");
-          db_ptr->exec("DROP TABLE thumbs");
-          db_ptr->exec(create_str);
-          query_get.reset(new SQLite::Statement(*db_ptr, get_str));
-          query_put.reset(new SQLite::Statement(*db_ptr, put_str));
-        } catch (SQLite::Exception e) {
-          std::stringstream msg;
-          msg << "mpv: Error accessing thumbnail table: " << e.what();
-          console::error(msg.str().c_str());
-        }
+        console::error(
+            "mpv: Error reading thumbnail table, attempting to recreate "
+            "database");
+        db_ptr->exec("DROP TABLE thumbs");
+        db_ptr->exec(query_create_str);
+        query_get.reset(new SQLite::Statement(*db_ptr, query_get_str));
+        query_put.reset(new SQLite::Statement(*db_ptr, query_put_str));
+        query_size.reset(new SQLite::Statement(*db_ptr, query_dbsize_str));
+        query_trim.reset(new SQLite::Statement(*db_ptr, query_dbtrim_str));
       }
 
-      std::stringstream msg;
-      msg << "mpv: SQLite mode " << sqlite3_threadsafe();
-      console::info(msg.str().c_str());
+      query_size->reset();
+      query_size->executeStep();
+      db_size = query_size->getColumn(0).getInt64();
     } catch (SQLite::Exception e) {
       std::stringstream msg;
       msg << "mpv: Error accessing thumbnail cache: " << e.what();
@@ -86,6 +94,11 @@ void clear_thumbnail_cache() {
   if (db_ptr) {
     try {
       int deletes = db_ptr->exec("DELETE FROM thumbs");
+
+      query_size->reset();
+      query_size->executeStep();
+      db_size = query_size->getColumn(0).getInt64();
+
       std::stringstream msg;
       msg << "mpv: Deleted " << deletes << " thumbnails from database";
       console::info(msg.str().c_str());
@@ -98,8 +111,6 @@ void clear_thumbnail_cache() {
   } else {
     console::error("mpv: Thumbnail cache not loaded");
   }
-
-  compact_thumbnail_cache();
 }
 
 void sqlitefunction_missing(sqlite3_context* context, int num,
@@ -115,6 +126,50 @@ void sqlitefunction_missing(sqlite3_context* context, int num,
   sqlite3_result_int(context, 0);
 }
 
+void trim_db(int64_t newbytes) {
+  db_size += newbytes;
+
+  if (db_ptr) {
+    try {
+      int64_t max_bytes = 0;
+      switch (cfg_thumb_cache_size) {
+        case 0:
+          max_bytes = 1024 * 1024 * 200;
+          break;
+        case 1:
+          max_bytes = 1024 * 1024 * 500;
+          break;
+        case 2:
+          max_bytes = 1024 * 1024 * 1000;
+          break;
+        case 3:
+          max_bytes = 1024 * 1024 * 2000;
+          break;
+        case 4:
+          return;
+        default:
+          console::error("mpv: Unknown cache size setting");
+          return;
+      }
+
+      if (db_size > max_bytes) {
+        query_trim->reset();
+        query_trim->exec();
+        query_size->reset();
+        query_size->executeStep();
+        db_size = query_size->getColumn(0).getInt64();
+        console::info("mpv: Purged thumbnail cache");
+      }
+    } catch (SQLite::Exception e) {
+      std::stringstream msg;
+      msg << "mpv: Error trimming thumbnail cache: " << e.what();
+      console::error(msg.str().c_str());
+    }
+  } else {
+    console::error("mpv: Thumbnail cache not loaded");
+  }
+}
+
 void clean_thumbnail_cache() {
   if (db_ptr) {
     try {
@@ -122,6 +177,11 @@ void clean_thumbnail_cache() {
                              sqlitefunction_missing);
       int deletes =
           db_ptr->exec("DELETE FROM thumbs WHERE missing(location) IS 0");
+
+      query_size->reset();
+      query_size->executeStep();
+      db_size = query_size->getColumn(0).getInt64();
+
       std::stringstream msg;
       msg << "mpv: Deleted " << deletes << " dead thumbnails from database";
       console::info(msg.str().c_str());
@@ -133,8 +193,6 @@ void clean_thumbnail_cache() {
   } else {
     console::error("mpv: Thumbnail cache not loaded");
   }
-
-  compact_thumbnail_cache();
 }
 
 void regenerate_thumbnail_cache() {
@@ -153,6 +211,10 @@ void regenerate_thumbnail_cache() {
 void compact_thumbnail_cache() {
   if (db_ptr) {
     try {
+      query_get->reset();
+      query_put->reset();
+      query_size->reset();
+      query_trim->reset();
       db_ptr->exec("VACUUM");
       console::info("mpv: Thumbnail database compacted");
     } catch (SQLite::Exception e) {
@@ -420,6 +482,7 @@ album_art_data_ptr thumbnailer::get_art() {
   } else {
     // choose a good frame
     seek(0.3);
+    decode_frame();
   }
 
   return encode_output();
@@ -438,6 +501,67 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
  private:
   metadb_handle_list_cref items;
 
+  album_art_data_ptr cache_get(metadb_handle_ptr metadb) {
+    if (cfg_thumb_cache && query_get) {
+      try {
+        query_get->reset();
+        query_get->bind(1, metadb->get_path());
+        query_get->bind(2, metadb->get_subsong_index());
+        if (query_get->executeStep()) {
+          SQLite::Column blobcol = query_get->getColumn(0);
+
+          if (blobcol.getBlob() == NULL) {
+            std::stringstream msg;
+            msg << "mpv: Image was null when fetching cached thumbnail: "
+                << metadb->get_path() << "[" << metadb->get_subsong_index()
+                << "]";
+            console::error(msg.str().c_str());
+            return album_art_data_ptr();
+          }
+
+          if (cfg_logging) {
+            std::stringstream msg;
+            msg << "mpv: Fetch from thumbnail cache: " << metadb->get_path()
+                << "[" << metadb->get_subsong_index() << "]";
+            console::info(msg.str().c_str());
+          }
+          return album_art_data_impl::g_create(blobcol.getBlob(),
+                                               blobcol.getBytes());
+        }
+      } catch (std::exception e) {
+        std::stringstream msg;
+        msg << "mpv: Error accessing thumbnail cache: " << e.what();
+        console::error(msg.str().c_str());
+      }
+    }
+    return album_art_data_ptr();
+  }
+
+  void cache_put(metadb_handle_ptr metadb, album_art_data_ptr data) {
+    if (cfg_thumb_cache && query_put) {
+      try {
+        query_put->reset();
+        query_put->bind(1, metadb->get_path());
+        query_put->bind(2, metadb->get_subsong_index());
+        query_put->bind(3, data->get_ptr(), data->get_size());
+        query_put->exec();
+
+        if (cfg_logging) {
+          std::stringstream msg;
+          msg << "mpv: Write to thumbnail cache: " << metadb->get_path() << "["
+              << metadb->get_subsong_index() << "]";
+          console::info(msg.str().c_str());
+        }
+
+        trim_db(data->get_size());
+      } catch (SQLite::Exception e) {
+        std::stringstream msg;
+        msg << "mpv: Error writing to thumbnail cache: " << e.what();
+        console::error(msg.str().c_str());
+      }
+    }
+  }
+
  public:
   ffmpeg_thumbnailer(metadb_handle_list_cref items) : items(items) {}
 
@@ -449,7 +573,7 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
     metadb_handle_ptr item;
 
     if (cfg_thumb_group_longest) {
-      for (int i = 0; i < items.get_size(); i++) {
+      for (unsigned i = 0; i < items.get_size(); i++) {
         if (item.is_empty() || items[i]->get_length() > item->get_length()) {
           item = items[i];
         }
@@ -458,70 +582,22 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
       item = items.get_item(0);
     }
 
-    if (cfg_thumb_cache && query_get) {
-      try {
-        query_get->reset();
-        query_get->bind(1, item->get_path());
-        query_get->bind(2, item->get_subsong_index());
-        if (query_get->executeStep()) {
-          SQLite::Column blobcol = query_get->getColumn(0);
+    album_art_data_ptr ret = cache_get(item);
 
-          if (blobcol.getBlob() == NULL) {
-            std::stringstream msg;
-            msg << "mpv: Image was null when fetching cached thumbnail: "
-                << item->get_path() << "[" << item->get_subsong_index() << "]";
-            console::error(msg.str().c_str());
-            throw exception_album_art_not_found();
-          }
-
-          auto pic = album_art_data_impl::g_create(blobcol.getBlob(),
-                                                   blobcol.getBytes());
-
-          if (cfg_logging) {
-            std::stringstream msg;
-            msg << "mpv: Fetch from thumbnail cache: " << item->get_path()
-                << "[" << item->get_subsong_index() << "]";
-            console::info(msg.str().c_str());
-          }
-
-          return pic;
-        }
-      } catch (std::exception e) {
-        std::stringstream msg;
-        msg << "mpv: Error accessing thumbnail cache: " << e.what();
-        console::error(msg.str().c_str());
-      }
+    if (!ret.is_empty()) {
+      return ret;
     }
 
     thumbnailer ex(item);
-    album_art_data_ptr res = ex.get_art();
+    ret = ex.get_art();
 
-    if (res == NULL) {
+    if (ret.is_empty()) {
       throw exception_album_art_not_found();
     }
 
-    if (cfg_thumb_cache && query_put) {
-      try {
-        query_put->reset();
-        query_put->bind(1, item->get_path());
-        query_put->bind(2, item->get_subsong_index());
-        query_put->bind(3, res->get_ptr(), res->get_size());
-        query_put->exec();
+    cache_put(item, ret);
 
-        if (cfg_logging) {
-          std::stringstream msg;
-          msg << "mpv: Write to thumbnail cache: " << item->get_path() << "["
-              << item->get_subsong_index() << "]";
-          console::info(msg.str().c_str());
-        }
-      } catch (SQLite::Exception e) {
-        std::stringstream msg;
-        msg << "mpv: Error writing to thumbnail cache: " << e.what();
-        console::error(msg.str().c_str());
-      }
-    }
-
-    return res;
+    return ret;
   }
 
   album_art_path_list::ptr query_paths(const GUID& p_what,

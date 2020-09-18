@@ -39,7 +39,7 @@ static const GUID guid_thumbs_regenerate = {
 
 static mainmenu_group_popup_factory g_mainmenu_group(
     guid_mainmenu_group, mainmenu_groups::library,
-    mainmenu_commands::sort_priority_dontcare, "Video thumbnails");
+    mainmenu_commands::sort_priority_base, "Video thumbnails");
 
 class mainmenu_mpv : public mainmenu_commands {
   enum { cmd_popup = 0, cmd_total };
@@ -108,7 +108,7 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
   void get_name(t_uint32 p_index, pfc::string_base& p_out) override {
     switch (p_index) {
       case cmd_clear:
-        p_out = "Clear thumbnail database";
+        p_out = "Remove all cached thumbnails";
         break;
       case cmd_compact:
         p_out = "Compact thumbnail database";
