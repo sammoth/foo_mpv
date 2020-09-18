@@ -32,25 +32,42 @@ static std::unique_ptr<SQLite::Statement> query_put;
 class db_loader : public initquit {
  public:
   void on_init() override {
-    try {
-      pfc::string8 db_path = core_api::get_profile_path();
-      db_path.add_filename("thumbcache.db");
-      db_path.remove_chars(0, 7);
+    pfc::string8 db_path = core_api::get_profile_path();
+    db_path.add_filename("thumbcache.db");
+    db_path.remove_chars(0, 7);
 
+    const char* create_str =
+        "CREATE TABLE IF NOT EXISTS thumbs(location TEXT NOT "
+        "NULL, subsong INT NOT NULL, created INT, thumb BLOB, PRIMARY "
+        "KEY(location, subsong))";
+    const char* get_str =
+        "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?";
+    const char* put_str =
+        "INSERT INTO thumbs VALUES (?, ?, CURRENT_TIMESTAMP, ?)";
+
+    try {
       db_ptr.reset(new SQLite::Database(
           db_path, SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE));
 
-      db_ptr->exec(
-          "CREATE TABLE IF NOT EXISTS thumbs(location TEXT PRIMARY KEY NOT "
-          "NULL, subsong INT, created INT, thumb BLOB)");
-
-      query_get.reset(new SQLite::Statement(
-          *db_ptr,
-          "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?"));
-      query_put.reset(new SQLite::Statement(*db_ptr,
-                                            "INSERT INTO thumbs VALUES (?, ?, "
-                                            "CURRENT_TIMESTAMP, ?)"));
-
+      try {
+        db_ptr->exec(create_str);
+        query_get.reset(new SQLite::Statement(*db_ptr, get_str));
+        query_put.reset(new SQLite::Statement(*db_ptr, put_str));
+      } catch (SQLite::Exception e) {
+        try {
+          console::error(
+              "mpv: Error reading thumbnail table, attempting to recreate "
+              "database");
+          db_ptr->exec("DROP TABLE thumbs");
+          db_ptr->exec(create_str);
+          query_get.reset(new SQLite::Statement(*db_ptr, get_str));
+          query_put.reset(new SQLite::Statement(*db_ptr, put_str));
+        } catch (SQLite::Exception e) {
+          std::stringstream msg;
+          msg << "mpv: Error accessing thumbnail table: " << e.what();
+          console::error(msg.str().c_str());
+        }
+      }
     } catch (SQLite::Exception e) {
       std::stringstream msg;
       msg << "mpv: Error accessing thumbnail cache: " << e.what();
@@ -58,6 +75,7 @@ class db_loader : public initquit {
     }
   }
 };
+
 static initquit_factory_t<db_loader> g_db_loader;
 
 void clear_thumbnail_cache() {
@@ -149,11 +167,13 @@ void compact_thumbnail_cache() {
   }
 }
 
-static void libavtry(int error) {
+static void libavtry(int error, const char* cmd) {
   if (error < 0) {
     char* error_str = new char[500];
     av_strerror(error, error_str, 500);
-    console::error(error_str);
+    std::stringstream msg;
+    msg << "mpv: libav error for " << cmd << ": " << error_str;
+    console::error(msg.str().c_str());
     delete[] error_str;
 
     throw exception_album_art_unsupported_entry();
@@ -173,11 +193,25 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
     throw exception_album_art_not_found();
   }
 
-  p_format_context = avformat_alloc_context();
-  libavtry(
-      avformat_open_input(&p_format_context, filename.c_str(), NULL, NULL));
+  time_start_in_file = 0.0;
+  if (metadb->get_subsong_index() > 1) {
+    for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
+      playable_location_impl tmp = metadb->get_location();
+      tmp.set_subsong(s);
+      metadb_handle_ptr subsong = metadb::get()->handle_create(tmp);
+      if (subsong.is_valid()) {
+        time_start_in_file += subsong->get_length();
+      }
+    }
+  }
+  time_end_in_file = time_start_in_file + metadb->get_length();
 
-  libavtry(avformat_find_stream_info(p_format_context, NULL));
+  p_format_context = avformat_alloc_context();
+  libavtry(avformat_open_input(&p_format_context, filename.c_str(), NULL, NULL),
+           "open input");
+
+  libavtry(avformat_find_stream_info(p_format_context, NULL),
+           "find stream info");
 
   stream_index = -1;
 
@@ -200,8 +234,9 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
   }
 
   p_codec_context = avcodec_alloc_context3(codec);
-  libavtry(avcodec_parameters_to_context(p_codec_context, params));
-  libavtry(avcodec_open2(p_codec_context, codec, NULL));
+  libavtry(avcodec_parameters_to_context(p_codec_context, params),
+           "make codec context");
+  libavtry(avcodec_open2(p_codec_context, codec, NULL), "open codec");
 
   if (!cfg_thumb_cache || !db_ptr || !query_get || !query_put ||
       cfg_thumb_cache_format == 2) {
@@ -245,15 +280,18 @@ thumbnailer::~thumbnailer() {
 
 void thumbnailer::seek_default() {
   if (cfg_thumb_seektype == 0) {
-    seek_percent((float)cfg_thumb_seek);
+    seek(0.01 * (double)cfg_thumb_seek);
   } else {
-    seek_percent(30);
+    seek(0.3);
   }
 }
 
-void thumbnailer::seek_percent(float percent) {
-  int64_t timebase_pos = (int64_t)(0.01 * percent * p_format_context->duration);
-  libavtry(av_seek_frame(p_format_context, -1, timebase_pos, AVSEEK_FLAG_ANY));
+void thumbnailer::seek(double fraction) {
+  double seek_time =
+      time_start_in_file + fraction * (time_end_in_file - time_start_in_file);
+  libavtry(av_seek_frame(p_format_context, -1, seek_time * AV_TIME_BASE,
+                         AVSEEK_FLAG_ANY),
+           "seek");
 }
 
 album_art_data_ptr thumbnailer::get_art() {
@@ -314,7 +352,8 @@ album_art_data_ptr thumbnailer::get_art() {
   outputformat_frame->format = output_pixelformat;
   outputformat_frame->width = scale_to_width;
   outputformat_frame->height = scale_to_height;
-  libavtry(av_frame_get_buffer(outputformat_frame, 32));
+  libavtry(av_frame_get_buffer(outputformat_frame, 32),
+           "get output frame buffer");
 
   int flags = 0;
   switch (cfg_thumb_scaling) {
@@ -358,15 +397,18 @@ album_art_data_ptr thumbnailer::get_art() {
     outputformat_frame->quality = output_codeccontext->global_quality;
   }
 
-  libavtry(avcodec_open2(output_codeccontext, output_encoder, NULL));
+  libavtry(avcodec_open2(output_codeccontext, output_encoder, NULL),
+           "open output codec");
 
-  libavtry(avcodec_send_frame(output_codeccontext, outputformat_frame));
+  libavtry(avcodec_send_frame(output_codeccontext, outputformat_frame),
+           "send output frame");
 
   if (output_packet == NULL) {
     return album_art_data_ptr();
   }
 
-  libavtry(avcodec_receive_packet(output_codeccontext, output_packet));
+  libavtry(avcodec_receive_packet(output_codeccontext, output_packet),
+           "receive output packet");
 
   auto pic =
       album_art_data_impl::g_create(output_packet->data, output_packet->size);
@@ -404,6 +446,15 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
         query_get->bind(2, item->get_subsong_index());
         if (query_get->executeStep()) {
           SQLite::Column blobcol = query_get->getColumn(0);
+
+          if (blobcol.getBlob() == NULL) {
+            std::stringstream msg;
+            msg << "mpv: Image was null when fetching cached thumbnail: "
+                << item->get_path() << "[" << item->get_subsong_index() << "]";
+            console::error(msg.str().c_str());
+            throw exception_album_art_not_found();
+          }
+
           auto pic = album_art_data_impl::g_create(blobcol.getBlob(),
                                                    blobcol.getBytes());
 
@@ -446,7 +497,9 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
           console::info(msg.str().c_str());
         }
       } catch (SQLite::Exception e) {
-        console::error(e.getErrorStr());
+        std::stringstream msg;
+        msg << "mpv: Error writing to thumbnail cache: " << e.what();
+        console::error(msg.str().c_str());
       }
     }
 

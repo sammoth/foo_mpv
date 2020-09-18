@@ -30,7 +30,7 @@ bool libmpv_::load_dll() {
 
   if (dll_module == NULL) {
     std::stringstream error;
-    error << "Could not load mpv-1.dll: error code " << GetLastError();
+    error << "mpv: Could not load mpv-1.dll: error code " << GetLastError();
     console::error(error.str().c_str());
     return false;
   }

@@ -19,8 +19,8 @@ void compact_thumbnail_cache();
 
 class thumbnailer {
   metadb_handle_ptr metadb;
-  float time_start_in_file;
-  float time_end_in_file;
+  double time_start_in_file;
+  double time_end_in_file;
 
   bool set_output_quality;
 
@@ -43,7 +43,7 @@ class thumbnailer {
   thumbnailer(metadb_handle_ptr p_metadb);
   ~thumbnailer();
   void seek_default();
-  void seek_percent(float percent);
+  void seek(double percent);
 
   album_art_data_ptr get_art();
 };
