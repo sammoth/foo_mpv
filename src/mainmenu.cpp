@@ -1,6 +1,8 @@
 #include "stdafx.h"
 // PCH ^
 
+#include <thread>
+
 #include "thumbnailer.h"
 
 void RunMpvPopupWindow();
@@ -147,16 +149,16 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
                service_ptr_t<service_base> p_callback) override {
     switch (p_index) {
       case cmd_clear:
-        mpv::clear_thumbnail_cache();
+        std::thread([]() { mpv::clear_thumbnail_cache(); }).detach();
         break;
       case cmd_compact:
-        mpv::compact_thumbnail_cache();
+        std::thread([]() { mpv::compact_thumbnail_cache(); }).detach();
         break;
       case cmd_removedead:
-        mpv::clean_thumbnail_cache();
+        std::thread([]() { mpv::clean_thumbnail_cache(); }).detach();
         break;
       case cmd_regenerate:
-        mpv::regenerate_thumbnail_cache();
+        std::thread([]() { mpv::regenerate_thumbnail_cache(); }).detach();
         break;
       default:
         uBugCheck();  // should never happen unless somebody called us with

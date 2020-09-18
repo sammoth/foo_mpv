@@ -39,10 +39,12 @@ class thumbnailer {
 
   int stream_index;
 
+  void decode_frame();
+  album_art_data_ptr encode_output();
+
  public:
   thumbnailer(metadb_handle_ptr p_metadb);
   ~thumbnailer();
-  void seek_default();
   void seek(double percent);
 
   album_art_data_ptr get_art();

@@ -22,7 +22,7 @@ namespace mpv {
 extern cfg_uint cfg_thumb_size, cfg_thumb_scaling, cfg_thumb_avoid_dark,
     cfg_thumb_seektype, cfg_thumb_seek, cfg_thumb_cache_quality,
     cfg_thumb_cache_format;
-extern cfg_bool cfg_thumb_cache, cfg_thumbs;
+extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest;
 extern advconfig_checkbox_factory cfg_logging;
 
 static std::unique_ptr<SQLite::Database> db_ptr;
@@ -68,6 +68,10 @@ class db_loader : public initquit {
           console::error(msg.str().c_str());
         }
       }
+
+      std::stringstream msg;
+      msg << "mpv: SQLite mode " << sqlite3_threadsafe();
+      console::info(msg.str().c_str());
     } catch (SQLite::Exception e) {
       std::stringstream msg;
       msg << "mpv: Error accessing thumbnail cache: " << e.what();
@@ -90,6 +94,7 @@ void clear_thumbnail_cache() {
       msg << "mpv: Error clearing thumbnail cache: " << e.what();
       console::error(msg.str().c_str());
     }
+
   } else {
     console::error("mpv: Thumbnail cache not loaded");
   }
@@ -148,15 +153,8 @@ void regenerate_thumbnail_cache() {
 void compact_thumbnail_cache() {
   if (db_ptr) {
     try {
-      query_get.reset();
-      query_put.reset();
       db_ptr->exec("VACUUM");
-      query_get.reset(new SQLite::Statement(
-          *db_ptr,
-          "SELECT thumb FROM thumbs WHERE location = ? AND subsong = ?"));
-      query_put.reset(new SQLite::Statement(*db_ptr,
-                                            "INSERT INTO thumbs VALUES (?, ?, "
-                                            "CURRENT_TIMESTAMP, ?)"));
+      console::info("mpv: Thumbnail database compacted");
     } catch (SQLite::Exception e) {
       std::stringstream msg;
       msg << "mpv: Error clearing thumbnail cache: " << e.what();
@@ -180,7 +178,11 @@ static void libavtry(int error, const char* cmd) {
   }
 }
 
-thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
+thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
+    : metadb(p_metadb),
+      time_start_in_file(0.0),
+      time_end_in_file(metadb->get_length()) {
+  // get filename
   pfc::string8 filename;
   filename.add_filename(metadb->get_path());
   if (filename.has_prefix("\\file://")) {
@@ -193,6 +195,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
     throw exception_album_art_not_found();
   }
 
+  // get start/end time of track
   time_start_in_file = 0.0;
   if (metadb->get_subsong_index() > 1) {
     for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
@@ -207,14 +210,18 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
   time_end_in_file = time_start_in_file + metadb->get_length();
 
   p_format_context = avformat_alloc_context();
+  output_packet = av_packet_alloc();
+  outputformat_frame = av_frame_alloc();
+  p_packet = av_packet_alloc();
+  p_frame = av_frame_alloc();
+
+  // open file and find video stream
   libavtry(avformat_open_input(&p_format_context, filename.c_str(), NULL, NULL),
            "open input");
-
   libavtry(avformat_find_stream_info(p_format_context, NULL),
            "find stream info");
 
   stream_index = -1;
-
   for (unsigned i = 0; i < p_format_context->nb_streams; i++) {
     AVCodecParameters* local_codec_params =
         p_format_context->streams[i]->codecpar;
@@ -238,6 +245,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
            "make codec context");
   libavtry(avcodec_open2(p_codec_context, codec, NULL), "open codec");
 
+  // init output encoding
   if (!cfg_thumb_cache || !db_ptr || !query_get || !query_put ||
       cfg_thumb_cache_format == 2) {
     output_pixelformat = AV_PIX_FMT_BGR24;
@@ -259,12 +267,6 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb) : metadb(p_metadb) {
     console::error("mpv: Could not determine target thumbnail format");
     throw exception_album_art_not_found();
   }
-
-  output_packet = av_packet_alloc();
-  outputformat_frame = av_frame_alloc();
-
-  p_packet = av_packet_alloc();
-  p_frame = av_frame_alloc();
 }
 
 thumbnailer::~thumbnailer() {
@@ -278,41 +280,17 @@ thumbnailer::~thumbnailer() {
   avformat_close_input(&p_format_context);
 }
 
-void thumbnailer::seek_default() {
-  if (cfg_thumb_seektype == 0) {
-    seek(0.01 * (double)cfg_thumb_seek);
-  } else {
-    seek(0.3);
-  }
-}
-
 void thumbnailer::seek(double fraction) {
   double seek_time =
       time_start_in_file + fraction * (time_end_in_file - time_start_in_file);
-  libavtry(av_seek_frame(p_format_context, -1, seek_time * AV_TIME_BASE,
+
+  libavtry(av_seek_frame(p_format_context, -1,
+                         (int64_t)(seek_time * (double)AV_TIME_BASE),
                          AVSEEK_FLAG_ANY),
            "seek");
 }
 
-album_art_data_ptr thumbnailer::get_art() {
-  while (av_read_frame(p_format_context, p_packet) >= 0) {
-    if (p_packet->stream_index != stream_index) continue;
-
-    if (avcodec_send_packet(p_codec_context, p_packet) < 0) continue;
-
-    if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
-
-    break;
-  }
-
-  if (p_frame->width == 0 || p_frame->height == 0) {
-    return album_art_data_ptr();
-  }
-
-  if (outputformat_frame == NULL) {
-    return album_art_data_ptr();
-  }
-
+album_art_data_ptr thumbnailer::encode_output() {
   AVRational aspect_ratio = av_guess_sample_aspect_ratio(
       p_format_context, p_format_context->streams[stream_index], p_frame);
 
@@ -380,7 +358,7 @@ album_art_data_ptr thumbnailer::get_art() {
       flags, 0, 0, 0);
 
   if (swscontext == NULL) {
-    return album_art_data_ptr();
+    throw exception_album_art_not_found();
   }
 
   sws_scale(swscontext, p_frame->data, p_frame->linesize, 0, p_frame->height,
@@ -404,16 +382,47 @@ album_art_data_ptr thumbnailer::get_art() {
            "send output frame");
 
   if (output_packet == NULL) {
-    return album_art_data_ptr();
+    throw exception_album_art_not_found();
   }
 
   libavtry(avcodec_receive_packet(output_codeccontext, output_packet),
            "receive output packet");
 
-  auto pic =
-      album_art_data_impl::g_create(output_packet->data, output_packet->size);
+  return album_art_data_impl::g_create(output_packet->data,
+                                       output_packet->size);
+}
 
-  return pic;
+void thumbnailer::decode_frame() {
+  while (av_read_frame(p_format_context, p_packet) >= 0) {
+    if (p_packet->stream_index != stream_index) continue;
+
+    if (avcodec_send_packet(p_codec_context, p_packet) < 0) continue;
+
+    if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
+
+    break;
+  }
+
+  if (p_frame->width == 0 || p_frame->height == 0) {
+    throw exception_album_art_not_found();
+  }
+
+  if (outputformat_frame == NULL) {
+    throw exception_album_art_not_found();
+  }
+}
+
+album_art_data_ptr thumbnailer::get_art() {
+  if (cfg_thumb_seektype == 0) {
+    // fixed absolute seek
+    seek(0.01 * (double)cfg_thumb_seek);
+    decode_frame();
+  } else {
+    // choose a good frame
+    seek(0.3);
+  }
+
+  return encode_output();
 }
 
 class empty_album_art_path_list_impl : public album_art_path_list {
@@ -437,7 +446,17 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
     if (!cfg_thumbs || items.get_size() == 0)
       throw exception_album_art_not_found();
 
-    metadb_handle_ptr item = items.get_item(0);
+    metadb_handle_ptr item;
+
+    if (cfg_thumb_group_longest) {
+      for (int i = 0; i < items.get_size(); i++) {
+        if (item.is_empty() || items[i]->get_length() > item->get_length()) {
+          item = items[i];
+        }
+      }
+    } else {
+      item = items.get_item(0);
+    }
 
     if (cfg_thumb_cache && query_get) {
       try {
@@ -475,7 +494,6 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
     }
 
     thumbnailer ex(item);
-    ex.seek_default();
     album_art_data_ptr res = ex.get_art();
 
     if (res == NULL) {
