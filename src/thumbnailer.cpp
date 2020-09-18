@@ -3,6 +3,7 @@
 // PCH ^
 
 #include <atomic>
+#include <mutex>
 #include <sstream>
 
 #include "../SDK/foobar2000.h"
@@ -41,6 +42,7 @@ static const char* query_dbtrim_str =
     "ORDER BY created LIMIT 1 OFFSET (SELECT 2*count(1)/3 from "
     "thumbs))";
 
+static std::mutex mut;
 static std::unique_ptr<SQLite::Database> db_ptr;
 static std::unique_ptr<SQLite::Statement> query_get;
 static std::unique_ptr<SQLite::Statement> query_put;
@@ -93,6 +95,7 @@ static initquit_factory_t<db_loader> g_db_loader;
 void clear_thumbnail_cache() {
   if (db_ptr) {
     try {
+      std::lock_guard<std::mutex> lock(mut);
       int deletes = db_ptr->exec("DELETE FROM thumbs");
 
       query_size->reset();
@@ -129,50 +132,52 @@ void sqlitefunction_missing(sqlite3_context* context, int num,
 void trim_db(int64_t newbytes) {
   db_size += newbytes;
 
-  if (db_ptr) {
-    try {
-      int64_t max_bytes = 0;
-      switch (cfg_thumb_cache_size) {
-        case 0:
-          max_bytes = 1024 * 1024 * 200;
-          break;
-        case 1:
-          max_bytes = 1024 * 1024 * 500;
-          break;
-        case 2:
-          max_bytes = 1024 * 1024 * 1000;
-          break;
-        case 3:
-          max_bytes = 1024 * 1024 * 2000;
-          break;
-        case 4:
-          return;
-        default:
-          console::error("mpv: Unknown cache size setting");
-          return;
-      }
+  int64_t max_bytes = 0;
+  switch (cfg_thumb_cache_size) {
+    case 0:
+      max_bytes = 1024 * 1024 * 200;
+      break;
+    case 1:
+      max_bytes = 1024 * 1024 * 500;
+      break;
+    case 2:
+      max_bytes = 1024 * 1024 * 1000;
+      break;
+    case 3:
+      max_bytes = 1024 * 1024 * 2000;
+      break;
+    case 4:
+      return;
+    default:
+      console::error("mpv: Unknown cache size setting");
+      return;
+  }
 
-      if (db_size > max_bytes) {
+  if (db_size > max_bytes) {
+    if (db_ptr) {
+      try {
+        std::lock_guard<std::mutex> lock(mut);
         query_trim->reset();
         query_trim->exec();
         query_size->reset();
         query_size->executeStep();
         db_size = query_size->getColumn(0).getInt64();
-        console::info("mpv: Purged thumbnail cache");
+        console::info("mpv: Shrunk thumbnail cache");
+      } catch (SQLite::Exception e) {
+        std::stringstream msg;
+        msg << "mpv: Error shrinking thumbnail cache: " << e.what();
+        console::error(msg.str().c_str());
       }
-    } catch (SQLite::Exception e) {
-      std::stringstream msg;
-      msg << "mpv: Error trimming thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
+    } else {
+      console::error("mpv: Thumbnail cache not loaded");
     }
-  } else {
-    console::error("mpv: Thumbnail cache not loaded");
   }
 }
 
 void clean_thumbnail_cache() {
   if (db_ptr) {
     try {
+      std::lock_guard<std::mutex> lock(mut);
       db_ptr->createFunction("missing", 1, true, nullptr,
                              sqlitefunction_missing);
       int deletes =
@@ -198,6 +203,7 @@ void clean_thumbnail_cache() {
 void regenerate_thumbnail_cache() {
   if (db_ptr) {
     try {
+      std::lock_guard<std::mutex> lock(mut);
     } catch (SQLite::Exception e) {
       std::stringstream msg;
       msg << "mpv: Error clearing thumbnail cache: " << e.what();
@@ -211,6 +217,7 @@ void regenerate_thumbnail_cache() {
 void compact_thumbnail_cache() {
   if (db_ptr) {
     try {
+      std::lock_guard<std::mutex> lock(mut);
       query_get->reset();
       query_put->reset();
       query_size->reset();
@@ -308,8 +315,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
   libavtry(avcodec_open2(p_codec_context, codec, NULL), "open codec");
 
   // init output encoding
-  if (!cfg_thumb_cache || !db_ptr || !query_get || !query_put ||
-      cfg_thumb_cache_format == 2) {
+  if (!cfg_thumb_cache || cfg_thumb_cache_format == 2) {
     output_pixelformat = AV_PIX_FMT_BGR24;
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_BMP);
     output_codeccontext = avcodec_alloc_context3(output_encoder);
@@ -504,6 +510,7 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
   album_art_data_ptr cache_get(metadb_handle_ptr metadb) {
     if (cfg_thumb_cache && query_get) {
       try {
+        std::lock_guard<std::mutex> lock(mut);
         query_get->reset();
         query_get->bind(1, metadb->get_path());
         query_get->bind(2, metadb->get_subsong_index());
@@ -540,11 +547,14 @@ class ffmpeg_thumbnailer : public album_art_extractor_instance_v2 {
   void cache_put(metadb_handle_ptr metadb, album_art_data_ptr data) {
     if (cfg_thumb_cache && query_put) {
       try {
-        query_put->reset();
-        query_put->bind(1, metadb->get_path());
-        query_put->bind(2, metadb->get_subsong_index());
-        query_put->bind(3, data->get_ptr(), data->get_size());
-        query_put->exec();
+        {
+          std::lock_guard<std::mutex> lock(mut);
+          query_put->reset();
+          query_put->bind(1, metadb->get_path());
+          query_put->bind(2, metadb->get_subsong_index());
+          query_put->bind(3, data->get_ptr(), data->get_size());
+          query_put->exec();
+        }
 
         if (cfg_logging) {
           std::stringstream msg;
