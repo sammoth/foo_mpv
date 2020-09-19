@@ -7,7 +7,6 @@
 #define IDC_BUTTON_BG                   1001
 #define IDC_EDIT_POPUP                  1002
 #define IDC_CHECK_FSBG                  1003
-#define IDC_CHECK1                      1005
 #define IDC_CHECK_STOP                  1005
 #define IDC_CHECK_THUMBNAILS            1006
 #define IDC_CHECK_THUMB_CACHE           1010
@@ -23,7 +22,10 @@
 #define IDC_COMBO_COVERTYPE             1043
 #define IDC_CHECK_GROUPOVERRIDE         1044
 #define IDC_COMBO_PANELMETRIC           1045
-#define IDC_COMBO1                      1047
+#define IDC_CHECK_FILTER                1048
+#define IDC_EDIT_PATTERN                1049
+#define IDC_CHECK_PRIORITY              1050
+#define IDC_COMBO_FORMAT                1051
 
 // Next default values for new objects
 // 
@@ -31,7 +33,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        104
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1048
+#define _APS_NEXT_CONTROL_VALUE         1052
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

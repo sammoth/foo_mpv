@@ -112,11 +112,21 @@ static const GUID guid_cfg_thumb_cache_size = {
     0xd926,
     0x4ce9,
     {0x88, 0x18, 0xee, 0xa9, 0x19, 0x6f, 0xe7, 0x73}};
-static const GUID guid_cfg_cache_quality = {
-    0x5754e50a,
-    0x8d78,
-    0x432a,
-    {0xa6, 0x26, 0x4f, 0xeb, 0x7b, 0xd4, 0x41, 0x95}};
+static const GUID guid_cfg_filter = {
+    0xeedb191b,
+    0xddfb,
+    0x4acc,
+    {0x86, 0xe1, 0xf6, 0x43, 0xcf, 0x34, 0x4e, 0x42}};
+static const GUID guid_cfg_pattern = {
+    0xa7dd375a,
+    0x40fd,
+    0x488b,
+    {0xbb, 0x35, 0xdb, 0x6, 0xf5, 0xf6, 0x12, 0xb7}};
+static const GUID guid_cfg_cache_format = {
+    0xfc82870,
+    0x6b5f,
+    0x49a7,
+    {0x8c, 0xa1, 0xca, 0x98, 0xdd, 0x5b, 0xa9, 0x20}};
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -125,8 +135,10 @@ cfg_bool cfg_black_fullscreen(guid_cfg_black_fullscreen, true);
 cfg_bool cfg_stop_hidden(guid_cfg_stop_hidden, true);
 cfg_uint cfg_panel_metric(guid_cfg_panel_metric, 0);
 
+static const char* cfg_popup_titleformat_default =
+    "%title% - %artist%[' ('%album%')']";
 static cfg_string cfg_popup_titleformat(guid_cfg_popup_titleformat,
-                                        "%title% - %artist%[' ('%album%')']");
+                                        cfg_popup_titleformat_default);
 
 cfg_bool cfg_thumbs(guid_cfg_thumbnails, true);
 cfg_uint cfg_thumb_cover_type(guid_cfg_thum_cover_type, 0);
@@ -138,7 +150,12 @@ cfg_uint cfg_thumb_seek(guid_cfg_thumb_seek, 30);
 cfg_bool cfg_thumb_avoid_dark(guid_cfg_thumb_avoid_dark, true);
 cfg_bool cfg_thumb_cache(guid_cfg_thumb_cache, true);
 cfg_uint cfg_thumb_cache_size(guid_cfg_thumb_cache_size, 0);
-cfg_uint cfg_thumb_cache_quality(guid_cfg_cache_quality, 90);
+cfg_uint cfg_thumb_cache_format(guid_cfg_cache_format, 0);
+cfg_bool cfg_thumb_filter(guid_cfg_filter, false);
+static const char* cfg_thumb_pattern_default =
+    "\"$ext(%filename_ext%)\" IS mkv";
+static cfg_string cfg_thumb_pattern(guid_cfg_pattern,
+                                    cfg_thumb_pattern_default);
 
 static advconfig_branch_factory g_mpv_branch(
     "mpv", guid_cfg_branch, advconfig_branch::guid_branch_playback, 0);
@@ -162,6 +179,7 @@ advconfig_checkbox_factory cfg_mpv_logfile("Enable mpv log file",
                                            guid_cfg_branch, 0, false);
 
 static titleformat_object::ptr popup_titlefomat_script;
+static search_filter::ptr thumb_filter;
 
 void get_popup_title(pfc::string8& s) {
   if (popup_titlefomat_script.is_empty()) {
@@ -172,6 +190,24 @@ void get_popup_title(pfc::string8& s) {
   playback_control::get()->playback_format_title(
       NULL, s, popup_titlefomat_script, NULL,
       playback_control::t_display_level::display_level_all);
+}
+
+bool test_thumb_pattern(metadb_handle_ptr metadb) {
+  if (!cfg_thumb_filter) return true;
+  if (thumb_filter.is_empty()) {
+    try {
+      thumb_filter =
+          static_api_ptr_t<search_filter_manager>()->create(cfg_thumb_pattern);
+    } catch (std::exception e) {
+      return false;
+    }
+  }
+
+  metadb_handle_list in;
+  in.add_item(metadb);
+  bool out;
+  thumb_filter->test_multi(in, &out);
+  return out;
 }
 
 class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
@@ -194,6 +230,7 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_EDIT_PATTERN, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_THUMBNAILS, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_THUMB_CACHE, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_RADIO_FIRSTINGROUP, BN_CLICKED, OnEditChange)
@@ -201,6 +238,8 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   COMMAND_HANDLER_EX(IDC_CHECK_AVOIDDARK, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_COVERTYPE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_GROUPOVERRIDE, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_FILTER, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_FORMAT, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_CACHESIZE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_THUMBSIZE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_SEEKTYPE, CBN_SELCHANGE, OnEditChange);
@@ -234,7 +273,7 @@ HBRUSH CMpvPreferences::on_color_button(HDC wp, HWND lp) {
 
 BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
-  dirty = false;
+  uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern);
 
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
@@ -244,6 +283,7 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
   CheckDlgButton(IDC_CHECK_AVOIDDARK, cfg_thumb_avoid_dark);
   CheckDlgButton(IDC_CHECK_THUMB_CACHE, cfg_thumb_cache);
+  CheckDlgButton(IDC_CHECK_FILTER, cfg_thumb_filter);
   CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, cfg_thumb_group_override);
   CheckDlgButton(IDC_RADIO_LONGESTINGROUP, cfg_thumb_group_longest);
   CheckDlgButton(IDC_RADIO_FIRSTINGROUP, !cfg_thumb_group_longest);
@@ -283,18 +323,19 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_cachesize.AddString(L"Unlimited");
   combo_cachesize.SetCurSel(cfg_thumb_cache_size);
 
+  CComboBox combo_cacheformat = (CComboBox)uGetDlgItem(IDC_COMBO_FORMAT);
+  combo_cacheformat.AddString(L"JPEG");
+  combo_cacheformat.AddString(L"PNG");
+  combo_cacheformat.SetCurSel(cfg_thumb_cache_format);
+
   CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK);
   slider_seek.SetRangeMin(1);
   slider_seek.SetRangeMax(80);
   slider_seek.SetPos(cfg_thumb_seek);
 
-  CTrackBarCtrl slider_quality =
-      (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_CACHEQUALITY);
-  slider_quality.SetRangeMin(1);
-  slider_quality.SetRangeMax(100);
-  slider_quality.SetPos(cfg_thumb_cache_quality);
-
   set_controls_enabled();
+
+  dirty = false;
 
   return FALSE;
 }
@@ -334,10 +375,14 @@ t_uint32 CMpvPreferences::get_state() {
 void CMpvPreferences::reset() {
   bg_col = 0;
   button_brush = CreateSolidBrush(bg_col);
-  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, "%title% - %artist%[ (%album%)]");
+
+  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
+  uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern_default);
+
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
+  CheckDlgButton(IDC_CHECK_FILTER, false);
   CheckDlgButton(IDC_CHECK_AVOIDDARK, true);
   CheckDlgButton(IDC_CHECK_THUMB_CACHE, true);
   CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, true);
@@ -349,9 +394,9 @@ void CMpvPreferences::reset() {
   ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).SetCurSel(0);
 
   ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).SetPos(30);
-  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_CACHEQUALITY)).SetPos(90);
 
   OnChanged();
 }
@@ -370,8 +415,21 @@ void CMpvPreferences::apply() {
   static_api_ptr_t<titleformat_compiler>()->compile_safe(
       popup_titlefomat_script, cfg_popup_titleformat);
 
+  length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_PATTERN));
+  format = uGetDlgItemText(m_hWnd, IDC_EDIT_PATTERN);
+  cfg_thumb_pattern.reset();
+  cfg_thumb_pattern.set_string(format.get_ptr());
+
+  try {
+    thumb_filter =
+        static_api_ptr_t<search_filter_manager>()->create(cfg_thumb_pattern);
+  } catch (std::exception ex) {
+    thumb_filter.reset();
+  }
+
   cfg_thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
   cfg_thumb_cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
+  cfg_thumb_filter = IsDlgButtonChecked(IDC_CHECK_FILTER);
   cfg_thumb_avoid_dark = IsDlgButtonChecked(IDC_CHECK_AVOIDDARK);
   cfg_thumb_group_longest = IsDlgButtonChecked(IDC_RADIO_LONGESTINGROUP);
   cfg_thumb_group_override = IsDlgButtonChecked(IDC_CHECK_GROUPOVERRIDE);
@@ -384,10 +442,10 @@ void CMpvPreferences::apply() {
   cfg_thumb_size = ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).GetCurSel();
   cfg_thumb_cache_size =
       ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).GetCurSel();
+  cfg_thumb_cache_format =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).GetCurSel();
 
   cfg_thumb_seek = ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).GetPos();
-  cfg_thumb_cache_quality =
-      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_CACHEQUALITY)).GetPos();
 
   mpv::invalidate_all_containers();
   dirty = false;
@@ -400,7 +458,10 @@ void CMpvPreferences::set_controls_enabled() {
   bool thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
   bool cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
   bool percent = ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).GetCurSel() == 0;
+  bool pattern = IsDlgButtonChecked(IDC_CHECK_FILTER);
 
+  ((CComboBox)uGetDlgItem(IDC_EDIT_PATTERN)).EnableWindow(thumbs && pattern);
+  ((CComboBox)uGetDlgItem(IDC_CHECK_FILTER)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).EnableWindow(thumbs);
@@ -410,15 +471,14 @@ void CMpvPreferences::set_controls_enabled() {
   ((CComboBox)uGetDlgItem(IDC_CHECK_AVOIDDARK)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_GROUPOVERRIDE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_THUMB_CACHE)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).EnableWindow(thumbs && cache);
   ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs && percent);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_CACHEQUALITY))
-      .EnableWindow(thumbs && cache);
 }
 
 void CMpvPreferences::OnChanged() {
   m_callback->on_state_changed();
   set_controls_enabled();
-  Invalidate();
+  //Invalidate();
 }
 
 class preferences_page_mpv_impl

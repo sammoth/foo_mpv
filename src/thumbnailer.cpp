@@ -1,3 +1,4 @@
+#pragma once
 #include "stdafx.h"
 // PCH ^
 
@@ -6,14 +7,13 @@
 #include <sstream>
 
 #include "../SDK/foobar2000.h"
-#include "include/libjpeg-turbo/turbojpeg.h"
+#include "preferences.h"
 #include "thumbnailer.h"
 
 extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavutil/frame.h"
-#include "libavutil/imgutils.h"
 #include "libswscale/swscale.h"
 }
 
@@ -24,7 +24,7 @@ namespace mpv {
 
 extern cfg_uint cfg_thumb_size, cfg_thumb_avoid_dark, cfg_thumb_seektype,
     cfg_thumb_seek, cfg_thumb_cache_quality, cfg_thumb_cache_format,
-    cfg_thumb_cache_size, cfg_thumb_cover_type;
+    cfg_thumb_cache_size;
 extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest;
 extern advconfig_checkbox_factory cfg_logging;
 
@@ -190,7 +190,7 @@ void compact_thumbnail_cache() {
   }
 }
 
-static void trim_db(int64_t newbytes) {
+void trim_db(int64_t newbytes) {
   db_size += newbytes;
 
   int64_t max_bytes = 0;
@@ -282,7 +282,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
   p_packet = av_packet_alloc();
   p_frame = av_frame_alloc();
 
-  // open file and find video stream
+  // open file and find video stream and codec
   libavtry(avformat_open_input(&p_format_context, filename.c_str(), NULL, NULL),
            "open input");
   libavtry(avformat_find_stream_info(p_format_context, NULL),
@@ -312,11 +312,34 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
            "make codec context");
   libavtry(avcodec_open2(p_codec_context, codec, NULL), "open codec");
 
-  scaled_frame = av_frame_alloc();
+  // init output encoding
+  output_packet = av_packet_alloc();
+  output_frame = av_frame_alloc();
+  if (!cfg_thumb_cache) {
+    output_frame->format = AV_PIX_FMT_BGR24;
+    output_encoder = avcodec_find_encoder(AV_CODEC_ID_BMP);
+    output_codeccontext = avcodec_alloc_context3(output_encoder);
+  } else if (cfg_thumb_cache_format == 0) {
+    output_frame->format = AV_PIX_FMT_YUVJ444P;
+    output_encoder = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    output_codeccontext = avcodec_alloc_context3(output_encoder);
+    output_codeccontext->flags |= AV_CODEC_FLAG_QSCALE;
+    output_codeccontext->global_quality = FF_QP2LAMBDA;
+    output_frame->quality = output_codeccontext->global_quality;
+  } else if (cfg_thumb_cache_format == 1) {
+    output_frame->format = AV_PIX_FMT_RGB24;
+    output_encoder = avcodec_find_encoder(AV_CODEC_ID_PNG);
+    output_codeccontext = avcodec_alloc_context3(output_encoder);
+  } else {
+    console::error("mpv: Could not determine target thumbnail format");
+    throw exception_album_art_not_found();
+  }
 }
 
 thumbnailer::~thumbnailer() {
-  av_frame_free(&scaled_frame);
+  av_frame_free(&output_frame);
+  av_packet_free(&output_packet);
+  avcodec_free_context(&output_codeccontext);
 
   av_packet_free(&p_packet);
   av_frame_free(&p_frame);
@@ -371,54 +394,43 @@ album_art_data_ptr thumbnailer::encode_output() {
     scale_to_height = target_size;
   }
 
-  scaled_frame->format = AV_PIX_FMT_0RGB;
-  scaled_frame->width = scale_to_width;
-  scaled_frame->height = scale_to_height;
-  libavtry(av_frame_get_buffer(scaled_frame, 0), "get output frame buffer");
+  output_frame->width = scale_to_width;
+  output_frame->height = scale_to_height;
+  libavtry(av_frame_get_buffer(output_frame, 32), "get output frame buffer");
 
   SwsContext* swscontext = sws_getContext(
       p_frame->width, p_frame->height, (AVPixelFormat)p_frame->format,
-      scaled_frame->width, scaled_frame->height,
-      (AVPixelFormat)scaled_frame->format, SWS_LANCZOS, 0, 0, 0);
+      output_frame->width, output_frame->height,
+      (AVPixelFormat)output_frame->format, SWS_LANCZOS, 0, 0, 0);
 
   if (swscontext == NULL) {
     throw exception_album_art_not_found();
   }
 
   sws_scale(swscontext, p_frame->data, p_frame->linesize, 0, p_frame->height,
-            scaled_frame->data, scaled_frame->linesize);
+            output_frame->data, output_frame->linesize);
 
-  int rgb_buf_size = av_image_get_buffer_size(
-      AV_PIX_FMT_0RGB, scaled_frame->width, scaled_frame->height, 1);
-  auto rgb_buf = std::make_unique<unsigned char[]>(rgb_buf_size);
-  av_image_copy_to_buffer(rgb_buf.get(), rgb_buf_size, scaled_frame->data,
-                          scaled_frame->linesize, AV_PIX_FMT_0RGB,
-                          scaled_frame->width, scaled_frame->height, 1);
+  output_codeccontext->width = output_frame->width;
+  output_codeccontext->height = output_frame->height;
+  output_codeccontext->pix_fmt = (AVPixelFormat)output_frame->format;
+  output_codeccontext->time_base = AVRational{1, 1};
 
-  tjhandle tj_instance = NULL;
-  unsigned char* jpeg_buf = NULL;
-  unsigned long jpeg_size = 0;
-  if ((tj_instance = tjInitCompress()) == NULL ||
-      tjCompress2(tj_instance, rgb_buf.get(), scaled_frame->width, 0,
-                  scaled_frame->height, TJPF_XRGB, &jpeg_buf, &jpeg_size,
-                  TJSAMP_444, cfg_thumb_cache ? cfg_thumb_cache_quality : 100,
-                  0) < 0) {
-    console::error("mpv: Error encoding JPEG");
-    if (tj_instance != NULL) tjDestroy(tj_instance);
-    if (jpeg_buf != NULL) tjFree(jpeg_buf);
+  libavtry(avcodec_open2(output_codeccontext, output_encoder, NULL),
+           "open output codec");
+
+  libavtry(avcodec_send_frame(output_codeccontext, output_frame),
+           "send output frame");
+
+  if (output_packet == NULL) {
+    console::error("mpv: Could not encode thumbnail image");
     throw exception_album_art_not_found();
   }
 
-  tjDestroy(tj_instance);
-  tj_instance = NULL;
+  libavtry(avcodec_receive_packet(output_codeccontext, output_packet),
+           "receive output packet");
 
-  album_art_data_ptr output_ptr =
-      album_art_data_impl::g_create(jpeg_buf, jpeg_size);
-
-  tjFree(jpeg_buf);
-  jpeg_buf = NULL;
-
-  return output_ptr;
+  return album_art_data_impl::g_create(output_packet->data,
+                                       output_packet->size);
 }
 
 void thumbnailer::decode_frame() {
@@ -436,7 +448,7 @@ void thumbnailer::decode_frame() {
     throw exception_album_art_not_found();
   }
 
-  if (scaled_frame == NULL) {
+  if (output_frame == NULL) {
     throw exception_album_art_not_found();
   }
 }
@@ -455,7 +467,16 @@ album_art_data_ptr thumbnailer::get_art() {
   return encode_output();
 }
 
-class thumbnailer_art_provider : public album_art_extractor_instance_v2 {
+class empty_album_art_path_list_impl : public album_art_path_list {
+ public:
+  empty_album_art_path_list_impl() {}
+  const char* get_path(t_size index) const { return NULL; }
+  t_size get_count() const { return 0; }
+
+ private:
+};
+
+class thumbnail_extractor : public album_art_extractor_instance_v2 {
  private:
   metadb_handle_list_cref items;
 
@@ -525,19 +546,11 @@ class thumbnailer_art_provider : public album_art_extractor_instance_v2 {
   }
 
  public:
-  thumbnailer_art_provider(metadb_handle_list_cref items) : items(items) {}
+  thumbnail_extractor(metadb_handle_list_cref items) : items(items) {}
 
   album_art_data_ptr query(const GUID& p_what,
                            abort_callback& p_abort) override {
-    if (!cfg_thumbs || items.get_size() == 0)
-      throw exception_album_art_not_found();
-
-    if (cfg_thumb_cover_type == 0 && p_what != album_art_ids::cover_front ||
-        cfg_thumb_cover_type == 1 && p_what != album_art_ids::cover_back ||
-        cfg_thumb_cover_type == 2 && p_what != album_art_ids::disc ||
-        cfg_thumb_cover_type == 3 && p_what != album_art_ids::artist
-
-    ) {
+    if (!cfg_thumbs || items.get_size() == 0) {
       throw exception_album_art_not_found();
     }
 
@@ -553,18 +566,16 @@ class thumbnailer_art_provider : public album_art_extractor_instance_v2 {
       item = items.get_item(0);
     }
 
+    if (!test_thumb_pattern(item)) throw exception_album_art_not_found();
+
     album_art_data_ptr ret = cache_get(item);
 
-    if (!ret.is_empty()) {
-      return ret;
-    }
+    if (!ret.is_empty()) return ret;
 
     thumbnailer ex(item);
     ret = ex.get_art();
 
-    if (ret.is_empty()) {
-      throw exception_album_art_not_found();
-    }
+    if (ret.is_empty()) throw exception_album_art_not_found();
 
     cache_put(item, ret);
 
@@ -573,20 +584,21 @@ class thumbnailer_art_provider : public album_art_extractor_instance_v2 {
 
   album_art_path_list::ptr query_paths(const GUID& p_what,
                                        foobar2000_io::abort_callback& p_abort) {
-    service_ptr_t<album_art_path_list_dummy> instance =
-        new service_impl_t<album_art_path_list_dummy>();
-    return instance;
+    empty_album_art_path_list_impl* my_list =
+        new service_impl_single_t<empty_album_art_path_list_impl>();
+    return my_list;
   }
 };
 
-class my_album_art_fallback : public album_art_fallback {
+class mpv_album_art_fallback : public album_art_fallback {
  public:
   album_art_extractor_instance_v2::ptr open(
       metadb_handle_list_cref items, pfc::list_base_const_t<GUID> const& ids,
       abort_callback& abort) {
-    return new service_impl_t<thumbnailer_art_provider>(items);
+    return new service_impl_t<thumbnail_extractor>(items);
   }
 };
 
-static service_factory_single_t<my_album_art_fallback> g_my_album_art_fallback;
+static service_factory_single_t<mpv_album_art_fallback>
+    g_mpv_album_art_fallback;
 }  // namespace mpv
