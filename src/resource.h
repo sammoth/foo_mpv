@@ -24,7 +24,6 @@
 #define IDC_CHECK_GROUPOVERRIDE         1044
 #define IDC_COMBO_PANELMETRIC           1045
 #define IDC_COMBO1                      1047
-#define IDC_COMBO_FORMAT                1047
 
 // Next default values for new objects
 // 

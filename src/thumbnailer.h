@@ -22,8 +22,7 @@ class thumbnailer {
   double time_start_in_file;
   double time_end_in_file;
 
-  bool set_output_quality;
-
+  // decoding
   AVFormatContext* p_format_context;
   AVCodec* codec;
   AVCodecParameters* params;
@@ -31,16 +30,15 @@ class thumbnailer {
   AVPacket* p_packet;
   AVFrame* p_frame;
 
-  AVPixelFormat output_pixelformat;
-  AVCodec* output_encoder;
-  AVCodecContext* output_codeccontext;
-  AVPacket* output_packet;
-  AVFrame* outputformat_frame;
+  // scaling
+  AVFrame* scaled_frame;
 
   int stream_index;
 
   void decode_frame();
   album_art_data_ptr encode_output();
+
+  bool frame_is_bad();
 
  public:
   thumbnailer(metadb_handle_ptr p_metadb);
