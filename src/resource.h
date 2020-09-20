@@ -16,7 +16,7 @@
 #define IDC_SLIDER_CACHEQUALITY         1033
 #define IDC_RADIO_FIRSTINGROUP          1035
 #define IDC_RADIO_LONGESTINGROUP        1036
-#define IDC_CHECK_AVOIDDARK             1037
+#define IDC_CHECK_HISTOGRAM             1037
 #define IDC_COMBO_SEEKTYPE              1040
 #define IDC_SLIDER_SEEK                 1041
 #define IDC_COMBO_COVERTYPE             1043

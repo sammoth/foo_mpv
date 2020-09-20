@@ -87,17 +87,12 @@ static const GUID guid_cfg_thumb_size = {
     0x2d69,
     0x4933,
     {0x96, 0x7, 0x5c, 0x52, 0x11, 0x55, 0xa5, 0xb6}};
-static const GUID guid_cfg_thumb_seektype = {
-    0x47136c49,
-    0xbd28,
-    0x4cbd,
-    {0xaa, 0x2c, 0x6e, 0xb2, 0xab, 0x5c, 0x5a, 0x44}};
 static const GUID guid_cfg_thumb_seek = {
     0x6e455d58,
     0xe11a,
     0x4158,
     {0x92, 0x4c, 0x29, 0x50, 0xa4, 0x70, 0xb9, 0xe7}};
-static const GUID guid_cfg_thumb_avoid_dark = {
+static const GUID guid_cfg_thumb_histogram = {
     0xbf7cab8,
     0x1365,
     0x4f27,
@@ -142,12 +137,11 @@ static cfg_string cfg_popup_titleformat(guid_cfg_popup_titleformat,
 
 cfg_bool cfg_thumbs(guid_cfg_thumbnails, true);
 cfg_uint cfg_thumb_cover_type(guid_cfg_thum_cover_type, 0);
-cfg_bool cfg_thumb_group_longest(guid_cfg_item_in_group, true);
+cfg_bool cfg_thumb_group_longest(guid_cfg_item_in_group, false);
 cfg_bool cfg_thumb_group_override(guid_cfg_group_override, true);
 cfg_uint cfg_thumb_size(guid_cfg_thumb_size, 1);
-cfg_uint cfg_thumb_seektype(guid_cfg_thumb_seektype, 0);
 cfg_uint cfg_thumb_seek(guid_cfg_thumb_seek, 30);
-cfg_bool cfg_thumb_avoid_dark(guid_cfg_thumb_avoid_dark, true);
+cfg_bool cfg_thumb_histogram(guid_cfg_thumb_histogram, false);
 cfg_bool cfg_thumb_cache(guid_cfg_thumb_cache, true);
 cfg_uint cfg_thumb_cache_size(guid_cfg_thumb_cache_size, 0);
 cfg_uint cfg_thumb_cache_format(guid_cfg_cache_format, 0);
@@ -235,14 +229,13 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   COMMAND_HANDLER_EX(IDC_CHECK_THUMB_CACHE, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_RADIO_FIRSTINGROUP, BN_CLICKED, OnEditChange)
   COMMAND_HANDLER_EX(IDC_RADIO_LONGESTINGROUP, BN_CLICKED, OnEditChange)
-  COMMAND_HANDLER_EX(IDC_CHECK_AVOIDDARK, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_HISTOGRAM, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_COVERTYPE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_GROUPOVERRIDE, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_FILTER, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_FORMAT, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_CACHESIZE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_THUMBSIZE, CBN_SELCHANGE, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_COMBO_SEEKTYPE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_PANELMETRIC, CBN_SELCHANGE, OnEditChange);
   END_MSG_MAP()
 
@@ -281,7 +274,7 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
-  CheckDlgButton(IDC_CHECK_AVOIDDARK, cfg_thumb_avoid_dark);
+  CheckDlgButton(IDC_CHECK_HISTOGRAM, cfg_thumb_histogram);
   CheckDlgButton(IDC_CHECK_THUMB_CACHE, cfg_thumb_cache);
   CheckDlgButton(IDC_CHECK_FILTER, cfg_thumb_filter);
   CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, cfg_thumb_group_override);
@@ -301,11 +294,6 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_panelmetric.AddString(L"Width");
   combo_panelmetric.AddString(L"Height");
   combo_panelmetric.SetCurSel(cfg_panel_metric);
-
-  CComboBox combo_seektype = (CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE);
-  combo_seektype.AddString(L"Percent");
-  combo_seektype.AddString(L"Find good frame (slower)");
-  combo_seektype.SetCurSel(cfg_thumb_seektype);
 
   CComboBox combo_thumbsize = (CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE);
   combo_thumbsize.AddString(L"200px");
@@ -383,15 +371,14 @@ void CMpvPreferences::reset() {
   CheckDlgButton(IDC_CHECK_STOP, true);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
   CheckDlgButton(IDC_CHECK_FILTER, false);
-  CheckDlgButton(IDC_CHECK_AVOIDDARK, true);
+  CheckDlgButton(IDC_CHECK_HISTOGRAM, false);
   CheckDlgButton(IDC_CHECK_THUMB_CACHE, true);
   CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, true);
-  CheckDlgButton(IDC_RADIO_LONGESTINGROUP, true);
-  CheckDlgButton(IDC_RADIO_FIRSTINGROUP, false);
+  CheckDlgButton(IDC_RADIO_LONGESTINGROUP, false);
+  CheckDlgButton(IDC_RADIO_FIRSTINGROUP, true);
 
   ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).SetCurSel(0);
@@ -430,7 +417,7 @@ void CMpvPreferences::apply() {
   cfg_thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
   cfg_thumb_cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
   cfg_thumb_filter = IsDlgButtonChecked(IDC_CHECK_FILTER);
-  cfg_thumb_avoid_dark = IsDlgButtonChecked(IDC_CHECK_AVOIDDARK);
+  cfg_thumb_histogram = IsDlgButtonChecked(IDC_CHECK_HISTOGRAM);
   cfg_thumb_group_longest = IsDlgButtonChecked(IDC_RADIO_LONGESTINGROUP);
   cfg_thumb_group_override = IsDlgButtonChecked(IDC_CHECK_GROUPOVERRIDE);
 
@@ -438,7 +425,6 @@ void CMpvPreferences::apply() {
       ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).GetCurSel();
   cfg_panel_metric =
       ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
-  cfg_thumb_seektype = ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).GetCurSel();
   cfg_thumb_size = ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).GetCurSel();
   cfg_thumb_cache_size =
       ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).GetCurSel();
@@ -457,22 +443,20 @@ bool CMpvPreferences::HasChanged() { return dirty; }
 void CMpvPreferences::set_controls_enabled() {
   bool thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
   bool cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
-  bool percent = ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).GetCurSel() == 0;
   bool pattern = IsDlgButtonChecked(IDC_CHECK_FILTER);
 
   ((CComboBox)uGetDlgItem(IDC_EDIT_PATTERN)).EnableWindow(thumbs && pattern);
   ((CComboBox)uGetDlgItem(IDC_CHECK_FILTER)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).EnableWindow(thumbs);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_SEEKTYPE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).EnableWindow(thumbs && cache);
   ((CComboBox)uGetDlgItem(IDC_RADIO_LONGESTINGROUP)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_RADIO_FIRSTINGROUP)).EnableWindow(thumbs);
-  ((CComboBox)uGetDlgItem(IDC_CHECK_AVOIDDARK)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_CHECK_HISTOGRAM)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_GROUPOVERRIDE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_THUMB_CACHE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).EnableWindow(thumbs && cache);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs && percent);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs);
 }
 
 void CMpvPreferences::OnChanged() {

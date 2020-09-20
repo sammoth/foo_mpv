@@ -29,6 +29,11 @@ class thumbnailer {
   AVPacket* p_packet;
   AVFrame* p_frame;
 
+  void init_measurement_context();
+  int rgb_buf_size = 0;
+  SwsContext* measurement_context = NULL;
+  AVFrame* measurement_frame;
+
   AVCodec* output_encoder;
   AVCodecContext* output_codeccontext;
   AVPacket* output_packet;
@@ -36,13 +41,14 @@ class thumbnailer {
 
   int stream_index;
 
-  void decode_frame();
+  bool decode_frame();
   album_art_data_ptr encode_output();
+  double frame_quality();
 
  public:
   thumbnailer(metadb_handle_ptr p_metadb);
   ~thumbnailer();
-  void seek(double percent);
+  bool seek(double percent);
 
   album_art_data_ptr get_art();
 };

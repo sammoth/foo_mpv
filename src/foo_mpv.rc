@@ -49,30 +49,29 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,98,193,10
     CONTROL         "Cache thumbnails on disk",IDC_CHECK_THUMB_CACHE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,216,154,97,10
     LTEXT           "Maximum cache size:",IDC_STATIC,216,171,94,8
-    LTEXT           "Thumbnail size:",IDC_STATIC,14,218,78,8
+    LTEXT           "Thumbnail size:",IDC_STATIC,14,244,78,8
     LTEXT           "Thumbnail format:",IDC_STATIC,216,201,95,10
-    COMBOBOX        IDC_COMBO_THUMBSIZE,14,229,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_THUMBSIZE,14,255,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     COMBOBOX        IDC_COMBO_CACHESIZE,216,182,83,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Use first item in group of tracks for thumbnail",IDC_RADIO_FIRSTINGROUP,
                     "Button",BS_AUTORADIOBUTTON | WS_GROUP,14,168,195,11
     CONTROL         "Use longest item in group of tracks for thumbnail",IDC_RADIO_LONGESTINGROUP,
                     "Button",BS_AUTORADIOBUTTON,14,180,196,11
-    CONTROL         "Avoid excessively dark/light video frames",IDC_CHECK_AVOIDDARK,
-                    "Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,126,260,179,10
-    LTEXT           "Thumbnail seek type:",IDC_STATIC,14,246,104,8
-    COMBOBOX        IDC_COMBO_SEEKTYPE,14,257,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "",IDC_SLIDER_SEEK,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,126,240,139,15
+    CONTROL         "Attempt to choose interesting video frame (slow)",IDC_CHECK_HISTOGRAM,
+                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,126,253,185,20
+    CONTROL         "",IDC_SLIDER_SEEK,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,14,223,139,15
     LTEXT           "Cover type to provide:",IDC_STATIC,14,151,86,8
     COMBOBOX        IDC_COMBO_COVERTYPE,106,148,88,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Use any manual override from group",IDC_CHECK_GROUPOVERRIDE,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,198,183,10
-    LTEXT           "Seek position:",IDC_STATIC,126,230,64,8
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,195,183,10
+    LTEXT           "Thumbnail seek position:",IDC_STATIC,14,212,137,8
     LTEXT           "Move video to panel with greatest:",IDC_STATIC,188,44,126,8
     COMBOBOX        IDC_COMBO_PANELMETRIC,188,56,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     GROUPBOX        "",IDC_STATIC,7,86,307,190
     CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,115,103,10
     EDITTEXT        IDC_EDIT_PATTERN,14,128,280,13,ES_AUTOHSCROLL
     COMBOBOX        IDC_COMBO_FORMAT,216,212,83,30,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "EXPERIMENTAL",IDC_STATIC,126,241,56,8
 END
 
 

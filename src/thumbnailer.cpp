@@ -14,6 +14,7 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavutil/frame.h"
+#include "libavutil/imgutils.h"
 #include "libswscale/swscale.h"
 }
 
@@ -22,10 +23,10 @@ extern "C" {
 
 namespace mpv {
 
-extern cfg_uint cfg_thumb_size, cfg_thumb_avoid_dark, cfg_thumb_seektype,
-    cfg_thumb_seek, cfg_thumb_cache_quality, cfg_thumb_cache_format,
-    cfg_thumb_cache_size;
-extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest;
+extern cfg_uint cfg_thumb_size, cfg_thumb_seek, cfg_thumb_cache_quality,
+    cfg_thumb_cache_format, cfg_thumb_cache_size;
+extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest,
+    cfg_thumb_histogram;
 extern advconfig_checkbox_factory cfg_logging;
 
 static const char* query_create_str =
@@ -334,12 +335,47 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
     console::error("mpv: Could not determine target thumbnail format");
     throw exception_album_art_not_found();
   }
+
+  // init measurement context
+  measurement_frame = av_frame_alloc();
+}
+
+void thumbnailer::init_measurement_context() {
+  measurement_frame->format = AV_PIX_FMT_RGB24;
+  if (p_frame->width > p_frame->height) {
+    measurement_frame->width = 40;
+    measurement_frame->height = 40.0 * ((double)p_frame->height / p_frame->width);
+  } else {
+    measurement_frame->width = 40.0 * ((double)p_frame->width / p_frame->height);
+    measurement_frame->height = 40;
+  }
+
+  libavtry(av_frame_get_buffer(measurement_frame, 32),
+           "get measurement frame buffer");
+  measurement_context = sws_getContext(
+      p_frame->width, p_frame->height, (AVPixelFormat)p_frame->format,
+      measurement_frame->width, measurement_frame->height,
+      (AVPixelFormat)measurement_frame->format, SWS_POINT, 0, 0, 0);
+
+  if (measurement_context == NULL) {
+    throw exception_album_art_not_found();
+  }
+
+  rgb_buf_size = av_image_get_buffer_size(
+      (AVPixelFormat)measurement_frame->format, measurement_frame->width,
+      measurement_frame->height, 1);
 }
 
 thumbnailer::~thumbnailer() {
+  av_frame_free(&measurement_frame);
+
   av_frame_free(&output_frame);
   av_packet_free(&output_packet);
   avcodec_free_context(&output_codeccontext);
+
+  if (measurement_context != NULL) {
+    sws_freeContext(measurement_context);
+  }
 
   av_packet_free(&p_packet);
   av_frame_free(&p_frame);
@@ -347,14 +383,13 @@ thumbnailer::~thumbnailer() {
   avformat_close_input(&p_format_context);
 }
 
-void thumbnailer::seek(double fraction) {
+bool thumbnailer::seek(double fraction) {
   double seek_time =
       time_start_in_file + fraction * (time_end_in_file - time_start_in_file);
 
-  libavtry(av_seek_frame(p_format_context, -1,
-                         (int64_t)(seek_time * (double)AV_TIME_BASE),
-                         AVSEEK_FLAG_ANY),
-           "seek");
+  return av_seek_frame(p_format_context, -1,
+                       (int64_t)(seek_time * (double)AV_TIME_BASE),
+                       AVSEEK_FLAG_ANY) >= 0;
 }
 
 album_art_data_ptr thumbnailer::encode_output() {
@@ -410,6 +445,8 @@ album_art_data_ptr thumbnailer::encode_output() {
   sws_scale(swscontext, p_frame->data, p_frame->linesize, 0, p_frame->height,
             output_frame->data, output_frame->linesize);
 
+  sws_freeContext(swscontext);
+
   output_codeccontext->width = output_frame->width;
   output_codeccontext->height = output_frame->height;
   output_codeccontext->pix_fmt = (AVPixelFormat)output_frame->format;
@@ -433,7 +470,7 @@ album_art_data_ptr thumbnailer::encode_output() {
                                        output_packet->size);
 }
 
-void thumbnailer::decode_frame() {
+bool thumbnailer::decode_frame() {
   while (av_read_frame(p_format_context, p_packet) >= 0) {
     if (p_packet->stream_index != stream_index) continue;
 
@@ -445,27 +482,79 @@ void thumbnailer::decode_frame() {
   }
 
   if (p_frame->width == 0 || p_frame->height == 0) {
-    throw exception_album_art_not_found();
+    return false;
   }
 
   if (output_frame == NULL) {
-    throw exception_album_art_not_found();
+    return false;
   }
+
+  return true;
+}
+
+double thumbnailer::frame_quality() {
+  sws_scale(measurement_context, p_frame->data, p_frame->linesize, 0,
+            p_frame->height, measurement_frame->data,
+            measurement_frame->linesize);
+
+  auto rgb_buf = std::make_unique<unsigned char[]>(rgb_buf_size);
+  av_image_copy_to_buffer(rgb_buf.get(), rgb_buf_size, measurement_frame->data,
+                          measurement_frame->linesize, AV_PIX_FMT_RGB24,
+                          measurement_frame->width, measurement_frame->height,
+                          1);
+
+#define BUCKETS 10
+  int64_t hist[BUCKETS] = {};
+
+  for (int i = 0; i < rgb_buf_size / 3; i++) {
+    unsigned brightness = (rgb_buf.get()[3 * i] + rgb_buf.get()[3 * i + 1] +
+                           rgb_buf.get()[3 * i + 2]) /
+                          3;
+
+    hist[(BUCKETS - 1) * brightness / 255]++;
+  }
+
+  // TODO maybe calculate something smarter
+  double max_bucket = 0.0;
+  for (int i = 0; i < BUCKETS; i++) {
+    max_bucket = max(((double)hist[i]) * BUCKETS / rgb_buf_size, max_bucket);
+  }
+
+  return 1.0 - max_bucket;
 }
 
 album_art_data_ptr thumbnailer::get_art() {
-  if (cfg_thumb_seektype == 0) {
-    // fixed absolute seek
-    seek(0.01 * (double)cfg_thumb_seek);
-    decode_frame();
-  } else {
-    // choose a good frame
-    seek(0.3);
-    decode_frame();
+  unsigned seektime = cfg_thumb_seek;
+
+  if (cfg_thumb_histogram) {
+    // find a good frame, keyframe version
+    if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
+    if (!decode_frame()) throw exception_album_art_not_found();
+    // init after decoding first frame
+    init_measurement_context();
+
+    const int tries = 15;
+    double max_quality = frame_quality();
+    unsigned best_seektime = cfg_thumb_seek;
+    for (int i = 0; i < tries; i++) {
+      double l_seektime = seektime;
+      seektime = (seektime + 5) % 100;
+      if (!seek(0.01 * (double)l_seektime))
+        throw exception_album_art_not_found();
+      if (!decode_frame()) throw exception_album_art_not_found();
+      double quality = frame_quality();
+      if (quality > max_quality) {
+        max_quality = quality;
+        best_seektime = l_seektime;
+      }
+    }
   }
 
+  if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
+  if (!decode_frame()) throw exception_album_art_not_found();
+
   return encode_output();
-}
+}  // namespace mpv
 
 class empty_album_art_path_list_impl : public album_art_path_list {
  public:
