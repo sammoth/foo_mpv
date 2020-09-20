@@ -126,6 +126,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="thumbnail_chooser.cpp" />
     <ClCompile Include="thumbnailer.cpp" />
     <ClCompile Include="libmpv.cpp" />
     <ClCompile Include="mpv_player.cpp" />

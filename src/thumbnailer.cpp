@@ -26,7 +26,7 @@ namespace mpv {
 extern cfg_uint cfg_thumb_size, cfg_thumb_seek, cfg_thumb_cache_quality,
     cfg_thumb_cache_format, cfg_thumb_cache_size;
 extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest,
-    cfg_thumb_histogram;
+    cfg_thumb_histogram, cfg_thumb_group_override;
 extern advconfig_checkbox_factory cfg_logging;
 
 static const char* query_create_str =
@@ -43,6 +43,8 @@ static const char* query_dbtrim_str =
     "DELETE FROM thumbs WHERE created < (SELECT created FROM thumbs "
     "ORDER BY created LIMIT 1 OFFSET (SELECT 2*count(1)/3 from "
     "thumbs))";
+static const char* query_delete_str =
+    "DELETE FROM thumbs WHERE location = ? AND subsong = ?";
 
 static std::mutex mut;
 static std::unique_ptr<SQLite::Database> db_ptr;
@@ -50,6 +52,7 @@ static std::unique_ptr<SQLite::Statement> query_get;
 static std::unique_ptr<SQLite::Statement> query_put;
 static std::unique_ptr<SQLite::Statement> query_size;
 static std::unique_ptr<SQLite::Statement> query_trim;
+static std::unique_ptr<SQLite::Statement> query_delete;
 static std::atomic_int64_t db_size;
 
 class db_loader : public initquit {
@@ -69,6 +72,7 @@ class db_loader : public initquit {
         query_put.reset(new SQLite::Statement(*db_ptr, query_put_str));
         query_size.reset(new SQLite::Statement(*db_ptr, query_dbsize_str));
         query_trim.reset(new SQLite::Statement(*db_ptr, query_dbtrim_str));
+        query_delete.reset(new SQLite::Statement(*db_ptr, query_delete_str));
       } catch (SQLite::Exception e) {
         console::error(
             "mpv: Error reading thumbnail table, attempting to recreate "
@@ -79,12 +83,14 @@ class db_loader : public initquit {
         query_put.reset(new SQLite::Statement(*db_ptr, query_put_str));
         query_size.reset(new SQLite::Statement(*db_ptr, query_dbsize_str));
         query_trim.reset(new SQLite::Statement(*db_ptr, query_dbtrim_str));
+        query_delete.reset(new SQLite::Statement(*db_ptr, query_delete_str));
       }
 
       query_size->reset();
       query_size->executeStep();
       db_size = query_size->getColumn(0).getInt64();
     } catch (SQLite::Exception e) {
+      db_ptr.reset();
       std::stringstream msg;
       msg << "mpv: Error accessing thumbnail cache: " << e.what();
       console::error(msg.str().c_str());
@@ -236,6 +242,50 @@ void trim_db(int64_t newbytes) {
   }
 }
 
+void remove_from_cache(metadb_handle_ptr metadb) {
+  if (db_ptr) {
+    try {
+      std::lock_guard<std::mutex> lock(mut);
+      query_delete->reset();
+      query_delete->bind(1, metadb->get_path());
+      query_delete->bind(2, metadb->get_subsong_index());
+      query_delete->exec();
+    } catch (SQLite::Exception e) {
+      std::stringstream msg;
+      msg << "mpv: Error deleting entry from thumbnail cache: " << e.what();
+      console::error(msg.str().c_str());
+    }
+  } else {
+    console::error("mpv: Thumbnail cache not loaded");
+  }
+}
+
+metadb_handle_ptr get_thumbnail_item_from_items(metadb_handle_list items) {
+  metadb_handle_ptr item;
+
+  if (cfg_thumb_group_longest) {
+    for (unsigned i = 0; i < items.get_size(); i++) {
+      if (item.is_empty() || items[i]->get_length() > item->get_length()) {
+        item = items[i];
+      }
+    }
+  } else {
+    item = items.get_item(0);
+  }
+
+  double time;
+  if (!thumb_time_store_get(item, time) && cfg_thumb_group_override) {
+    for (unsigned i = 0; i < items.get_size(); i++) {
+      if (thumb_time_store_get(item, time)) {
+        item = items[i];
+        break;
+      }
+    }
+  }
+
+  return item;
+}
+
 static void libavtry(int error, const char* cmd) {
   if (error < 0) {
     char* error_str = new char[500];
@@ -251,6 +301,8 @@ static void libavtry(int error, const char* cmd) {
 
 thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
     : metadb(p_metadb),
+      measurement_context(NULL),
+      measurement_frame(NULL),
       time_start_in_file(0.0),
       time_end_in_file(metadb->get_length()) {
   // get filename
@@ -335,18 +387,16 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
     console::error("mpv: Could not determine target thumbnail format");
     throw exception_album_art_not_found();
   }
-
-  // init measurement context
-  measurement_frame = av_frame_alloc();
 }
 
 void thumbnailer::init_measurement_context() {
+  measurement_frame = av_frame_alloc();
   measurement_frame->format = AV_PIX_FMT_RGB24;
   if (p_frame->width > p_frame->height) {
     measurement_frame->width = 40;
-    measurement_frame->height = 40.0 * ((double)p_frame->height / p_frame->width);
+    measurement_frame->height = (40 * p_frame->height) / p_frame->width;
   } else {
-    measurement_frame->width = 40.0 * ((double)p_frame->width / p_frame->height);
+    measurement_frame->width = (40 * p_frame->width) / p_frame->height;
     measurement_frame->height = 40;
   }
 
@@ -367,14 +417,15 @@ void thumbnailer::init_measurement_context() {
 }
 
 thumbnailer::~thumbnailer() {
-  av_frame_free(&measurement_frame);
-
   av_frame_free(&output_frame);
   av_packet_free(&output_packet);
   avcodec_free_context(&output_codeccontext);
 
   if (measurement_context != NULL) {
     sws_freeContext(measurement_context);
+  }
+  if (measurement_frame != NULL) {
+    av_frame_free(&measurement_frame);
   }
 
   av_packet_free(&p_packet);
@@ -390,6 +441,43 @@ bool thumbnailer::seek(double fraction) {
   return av_seek_frame(p_format_context, -1,
                        (int64_t)(seek_time * (double)AV_TIME_BASE),
                        AVSEEK_FLAG_ANY) >= 0;
+}
+
+double thumbnailer::get_frame_time() {
+  return ((double)p_frame->best_effort_timestamp) * p_frame_time_base.num /
+         p_frame_time_base.den;
+}
+
+bool thumbnailer::seek_exact_and_decode(double time) {
+  double target = time_start_in_file + time;
+
+  int64_t seek_time = (int64_t)(
+      AV_TIME_BASE * max(0, (target - 2.0)));
+  if (av_seek_frame(p_format_context, -1, seek_time, AVSEEK_FLAG_ANY) < 0 ||
+      !decode_frame()) {
+    return false;
+  }
+
+  for (int i = 0; i < 10; i++) {
+    if (get_frame_time() < target) {
+      break;
+    } else {
+      seek_time -= 2 * AV_TIME_BASE;
+      if (seek_time < 0 ||
+          av_seek_frame(p_format_context, -1, seek_time, AVSEEK_FLAG_ANY) < 0 ||
+          !decode_frame()) {
+        return false;
+      }
+    }
+  }
+
+  while (decode_frame()) {
+    if (get_frame_time() > target) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 album_art_data_ptr thumbnailer::encode_output() {
@@ -478,6 +566,9 @@ bool thumbnailer::decode_frame() {
 
     if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
 
+    p_frame_time_base =
+        p_format_context->streams[p_packet->stream_index]->time_base;
+
     break;
   }
 
@@ -524,34 +615,41 @@ double thumbnailer::frame_quality() {
 }
 
 album_art_data_ptr thumbnailer::get_art() {
-  unsigned seektime = cfg_thumb_seek;
+  double override_time = 0.0;
+  if (thumb_time_store_get(metadb, override_time)) {
+    if (!seek_exact_and_decode(override_time)) {
+      throw exception_album_art_not_found();
+    }
+  } else {
+    unsigned seektime = cfg_thumb_seek;
 
-  if (cfg_thumb_histogram) {
-    // find a good frame, keyframe version
-    if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
-    if (!decode_frame()) throw exception_album_art_not_found();
-    // init after decoding first frame
-    init_measurement_context();
-
-    const int tries = 15;
-    double max_quality = frame_quality();
-    unsigned best_seektime = cfg_thumb_seek;
-    for (int i = 0; i < tries; i++) {
-      double l_seektime = seektime;
-      seektime = (seektime + 5) % 100;
-      if (!seek(0.01 * (double)l_seektime))
-        throw exception_album_art_not_found();
+    if (cfg_thumb_histogram) {
+      // find a good frame, keyframe version
+      if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
       if (!decode_frame()) throw exception_album_art_not_found();
-      double quality = frame_quality();
-      if (quality > max_quality) {
-        max_quality = quality;
-        best_seektime = l_seektime;
+      // init after decoding first frame
+      init_measurement_context();
+
+      const int tries = 15;
+      double max_quality = frame_quality();
+      double best_seektime = cfg_thumb_seek;
+      for (int i = 0; i < tries; i++) {
+        double l_seektime = seektime;
+        seektime = (seektime + 5) % 100;
+        if (!seek(0.01 * (double)l_seektime))
+          throw exception_album_art_not_found();
+        if (!decode_frame()) throw exception_album_art_not_found();
+        double quality = frame_quality();
+        if (quality > max_quality) {
+          max_quality = quality;
+          best_seektime = l_seektime;
+        }
       }
     }
-  }
 
-  if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
-  if (!decode_frame()) throw exception_album_art_not_found();
+    if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
+    if (!decode_frame()) throw exception_album_art_not_found();
+  }
 
   return encode_output();
 }  // namespace mpv
@@ -643,29 +741,14 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
       throw exception_album_art_not_found();
     }
 
-    metadb_handle_ptr item;
-
-    if (cfg_thumb_group_longest) {
-      for (unsigned i = 0; i < items.get_size(); i++) {
-        if (item.is_empty() || items[i]->get_length() > item->get_length()) {
-          item = items[i];
-        }
-      }
-    } else {
-      item = items.get_item(0);
-    }
-
+    metadb_handle_ptr item = get_thumbnail_item_from_items(items);
     if (!test_thumb_pattern(item)) throw exception_album_art_not_found();
-
     album_art_data_ptr ret = cache_get(item);
-
     if (!ret.is_empty()) return ret;
 
     thumbnailer ex(item);
     ret = ex.get_art();
-
     if (ret.is_empty()) throw exception_album_art_not_found();
-
     cache_put(item, ret);
 
     return ret;

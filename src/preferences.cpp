@@ -146,6 +146,7 @@ cfg_bool cfg_thumb_cache(guid_cfg_thumb_cache, true);
 cfg_uint cfg_thumb_cache_size(guid_cfg_thumb_cache_size, 0);
 cfg_uint cfg_thumb_cache_format(guid_cfg_cache_format, 0);
 cfg_bool cfg_thumb_filter(guid_cfg_filter, false);
+
 static const char* cfg_thumb_pattern_default =
     "\"$ext(%filename_ext%)\" IS mkv";
 static cfg_string cfg_thumb_pattern(guid_cfg_pattern,
@@ -318,7 +319,7 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
 
   CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK);
   slider_seek.SetRangeMin(1);
-  slider_seek.SetRangeMax(80);
+  slider_seek.SetRangeMax(90);
   slider_seek.SetPos(cfg_thumb_seek);
 
   set_controls_enabled();

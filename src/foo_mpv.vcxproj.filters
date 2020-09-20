@@ -75,6 +75,9 @@
     <ClCompile Include="SQLiteCpp\Transaction.cpp">
       <Filter>Source Files\SQLiteCPP</Filter>
     </ClCompile>
+    <ClCompile Include="thumbnail_chooser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">

@@ -191,6 +191,7 @@ void mpv_player::toggle_fullscreen() {
                  monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
                  monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
                  SWP_NOZORDER | SWP_FRAMECHANGED);
+
   } else {
     SetParent(container->container_wnd());
     SetWindowLong(GWL_STYLE, saved_style);
@@ -317,9 +318,6 @@ bool mpv_player::mpv_init() {
 
     // foobar plays the audio
     libmpv()->set_option_string(mpv, "audio", "no");
-
-    // start timing immediately to keep in sync
-    libmpv()->set_option_string(mpv, "no-initial-audio-sync", "yes");
 
     // keep the renderer initialised
     libmpv()->set_option_string(mpv, "force-window", "yes");
