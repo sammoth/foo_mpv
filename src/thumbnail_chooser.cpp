@@ -163,9 +163,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   void OnCancel(UINT, int, CWindow) { DestroyWindow(); }
   void OnAccept(UINT, int, CWindow) {
     double mpv_time = -1.0;
-    int idle = false;
-    libmpv()->get_property(mpv, "idle", MPV_FORMAT_FLAG, &idle);
-    if (!idle && libmpv()->get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE,
+    if (libmpv()->get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE,
                                         &mpv_time) > -1) {
       thumb_time_store_set(metadb, mpv_time - time_base);
     }
@@ -246,6 +244,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     libmpv()->set_option_string(mpv, "force-window", "yes");
     libmpv()->set_option_string(mpv, "idle", "yes");
     libmpv()->set_option_string(mpv, "keep-open", "yes");
+    libmpv()->set_option_string(mpv, "osd-msg1", "${?seeking==yes:Seeking...}");
 
     if (libmpv()->initialize(mpv) != 0) {
       console::error("mpv: Error loading thumbnail chooser");
