@@ -376,20 +376,23 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort)
 }
 
 thumbnailer::~thumbnailer() {
-  if (output_frame != NULL) av_frame_free(&output_frame);
-  if (output_packet != NULL) av_packet_free(&output_packet);
-  if (output_codeccontext != NULL) avcodec_free_context(&output_codeccontext);
+  av_frame_free(&output_frame);
+  av_packet_free(&output_packet);
+  avcodec_free_context(&output_codeccontext);
 
-  if (measurement_context != NULL) sws_freeContext(measurement_context);
-  if (measurement_frame != NULL) av_frame_free(&measurement_frame);
+  sws_freeContext(measurement_context);
+  av_frame_free(&measurement_frame);
+  av_frame_free(&best_frame);
 
-  if (p_packet != NULL) av_packet_free(&p_packet);
-  if (p_frame != NULL) av_frame_free(&p_frame);
-  if (p_codec_context != NULL) avcodec_free_context(&p_codec_context);
-  if (p_format_context != NULL) avformat_close_input(&p_format_context);
+  av_packet_free(&p_packet);
+  av_frame_free(&p_frame);
+  avcodec_free_context(&p_codec_context);
+  avformat_close_input(&p_format_context);
 }
 
 void thumbnailer::init_measurement_context() {
+  best_frame = av_frame_alloc();
+
   measurement_frame = av_frame_alloc();
   measurement_frame->format = AV_PIX_FMT_RGB24;
   if (p_frame->width > p_frame->height) {
@@ -441,12 +444,21 @@ bool thumbnailer::seek_exact_and_decode(double time) {
     return false;
   }
 
+  if (cfg_logging) {
+    FB2K_console_formatter() << "mpv: Custom thumbnail set at " << target;
+    FB2K_console_formatter() << "mpv: Seeking to timestamp " << seek_time;
+  }
+
   for (int i = 0; i < 10; i++) {
     abort.check();
     if (get_frame_time() < target) {
       break;
     } else {
       seek_time -= 2 * AV_TIME_BASE;
+      if (cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Seek unsuccessful, trying " << seek_time;
+      }
       if (seek_time < 0 ||
           av_seek_frame(p_format_context, -1, seek_time, AVSEEK_FLAG_ANY) < 0 ||
           !decode_frame()) {
@@ -455,13 +467,25 @@ bool thumbnailer::seek_exact_and_decode(double time) {
     }
   }
 
+  if (cfg_logging) {
+    FB2K_console_formatter()
+        << "mpv: Seek successful, decoding to chosen frame";
+  }
+
   while (decode_frame()) {
     abort.check();
     if (get_frame_time() > target) {
+      if (cfg_logging) {
+        FB2K_console_formatter() << "mpv: Frame found at " << get_frame_time();
+      }
       return true;
     }
   }
 
+  if (cfg_logging) {
+    FB2K_console_formatter()
+        << "mpv: Unsuccessful, reached end of file or failed to decode";
+  }
   return false;
 }
 
@@ -532,11 +556,6 @@ album_art_data_ptr thumbnailer::encode_output() {
   libavtry(avcodec_send_frame(output_codeccontext, output_frame),
            "send output frame");
 
-  if (output_packet == NULL) {
-    console::error("mpv: Could not encode thumbnail image");
-    throw exception_album_art_not_found();
-  }
-
   abort.check();
   libavtry(avcodec_receive_packet(output_codeccontext, output_packet),
            "receive output packet");
@@ -546,13 +565,16 @@ album_art_data_ptr thumbnailer::encode_output() {
 }
 
 bool thumbnailer::decode_frame() {
-  while (av_read_frame(p_format_context, p_packet) >= 0) {
+  while (true) {
+    av_packet_unref(p_packet);
     abort.check();
+    if (av_read_frame(p_format_context, p_packet) < 0) continue;
 
     if (p_packet->stream_index != stream_index) continue;
 
     if (avcodec_send_packet(p_codec_context, p_packet) < 0) continue;
 
+    av_frame_unref(p_frame);
     if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
 
     p_frame_time_base =
@@ -612,36 +634,61 @@ album_art_data_ptr thumbnailer::get_art() {
       throw exception_album_art_not_found();
     }
   } else {
-    unsigned seektime = cfg_thumb_seek;
-
     if (cfg_thumb_histogram) {
+      unsigned l_seektime = (double)cfg_thumb_seek;
       // find a good frame, keyframe version
-      if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
+      if (!seek(0.01 * l_seektime)) throw exception_album_art_not_found();
       if (!decode_frame()) throw exception_album_art_not_found();
       // init after decoding first frame
       init_measurement_context();
+      av_frame_ref(best_frame, p_frame);
 
       const int tries = 15;
       double max_quality = frame_quality();
-      double best_seektime = cfg_thumb_seek;
+      if (cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Searching for good thumbnail frame, attempts: " << tries;
+        FB2K_console_formatter() << "mpv: Found frame at " << l_seektime
+                                 << ", quality: " << max_quality;
+      }
+      unsigned best_seektime = l_seektime;
       for (int i = 0; i < tries; i++) {
         abort.check();
-        double l_seektime = seektime;
-        seektime = (seektime + 5) % 100;
-        if (!seek(0.01 * (double)l_seektime))
+        l_seektime = (l_seektime + 5) % 100;
+
+        if (!seek(0.01 * (double)l_seektime) || !decode_frame()) {
           throw exception_album_art_not_found();
-        if (!decode_frame()) throw exception_album_art_not_found();
+        }
+
         double quality = frame_quality();
+        if (cfg_logging) {
+          FB2K_console_formatter() << "mpv: Found frame at " << l_seektime
+                                   << ", quality: " << quality;
+        }
         if (quality > max_quality) {
           max_quality = quality;
           best_seektime = l_seektime;
+          av_frame_unref(best_frame);
+          av_frame_ref(best_frame, p_frame);
         }
       }
-    }
 
-    abort.check();
-    if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
-    if (!decode_frame()) throw exception_album_art_not_found();
+      av_frame_unref(p_frame);
+      av_frame_ref(p_frame, best_frame);
+      av_frame_unref(best_frame);
+      if (cfg_logging && cfg_thumb_histogram) {
+        FB2K_console_formatter() << "mpv: Quality is now " << frame_quality();
+      }
+    } else {
+      abort.check();
+      if (cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Using frame at default time " << cfg_thumb_seek;
+      }
+      if (!seek(0.01 * (double)cfg_thumb_seek))
+        throw exception_album_art_not_found();
+      if (!decode_frame()) throw exception_album_art_not_found();
+    }
   }
 
   return encode_output();
@@ -738,6 +785,12 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     if (!test_thumb_pattern(item)) throw exception_album_art_not_found();
     album_art_data_ptr ret = cache_get(item);
     if (!ret.is_empty()) return ret;
+
+    if (cfg_logging) {
+      FB2K_console_formatter()
+          << "mpv: Generating thumbnail: " << item->get_path() << "["
+          << item->get_subsong_index() << "]";
+    }
 
     thumbnailer ex(item, p_abort);
     ret = ex.get_art();

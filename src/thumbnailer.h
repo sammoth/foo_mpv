@@ -40,6 +40,7 @@ class thumbnailer {
   int rgb_buf_size = 0;
   SwsContext* measurement_context = NULL;
   AVFrame* measurement_frame = NULL;
+  AVFrame* best_frame = NULL;
 
   AVCodec* output_encoder = NULL;
   AVCodecContext* output_codeccontext = NULL;
