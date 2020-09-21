@@ -25,7 +25,7 @@ namespace mpv {
 
 extern cfg_uint cfg_thumb_size, cfg_thumb_seek, cfg_thumb_cache_quality,
     cfg_thumb_cache_format, cfg_thumb_cache_size;
-extern cfg_bool cfg_thumb_cache, cfg_thumbs, cfg_thumb_group_longest,
+extern cfg_bool cfg_thumbs, cfg_thumb_group_longest,
     cfg_thumb_histogram, cfg_thumb_group_override;
 extern advconfig_checkbox_factory cfg_logging;
 
@@ -354,11 +354,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort)
   // init output encoding
   output_packet = av_packet_alloc();
   output_frame = av_frame_alloc();
-  if (!cfg_thumb_cache) {
-    output_frame->format = AV_PIX_FMT_BGR24;
-    output_encoder = avcodec_find_encoder(AV_CODEC_ID_BMP);
-    output_codeccontext = avcodec_alloc_context3(output_encoder);
-  } else if (cfg_thumb_cache_format == 0) {
+  if (cfg_thumb_cache_format == 0) {
     output_frame->format = AV_PIX_FMT_YUVJ444P;
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
     output_codeccontext = avcodec_alloc_context3(output_encoder);
@@ -708,7 +704,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
   metadb_handle_list_cref items;
 
   album_art_data_ptr cache_get(metadb_handle_ptr metadb) {
-    if (cfg_thumb_cache && query_get) {
+    if (query_get) {
       try {
         std::lock_guard<std::mutex> lock(mut);
         query_get->reset();
@@ -745,7 +741,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
   }
 
   void cache_put(metadb_handle_ptr metadb, album_art_data_ptr data) {
-    if (cfg_thumb_cache && query_put) {
+    if (query_put) {
       try {
         {
           std::lock_guard<std::mutex> lock(mut);

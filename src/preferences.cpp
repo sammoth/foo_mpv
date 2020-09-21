@@ -97,11 +97,6 @@ static const GUID guid_cfg_thumb_histogram = {
     0x1365,
     0x4f27,
     {0xbd, 0x14, 0x22, 0xc6, 0x99, 0x7c, 0x22, 0x8e}};
-static const GUID guid_cfg_thumb_cache = {
-    0xd194fb34,
-    0x6a16,
-    0x4683,
-    {0xbe, 0x67, 0x41, 0x13, 0x5a, 0x35, 0x2, 0x2f}};
 static const GUID guid_cfg_thumb_cache_size = {
     0x5163cef5,
     0xd926,
@@ -139,10 +134,9 @@ cfg_bool cfg_thumbs(guid_cfg_thumbnails, true);
 cfg_uint cfg_thumb_cover_type(guid_cfg_thum_cover_type, 0);
 cfg_bool cfg_thumb_group_longest(guid_cfg_item_in_group, false);
 cfg_bool cfg_thumb_group_override(guid_cfg_group_override, true);
-cfg_uint cfg_thumb_size(guid_cfg_thumb_size, 1);
+cfg_uint cfg_thumb_size(guid_cfg_thumb_size, 2);
 cfg_uint cfg_thumb_seek(guid_cfg_thumb_seek, 30);
 cfg_bool cfg_thumb_histogram(guid_cfg_thumb_histogram, false);
-cfg_bool cfg_thumb_cache(guid_cfg_thumb_cache, true);
 cfg_uint cfg_thumb_cache_size(guid_cfg_thumb_cache_size, 0);
 cfg_uint cfg_thumb_cache_format(guid_cfg_cache_format, 0);
 cfg_bool cfg_thumb_filter(guid_cfg_filter, false);
@@ -227,7 +221,6 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_PATTERN, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_THUMBNAILS, BN_CLICKED, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_CHECK_THUMB_CACHE, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_RADIO_FIRSTINGROUP, BN_CLICKED, OnEditChange)
   COMMAND_HANDLER_EX(IDC_RADIO_LONGESTINGROUP, BN_CLICKED, OnEditChange)
   COMMAND_HANDLER_EX(IDC_CHECK_HISTOGRAM, BN_CLICKED, OnEditChange);
@@ -276,7 +269,6 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
   CheckDlgButton(IDC_CHECK_HISTOGRAM, cfg_thumb_histogram);
-  CheckDlgButton(IDC_CHECK_THUMB_CACHE, cfg_thumb_cache);
   CheckDlgButton(IDC_CHECK_FILTER, cfg_thumb_filter);
   CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, cfg_thumb_group_override);
   CheckDlgButton(IDC_RADIO_LONGESTINGROUP, cfg_thumb_group_longest);
@@ -373,14 +365,13 @@ void CMpvPreferences::reset() {
   CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
   CheckDlgButton(IDC_CHECK_FILTER, false);
   CheckDlgButton(IDC_CHECK_HISTOGRAM, false);
-  CheckDlgButton(IDC_CHECK_THUMB_CACHE, true);
   CheckDlgButton(IDC_CHECK_GROUPOVERRIDE, true);
   CheckDlgButton(IDC_RADIO_LONGESTINGROUP, false);
   CheckDlgButton(IDC_RADIO_FIRSTINGROUP, true);
 
   ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).SetCurSel(2);
   ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).SetCurSel(0);
 
@@ -416,7 +407,6 @@ void CMpvPreferences::apply() {
   }
 
   cfg_thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
-  cfg_thumb_cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
   cfg_thumb_filter = IsDlgButtonChecked(IDC_CHECK_FILTER);
   cfg_thumb_histogram = IsDlgButtonChecked(IDC_CHECK_HISTOGRAM);
   cfg_thumb_group_longest = IsDlgButtonChecked(IDC_RADIO_LONGESTINGROUP);
@@ -443,20 +433,18 @@ bool CMpvPreferences::HasChanged() { return dirty; }
 
 void CMpvPreferences::set_controls_enabled() {
   bool thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
-  bool cache = IsDlgButtonChecked(IDC_CHECK_THUMB_CACHE);
   bool pattern = IsDlgButtonChecked(IDC_CHECK_FILTER);
 
   ((CComboBox)uGetDlgItem(IDC_EDIT_PATTERN)).EnableWindow(thumbs && pattern);
   ((CComboBox)uGetDlgItem(IDC_CHECK_FILTER)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).EnableWindow(thumbs);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).EnableWindow(thumbs && cache);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_RADIO_LONGESTINGROUP)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_RADIO_FIRSTINGROUP)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_HISTOGRAM)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_GROUPOVERRIDE)).EnableWindow(thumbs);
-  ((CComboBox)uGetDlgItem(IDC_CHECK_THUMB_CACHE)).EnableWindow(thumbs);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).EnableWindow(thumbs && cache);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs);
 }
 

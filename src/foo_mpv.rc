@@ -47,7 +47,6 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,42,173,10
     CONTROL         "Generate video thumbnails as artwork",IDC_CHECK_THUMBNAILS,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,98,193,10
-    CONTROL         "Cache thumbnails on disk",IDC_CHECK_THUMB_CACHE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,216,154,97,10
     LTEXT           "Maximum cache size:",IDC_STATIC,216,171,94,8
     LTEXT           "Thumbnail size:",IDC_STATIC,14,244,78,8
     LTEXT           "Thumbnail format:",IDC_STATIC,216,201,95,10
