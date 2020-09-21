@@ -126,14 +126,6 @@ void thumb_time_store_purge(metadb_handle_ptr metadb) {
   metadb_io::get()->dispatch_refresh(metadb);
 }
 
-static const GUID guid_cfg_thumb_chooser_popup_rect = {
-    0x23c06119,
-    0x5298,
-    0x4dad,
-    {0x9f, 0x41, 0x57, 0xd2, 0x75, 0xd2, 0x44, 0xc4}};
-static cfg_struct_t<RECT> cfg_thumb_chooser_popup_rect(
-    guid_cfg_thumb_chooser_popup_rect, 0);
-
 struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
  public:
   enum { IDD = IDD_THUMBCHOOSER };
@@ -171,8 +163,10 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   void OnCancel(UINT, int, CWindow) { DestroyWindow(); }
   void OnAccept(UINT, int, CWindow) {
     double mpv_time = -1.0;
-    if (libmpv()->get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) >
-        -1) {
+    int idle = false;
+    libmpv()->get_property(mpv, "idle", MPV_FORMAT_FLAG, &idle);
+    if (!idle && libmpv()->get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE,
+                                        &mpv_time) > -1) {
       thumb_time_store_set(metadb, mpv_time - time_base);
     }
 
@@ -198,8 +192,6 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     slider_seek.SetRangeMin(1);
     slider_seek.SetRangeMax(1000);
 
-    ::ShowWindowCentered(*this, GetParent());
-
     double pos = 0.0;
     thumb_time_store_get(metadb, pos);
     if (pos > metadb->get_length()) pos = 0.0;
@@ -223,9 +215,11 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
         }
       }
       time_base = time_base_l;
+    } else {
+      console::error("mpv: Error loading thumbnail chooser");
+      return false;
     }
 
-    // create mpv
     if (!libmpv()->load_dll()) return false;
 
     mpv = libmpv()->create();
@@ -254,17 +248,21 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     libmpv()->set_option_string(mpv, "keep-open", "yes");
 
     if (libmpv()->initialize(mpv) != 0) {
-      libmpv()->destroy(mpv);
-      mpv = NULL;
+      console::error("mpv: Error loading thumbnail chooser");
+      return false;
     } else {
-      load_video(filename);
+      const char* cmd[] = {"loadfile", filename.c_str(), NULL};
+      if (libmpv()->command(mpv, cmd) < 0) {
+        console::error("mpv: Error loading thumbnail chooser");
+        return false;
+      }
     }
 
+    ::ShowWindowCentered(*this, GetParent());
     return true;
   }
 
   void seek(double time) {
-    // build command
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(15);
@@ -272,9 +270,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     std::string time_string = time_sstring.str();
     const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
 
-    if (libmpv()->command(mpv, cmd) < 0) {
-      // error
-    }
+    libmpv()->command(mpv, cmd);
   }
 
   void on_destroy() {
@@ -283,47 +279,12 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
       mpv = NULL;
       libmpv()->terminate_destroy(temp);
     }
-    RECT client_rect = {};
-    GetWindowRect(&client_rect);
-    cfg_thumb_chooser_popup_rect = client_rect;
   }
 
   HWND get_wnd() { return m_hWnd; }
 
  private:
   double time_base;
-  void load_video(pfc::string8 filename) {
-    const char* cmd[] = {"loadfile", filename.c_str(), NULL};
-    if (libmpv()->command(mpv, cmd) < 0) {
-      // error
-    }
-
-    // wait for load
-    const int64_t userdata = 853727396;
-    if (libmpv()->observe_property(mpv, userdata, "seeking", MPV_FORMAT_FLAG) <
-        0) {
-      // error
-    } else {
-      for (int i = 0; i < 100; i++) {
-        mpv_event* event = libmpv()->wait_event(mpv, 0.05);
-
-        int ret = 0;
-        libmpv()->get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &ret);
-        if (ret == 1) {
-          libmpv()->unobserve_property(mpv, userdata);
-          break;
-        }
-        libmpv()->get_property(mpv, "seeking", MPV_FORMAT_FLAG, &ret);
-        if (ret == 0) {
-          libmpv()->unobserve_property(mpv, userdata);
-          break;
-        }
-      }
-    }
-    libmpv()->unobserve_property(mpv, userdata);
-  }
-
- protected:
 };
 
 static void RunThumbnailChooserWindow(metadb_handle_ptr metadb) {
