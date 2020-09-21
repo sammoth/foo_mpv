@@ -163,20 +163,6 @@ void clean_thumbnail_cache() {
   }
 }
 
-void regenerate_thumbnail_cache() {
-  if (db_ptr) {
-    try {
-      std::lock_guard<std::mutex> lock(mut);
-    } catch (SQLite::Exception e) {
-      std::stringstream msg;
-      msg << "mpv: Error clearing thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
-    }
-  } else {
-    console::error("mpv: Thumbnail cache not loaded");
-  }
-}
-
 void compact_thumbnail_cache() {
   if (db_ptr) {
     try {
@@ -299,10 +285,9 @@ static void libavtry(int error, const char* cmd) {
   }
 }
 
-thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
+thumbnailer::thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort)
     : metadb(p_metadb),
-      measurement_context(NULL),
-      measurement_frame(NULL),
+      abort(p_abort),
       time_start_in_file(0.0),
       time_end_in_file(metadb->get_length()) {
   // get filename
@@ -336,6 +321,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
   p_frame = av_frame_alloc();
 
   // open file and find video stream and codec
+  abort.check();
   libavtry(avformat_open_input(&p_format_context, filename.c_str(), NULL, NULL),
            "open input");
   libavtry(avformat_find_stream_info(p_format_context, NULL),
@@ -389,6 +375,20 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb)
   }
 }
 
+thumbnailer::~thumbnailer() {
+  if (output_frame != NULL) av_frame_free(&output_frame);
+  if (output_packet != NULL) av_packet_free(&output_packet);
+  if (output_codeccontext != NULL) avcodec_free_context(&output_codeccontext);
+
+  if (measurement_context != NULL) sws_freeContext(measurement_context);
+  if (measurement_frame != NULL) av_frame_free(&measurement_frame);
+
+  if (p_packet != NULL) av_packet_free(&p_packet);
+  if (p_frame != NULL) av_frame_free(&p_frame);
+  if (p_codec_context != NULL) avcodec_free_context(&p_codec_context);
+  if (p_format_context != NULL) avformat_close_input(&p_format_context);
+}
+
 void thumbnailer::init_measurement_context() {
   measurement_frame = av_frame_alloc();
   measurement_frame->format = AV_PIX_FMT_RGB24;
@@ -402,6 +402,7 @@ void thumbnailer::init_measurement_context() {
 
   libavtry(av_frame_get_buffer(measurement_frame, 32),
            "get measurement frame buffer");
+  abort.check();
   measurement_context = sws_getContext(
       p_frame->width, p_frame->height, (AVPixelFormat)p_frame->format,
       measurement_frame->width, measurement_frame->height,
@@ -414,24 +415,6 @@ void thumbnailer::init_measurement_context() {
   rgb_buf_size = av_image_get_buffer_size(
       (AVPixelFormat)measurement_frame->format, measurement_frame->width,
       measurement_frame->height, 1);
-}
-
-thumbnailer::~thumbnailer() {
-  av_frame_free(&output_frame);
-  av_packet_free(&output_packet);
-  avcodec_free_context(&output_codeccontext);
-
-  if (measurement_context != NULL) {
-    sws_freeContext(measurement_context);
-  }
-  if (measurement_frame != NULL) {
-    av_frame_free(&measurement_frame);
-  }
-
-  av_packet_free(&p_packet);
-  av_frame_free(&p_frame);
-  avcodec_free_context(&p_codec_context);
-  avformat_close_input(&p_format_context);
 }
 
 bool thumbnailer::seek(double fraction) {
@@ -451,14 +434,15 @@ double thumbnailer::get_frame_time() {
 bool thumbnailer::seek_exact_and_decode(double time) {
   double target = time_start_in_file + time;
 
-  int64_t seek_time = (int64_t)(
-      AV_TIME_BASE * max(0, (target - 2.0)));
+  abort.check();
+  int64_t seek_time = (int64_t)(AV_TIME_BASE * max(0, (target - 2.0)));
   if (av_seek_frame(p_format_context, -1, seek_time, AVSEEK_FLAG_ANY) < 0 ||
       !decode_frame()) {
     return false;
   }
 
   for (int i = 0; i < 10; i++) {
+    abort.check();
     if (get_frame_time() < target) {
       break;
     } else {
@@ -472,6 +456,7 @@ bool thumbnailer::seek_exact_and_decode(double time) {
   }
 
   while (decode_frame()) {
+    abort.check();
     if (get_frame_time() > target) {
       return true;
     }
@@ -521,6 +506,7 @@ album_art_data_ptr thumbnailer::encode_output() {
   output_frame->height = scale_to_height;
   libavtry(av_frame_get_buffer(output_frame, 32), "get output frame buffer");
 
+  abort.check();
   SwsContext* swscontext = sws_getContext(
       p_frame->width, p_frame->height, (AVPixelFormat)p_frame->format,
       output_frame->width, output_frame->height,
@@ -551,6 +537,7 @@ album_art_data_ptr thumbnailer::encode_output() {
     throw exception_album_art_not_found();
   }
 
+  abort.check();
   libavtry(avcodec_receive_packet(output_codeccontext, output_packet),
            "receive output packet");
 
@@ -560,6 +547,8 @@ album_art_data_ptr thumbnailer::encode_output() {
 
 bool thumbnailer::decode_frame() {
   while (av_read_frame(p_format_context, p_packet) >= 0) {
+    abort.check();
+
     if (p_packet->stream_index != stream_index) continue;
 
     if (avcodec_send_packet(p_codec_context, p_packet) < 0) continue;
@@ -588,6 +577,7 @@ double thumbnailer::frame_quality() {
             p_frame->height, measurement_frame->data,
             measurement_frame->linesize);
 
+  abort.check();
   auto rgb_buf = std::make_unique<unsigned char[]>(rgb_buf_size);
   av_image_copy_to_buffer(rgb_buf.get(), rgb_buf_size, measurement_frame->data,
                           measurement_frame->linesize, AV_PIX_FMT_RGB24,
@@ -603,6 +593,7 @@ double thumbnailer::frame_quality() {
                           3;
 
     hist[(BUCKETS - 1) * brightness / 255]++;
+    abort.check();
   }
 
   // TODO maybe calculate something smarter
@@ -634,6 +625,7 @@ album_art_data_ptr thumbnailer::get_art() {
       double max_quality = frame_quality();
       double best_seektime = cfg_thumb_seek;
       for (int i = 0; i < tries; i++) {
+        abort.check();
         double l_seektime = seektime;
         seektime = (seektime + 5) % 100;
         if (!seek(0.01 * (double)l_seektime))
@@ -647,6 +639,7 @@ album_art_data_ptr thumbnailer::get_art() {
       }
     }
 
+    abort.check();
     if (!seek(0.01 * (double)seektime)) throw exception_album_art_not_found();
     if (!decode_frame()) throw exception_album_art_not_found();
   }
@@ -746,7 +739,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     album_art_data_ptr ret = cache_get(item);
     if (!ret.is_empty()) return ret;
 
-    thumbnailer ex(item);
+    thumbnailer ex(item, p_abort);
     ret = ex.get_art();
     if (ret.is_empty()) throw exception_album_art_not_found();
     cache_put(item, ret);

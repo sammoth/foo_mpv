@@ -324,7 +324,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   }
 
  protected:
-};  // namespace mpv
+};
 
 static void RunThumbnailChooserWindow(metadb_handle_ptr metadb) {
   try {
@@ -345,7 +345,7 @@ static contextmenu_group_popup_factory g_thums(guid_context_menu_group,
 
 class thumbnail_items : public contextmenu_item_simple {
  public:
-  enum { cmd_choose = 0, cmd_purge, cmd_purgecache, cmd_total };
+  enum { cmd_choose = 0, cmd_remove_times, cmd_purgecache, cmd_total };
   GUID get_parent() { return contextmenu_groups::utilities; }
   unsigned get_num_items() { return cmd_total; }
   void get_item_name(unsigned item, pfc::string_base& p_out) {
@@ -353,7 +353,7 @@ class thumbnail_items : public contextmenu_item_simple {
       case cmd_choose:
         p_out = "Choose thumbnail";
         break;
-      case cmd_purge:
+      case cmd_remove_times:
         p_out = "Remove custom thumbnail times for items";
         break;
       case cmd_purgecache:
@@ -370,7 +370,7 @@ class thumbnail_items : public contextmenu_item_simple {
       case cmd_choose:
         RunThumbnailChooserWindow(get_thumbnail_item_from_items(p_data));
         break;
-      case cmd_purge:
+      case cmd_remove_times:
         for (unsigned i = 0; i < p_data.get_size(); i++) {
           thumb_time_store_purge(p_data[i]);
         }
@@ -391,7 +391,7 @@ class thumbnail_items : public contextmenu_item_simple {
       case cmd_choose:
         p_out = "Choose a thumbnail to use from the video";
         return true;
-      case cmd_purge:
+      case cmd_remove_times:
         p_out = "Remove saved custom thumbnail times for selected items";
         return true;
       case cmd_purgecache:
@@ -424,7 +424,7 @@ class thumbnail_items : public contextmenu_item_simple {
     switch (item) {
       case cmd_choose:
         return guid_choose;
-      case cmd_purge:
+      case cmd_remove_times:
         return guid_purge;
       case cmd_purgecache:
         return guid_purgecache;
@@ -435,5 +435,4 @@ class thumbnail_items : public contextmenu_item_simple {
 };
 
 static contextmenu_item_factory_t<thumbnail_items> g_thumbnail_menu;
-
 }  // namespace mpv

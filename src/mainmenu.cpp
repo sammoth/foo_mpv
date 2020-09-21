@@ -31,11 +31,6 @@ static const GUID guid_thumbs_compact = {
     0x9a84,
     0x4504,
     {0x8c, 0x45, 0xac, 0xc, 0xd7, 0xe2, 0x70, 0xfb}};
-static const GUID guid_thumbs_regenerate = {
-    0xbf193e5e,
-    0xf7fd,
-    0x408c,
-    {0xaf, 0x21, 0x1e, 0x5e, 0x9f, 0xf9, 0x42, 0x12}};
 
 static mainmenu_group_popup_factory g_mainmenu_group(
     guid_mainmenu_group, mainmenu_groups::library,
@@ -88,7 +83,7 @@ class mainmenu_mpv : public mainmenu_commands {
 static service_factory_single_t<mainmenu_mpv> g_mainmenu_mpv;
 
 class mainmenu_mpv_thumbs : public mainmenu_commands {
-  enum { cmd_clear, cmd_compact, cmd_removedead, cmd_regenerate, cmd_total };
+  enum { cmd_clear, cmd_compact, cmd_removedead, cmd_total };
   t_uint32 get_command_count() override { return cmd_total; }
   GUID get_command(t_uint32 p_index) override {
     switch (p_index) {
@@ -98,8 +93,6 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
         return guid_thumbs_compact;
       case cmd_removedead:
         return guid_thumbs_removedead;
-      case cmd_regenerate:
-        return guid_thumbs_regenerate;
       default:
         uBugCheck();  // should never happen unless somebody called us with
                       // invalid parameters - bail
@@ -115,9 +108,6 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
         break;
       case cmd_removedead:
         p_out = "Remove dead thumbnails";
-        break;
-      case cmd_regenerate:
-        p_out = "Regenerate all thumbnails";
         break;
       default:
         uBugCheck();  // should never happen unless somebody called us with
@@ -135,11 +125,6 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
       case cmd_removedead:
         p_out = "Remove thumbnails for files which have been deleted";
         return true;
-      case cmd_regenerate:
-        p_out =
-            "Regenerate thumbnails for all items in the database using current "
-            "thumbnail settings";
-        return true;
       default:
         return false;
     }
@@ -156,9 +141,6 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
         break;
       case cmd_removedead:
         std::thread([]() { mpv::clean_thumbnail_cache(); }).detach();
-        break;
-      case cmd_regenerate:
-        std::thread([]() { mpv::regenerate_thumbnail_cache(); }).detach();
         break;
       default:
         uBugCheck();  // should never happen unless somebody called us with
