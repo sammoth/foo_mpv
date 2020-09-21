@@ -25,8 +25,8 @@ namespace mpv {
 
 extern cfg_uint cfg_thumb_size, cfg_thumb_seek, cfg_thumb_cache_quality,
     cfg_thumb_cache_format, cfg_thumb_cache_size;
-extern cfg_bool cfg_thumbs, cfg_thumb_group_longest,
-    cfg_thumb_histogram, cfg_thumb_group_override;
+extern cfg_bool cfg_thumbs, cfg_thumb_group_longest, cfg_thumb_histogram,
+    cfg_thumb_group_override;
 extern advconfig_checkbox_factory cfg_logging;
 
 static const char* query_create_str =
@@ -346,6 +346,9 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort)
     throw exception_album_art_not_found();
   }
 
+  p_format_start_time = p_format_context->streams[stream_index]->start_time;
+  p_stream_time_base = p_format_context->streams[stream_index]->time_base;
+
   p_codec_context = avcodec_alloc_context3(codec);
   libavtry(avcodec_parameters_to_context(p_codec_context, params),
            "make codec context");
@@ -420,22 +423,34 @@ bool thumbnailer::seek(double fraction) {
   double seek_time =
       time_start_in_file + fraction * (time_end_in_file - time_start_in_file);
 
-  return av_seek_frame(p_format_context, -1,
-                       (int64_t)(seek_time * (double)AV_TIME_BASE),
-                       AVSEEK_FLAG_ANY) >= 0;
+  int64_t seek_pts = p_format_start_time +
+                     (int64_t)(seek_time * (double)p_stream_time_base.den /
+                               (double)p_stream_time_base.num);
+
+  return avformat_seek_file(p_format_context, stream_index, INT64_MIN, seek_pts,
+                            INT64_MAX, 0) >= 0;
 }
 
 double thumbnailer::get_frame_time() {
-  return ((double)p_frame->best_effort_timestamp) * p_frame_time_base.num /
-         p_frame_time_base.den;
+  int64_t pts = p_frame->pkt_pts;
+  if (p_format_start_time != AV_NOPTS_VALUE) {
+    pts -= p_format_start_time;
+  }
+
+  return ((double)pts) * p_frame_time_base.num / p_frame_time_base.den;
 }
 
 bool thumbnailer::seek_exact_and_decode(double time) {
   double target = time_start_in_file + time;
 
   abort.check();
-  int64_t seek_time = (int64_t)(AV_TIME_BASE * max(0, (target - 2.0)));
-  if (av_seek_frame(p_format_context, -1, seek_time, AVSEEK_FLAG_ANY) < 0 ||
+  int64_t seek_time = (int64_t)(target * (double)p_stream_time_base.den /
+                                (double)p_stream_time_base.num);
+  seek_time = seek_time + p_format_start_time;
+  int64_t min_seek_time = seek_time - (int64_t)((double)p_stream_time_base.den /
+                                                (double)p_stream_time_base.num);
+  if (avformat_seek_file(p_format_context, stream_index, min_seek_time,
+                         seek_time, seek_time, 0) < 0 ||
       !decode_frame()) {
     return false;
   }
@@ -448,15 +463,24 @@ bool thumbnailer::seek_exact_and_decode(double time) {
   for (int i = 0; i < 10; i++) {
     abort.check();
     if (get_frame_time() < target) {
-      break;
-    } else {
-      seek_time -= 2 * AV_TIME_BASE;
       if (cfg_logging) {
         FB2K_console_formatter()
-            << "mpv: Seek unsuccessful, trying " << seek_time;
+            << "mpv: OK, got frame at " << get_frame_time();
+      }
+      break;
+    } else {
+      seek_time -= (int64_t)(2 * (double)p_stream_time_base.den /
+                             (double)p_stream_time_base.num);
+      min_seek_time = seek_time - (int64_t)((double)p_stream_time_base.den /
+                                            (double)p_stream_time_base.num);
+      if (cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Seek unsuccessful, got " << get_frame_time() << ", trying "
+            << seek_time;
       }
       if (seek_time < 0 ||
-          av_seek_frame(p_format_context, -1, seek_time, AVSEEK_FLAG_ANY) < 0 ||
+          avformat_seek_file(p_format_context, stream_index, min_seek_time,
+                             seek_time, seek_time, 0) < 0 ||
           !decode_frame()) {
         return false;
       }

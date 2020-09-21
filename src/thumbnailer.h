@@ -35,6 +35,8 @@ class thumbnailer {
   AVPacket* p_packet = NULL;
   AVFrame* p_frame = NULL;
   AVRational p_frame_time_base;
+  AVRational p_stream_time_base;
+  int64_t p_format_start_time;
 
   void init_measurement_context();
   int rgb_buf_size = 0;
