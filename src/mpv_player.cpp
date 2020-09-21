@@ -346,7 +346,7 @@ void mpv_player::mpv_terminate() {
 
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {
-    mpv_pause(p_paused);
+  mpv_pause(p_paused);
 }
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
   update_title();
@@ -405,7 +405,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
 
       double start_time =
           new_file ? 0.0 : playback_control::get()->playback_get_position();
-      last_mpv_seek = ceil(1000 * start_time) / 1000.0;
+      last_mpv_seek = ceil(1000 * (start_time + time_base)) / 1000.0;
       last_hard_sync = -99;
 
       std::stringstream time_sstring;
@@ -546,7 +546,7 @@ void mpv_player::mpv_seek(double time) {
       console::info(msg.str().c_str());
     }
 
-    last_mpv_seek = time;
+    last_mpv_seek = time_base + time;
     last_hard_sync = -99;
     // reset speed
     double unity = 1.0;
