@@ -11,6 +11,8 @@
 #include "thumbnailer.h"
 
 namespace mpv {
+static const unsigned seek_resolution = 10000;
+
 extern cfg_uint cfg_thumb_seek;
 
 static const GUID guid_thumb_pos_index = {
@@ -156,7 +158,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
 
   void OnScroll(UINT, int, CWindow) {
     seek(metadb->get_length() *
-         ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER1)).GetPos() / 1000.0);
+         ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER1)).GetPos() / seek_resolution);
     return;
   }
 
@@ -188,13 +190,13 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
 
     CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER1);
     slider_seek.SetRangeMin(1);
-    slider_seek.SetRangeMax(1000);
+    slider_seek.SetRangeMax(seek_resolution);
 
     double pos = 0.0;
     thumb_time_store_get(metadb, pos);
     if (pos > metadb->get_length()) pos = 0.0;
     slider_seek.SetPos(
-        (int)min(1000, max(0, (pos / metadb->get_length()) * 1000)));
+        (int)min(seek_resolution, max(0, (pos / metadb->get_length()) * seek_resolution)));
 
     pfc::string8 filename;
     filename.add_filename(metadb->get_path());
@@ -244,7 +246,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     libmpv()->set_option_string(mpv, "force-window", "yes");
     libmpv()->set_option_string(mpv, "idle", "yes");
     libmpv()->set_option_string(mpv, "keep-open", "yes");
-    libmpv()->set_option_string(mpv, "vf-append", "bwdif:deint=1");
+    libmpv()->set_option_string(mpv, "vf-append", "bwdif:deint=1:mode=0");
     libmpv()->set_option_string(mpv, "osd-msg1", "${?seeking==yes:Seeking...}");
 
     if (libmpv()->initialize(mpv) != 0) {

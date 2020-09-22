@@ -685,7 +685,7 @@ album_art_data_ptr thumbnailer::get_art() {
       init_measurement_context();
       av_frame_ref(best_frame, p_frame);
 
-      const int tries = 15;
+      const int tries = 12;
       double max_quality = frame_quality();
       if (cfg_logging) {
         FB2K_console_formatter()
@@ -696,7 +696,7 @@ album_art_data_ptr thumbnailer::get_art() {
       unsigned best_seektime = l_seektime;
       for (int i = 0; i < tries; i++) {
         abort.check();
-        l_seektime = (l_seektime + 4) % 100;
+        l_seektime = (l_seektime + 5) % 100;
 
         if (!seek(0.01 * (double)l_seektime) || !decode_frame(true)) {
           throw exception_album_art_not_found();
