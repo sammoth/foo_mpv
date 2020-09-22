@@ -871,6 +871,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
       throw e;
     } catch (...) {
       mut->unlock();
+      throw exception_album_art_not_found();
     }
 
     mut->unlock();
