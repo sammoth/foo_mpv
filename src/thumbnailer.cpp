@@ -324,6 +324,7 @@ thumbnailer::thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort)
   // get start/end time of track
   if (metadb->get_subsong_index() > 1) {
     for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
+      abort.check();
       playable_location_impl tmp = metadb->get_location();
       tmp.set_subsong(s);
       metadb_handle_ptr subsong = metadb::get()->handle_create(tmp);
@@ -679,7 +680,9 @@ album_art_data_ptr thumbnailer::get_art() {
     if (cfg_thumb_histogram) {
       unsigned l_seektime = 10;
       // find a good frame, keyframe version
+      abort.check();
       if (!seek(0.01 * l_seektime)) throw exception_album_art_not_found();
+      abort.check();
       if (!decode_frame(true)) throw exception_album_art_not_found();
       // init after decoding first frame
       init_measurement_context();
@@ -838,13 +841,16 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     album_art_data_ptr ret = cache_get(item);
     if (!ret.is_empty()) return ret;
 
+    p_abort.check();
     std::timed_mutex* mut = get_mutex_for_item(item);
     while (!mut->try_lock_for(std::chrono::milliseconds(50))) {
       p_abort.check();
     };
     try {
       // check no other thread just generated the thumbnail
+      p_abort.check();
       ret = cache_get(item);
+      p_abort.check();
       if (ret.is_empty()) {
         if (cfg_logging) {
           FB2K_console_formatter()
