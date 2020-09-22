@@ -45,7 +45,7 @@ BEGIN
     CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,71,157,10
     CONTROL         "Stop video playback when not visible",IDC_CHECK_STOP,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,42,173,10
-    CONTROL         "Enable thumbnails",IDC_CHECK_THUMBNAILS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,93,193,10
+    CONTROL         "Enable thumbnails",IDC_CHECK_THUMBNAILS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,93,243,10
     LTEXT           "Maximum cache size:",IDC_STATIC,184,166,94,8
     LTEXT           "Thumbnail size:",IDC_STATIC,14,239,78,8
     LTEXT           "Thumbnail format:",IDC_STATIC,184,196,95,10
@@ -65,7 +65,7 @@ BEGIN
     LTEXT           "Move video to greatest panel:",IDC_STATIC,164,44,126,8
     COMBOBOX        IDC_COMBO_PANELMETRIC,164,56,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     GROUPBOX        "",IDC_STATIC,7,81,270,190
-    CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,110,103,10
+    CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,110,239,10
     EDITTEXT        IDC_EDIT_PATTERN,14,123,256,13,ES_AUTOHSCROLL
     COMBOBOX        IDC_COMBO_FORMAT,184,207,83,30,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
 END
