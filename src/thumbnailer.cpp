@@ -24,7 +24,7 @@ extern "C" {
 namespace mpv {
 
 extern cfg_uint cfg_thumb_size, cfg_thumb_seek, cfg_thumb_cache_quality,
-    cfg_thumb_cache_format, cfg_thumb_cache_size;
+    cfg_thumb_cache_format, cfg_thumb_cache_size, cfg_thumb_cover_type;
 extern cfg_bool cfg_thumbs, cfg_thumb_group_longest, cfg_thumb_histogram,
     cfg_thumb_group_override;
 extern advconfig_checkbox_factory cfg_logging;
@@ -820,6 +820,13 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
   album_art_data_ptr query(const GUID& p_what,
                            abort_callback& p_abort) override {
     if (!cfg_thumbs || items.get_size() == 0) {
+      throw exception_album_art_not_found();
+    }
+
+    if (cfg_thumb_cover_type == 0 && p_what != album_art_ids::cover_front ||
+        cfg_thumb_cover_type == 1 && p_what != album_art_ids::cover_back ||
+        cfg_thumb_cover_type == 2 && p_what != album_art_ids::disc ||
+        cfg_thumb_cover_type == 3 && p_what != album_art_ids::artist) {
       throw exception_album_art_not_found();
     }
 
