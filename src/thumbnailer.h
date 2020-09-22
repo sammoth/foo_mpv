@@ -54,7 +54,7 @@ class thumbnailer {
   bool seek(double percent);
   bool seek_exact_and_decode(double percent);
   double get_frame_time();
-  bool decode_frame();
+  bool decode_frame(bool to_keyframe);
   album_art_data_ptr encode_output();
   double frame_quality();
 

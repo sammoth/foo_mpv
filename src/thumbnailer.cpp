@@ -46,7 +46,25 @@ static const char* query_dbtrim_str =
 static const char* query_delete_str =
     "DELETE FROM thumbs WHERE location = ? AND subsong = ?";
 
-static std::mutex mut;
+static std::unique_ptr<std::timed_mutex[]> art_generation_mutexes(
+    new std::timed_mutex[256]);
+static titleformat_object::ptr art_generation_mutex_formatter;
+
+static std::timed_mutex* get_mutex_for_item(metadb_handle_ptr metadb) {
+  if (art_generation_mutex_formatter.is_empty()) {
+    static_api_ptr_t<titleformat_compiler>()->compile_force(
+        art_generation_mutex_formatter, "%path% | %subsong%");
+  }
+
+  pfc::string_formatter str;
+  metadb->format_title(NULL, str, art_generation_mutex_formatter, NULL);
+  t_uint64 hash =
+      static_api_ptr_t<hasher_md5>()->process_single_string(str).xorHalve();
+
+  return &art_generation_mutexes[hash % 256];
+}
+
+static std::mutex db_mutex;
 static std::unique_ptr<SQLite::Database> db_ptr;
 static std::unique_ptr<SQLite::Statement> query_get;
 static std::unique_ptr<SQLite::Statement> query_put;
@@ -103,7 +121,7 @@ static initquit_factory_t<db_loader> g_db_loader;
 void clear_thumbnail_cache() {
   if (db_ptr) {
     try {
-      std::lock_guard<std::mutex> lock(mut);
+      std::lock_guard<std::mutex> lock(db_mutex);
       int deletes = db_ptr->exec("DELETE FROM thumbs");
 
       query_size->reset();
@@ -140,7 +158,7 @@ void sqlitefunction_missing(sqlite3_context* context, int num,
 void clean_thumbnail_cache() {
   if (db_ptr) {
     try {
-      std::lock_guard<std::mutex> lock(mut);
+      std::lock_guard<std::mutex> lock(db_mutex);
       db_ptr->createFunction("missing", 1, true, nullptr,
                              sqlitefunction_missing);
       int deletes =
@@ -166,7 +184,7 @@ void clean_thumbnail_cache() {
 void compact_thumbnail_cache() {
   if (db_ptr) {
     try {
-      std::lock_guard<std::mutex> lock(mut);
+      std::lock_guard<std::mutex> lock(db_mutex);
       query_get->reset();
       query_put->reset();
       query_size->reset();
@@ -210,7 +228,7 @@ void trim_db(int64_t newbytes) {
   if (db_size > max_bytes) {
     if (db_ptr) {
       try {
-        std::lock_guard<std::mutex> lock(mut);
+        std::lock_guard<std::mutex> lock(db_mutex);
         query_trim->reset();
         query_trim->exec();
         query_size->reset();
@@ -231,7 +249,7 @@ void trim_db(int64_t newbytes) {
 void remove_from_cache(metadb_handle_ptr metadb) {
   if (db_ptr) {
     try {
-      std::lock_guard<std::mutex> lock(mut);
+      std::lock_guard<std::mutex> lock(db_mutex);
       query_delete->reset();
       query_delete->bind(1, metadb->get_path());
       query_delete->bind(2, metadb->get_subsong_index());
@@ -432,7 +450,7 @@ bool thumbnailer::seek(double fraction) {
 }
 
 double thumbnailer::get_frame_time() {
-  int64_t pts = p_frame->pkt_pts;
+  int64_t pts = p_frame->pts;
   if (p_format_start_time != AV_NOPTS_VALUE) {
     pts -= p_format_start_time;
   }
@@ -451,7 +469,7 @@ bool thumbnailer::seek_exact_and_decode(double time) {
                                                 (double)p_stream_time_base.num);
   if (avformat_seek_file(p_format_context, stream_index, min_seek_time,
                          seek_time, seek_time, 0) < 0 ||
-      !decode_frame()) {
+      !decode_frame(false)) {
     return false;
   }
 
@@ -481,7 +499,7 @@ bool thumbnailer::seek_exact_and_decode(double time) {
       if (seek_time < 0 ||
           avformat_seek_file(p_format_context, stream_index, min_seek_time,
                              seek_time, seek_time, 0) < 0 ||
-          !decode_frame()) {
+          !decode_frame(false)) {
         return false;
       }
     }
@@ -492,7 +510,7 @@ bool thumbnailer::seek_exact_and_decode(double time) {
         << "mpv: Seek successful, decoding to chosen frame";
   }
 
-  while (decode_frame()) {
+  while (decode_frame(false)) {
     abort.check();
     if (get_frame_time() > target) {
       if (cfg_logging) {
@@ -584,7 +602,7 @@ album_art_data_ptr thumbnailer::encode_output() {
                                        output_packet->size);
 }
 
-bool thumbnailer::decode_frame() {
+bool thumbnailer::decode_frame(bool to_keyframe) {
   while (true) {
     av_packet_unref(p_packet);
     abort.check();
@@ -596,6 +614,10 @@ bool thumbnailer::decode_frame() {
 
     av_frame_unref(p_frame);
     if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
+
+    // if (to_keyframe && p_frame->pict_type != AV_PICTURE_TYPE_I) {
+    //  continue;
+    //}
 
     p_frame_time_base =
         p_format_context->streams[p_packet->stream_index]->time_base;
@@ -655,10 +677,10 @@ album_art_data_ptr thumbnailer::get_art() {
     }
   } else {
     if (cfg_thumb_histogram) {
-      unsigned l_seektime = (double)cfg_thumb_seek;
+      unsigned l_seektime = cfg_thumb_seek;
       // find a good frame, keyframe version
       if (!seek(0.01 * l_seektime)) throw exception_album_art_not_found();
-      if (!decode_frame()) throw exception_album_art_not_found();
+      if (!decode_frame(true)) throw exception_album_art_not_found();
       // init after decoding first frame
       init_measurement_context();
       av_frame_ref(best_frame, p_frame);
@@ -676,7 +698,7 @@ album_art_data_ptr thumbnailer::get_art() {
         abort.check();
         l_seektime = (l_seektime + 5) % 100;
 
-        if (!seek(0.01 * (double)l_seektime) || !decode_frame()) {
+        if (!seek(0.01 * (double)l_seektime) || !decode_frame(true)) {
           throw exception_album_art_not_found();
         }
 
@@ -707,7 +729,7 @@ album_art_data_ptr thumbnailer::get_art() {
       }
       if (!seek(0.01 * (double)cfg_thumb_seek))
         throw exception_album_art_not_found();
-      if (!decode_frame()) throw exception_album_art_not_found();
+      if (!decode_frame(false)) throw exception_album_art_not_found();
     }
   }
 
@@ -730,7 +752,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
   album_art_data_ptr cache_get(metadb_handle_ptr metadb) {
     if (query_get) {
       try {
-        std::lock_guard<std::mutex> lock(mut);
+        std::lock_guard<std::mutex> lock(db_mutex);
         query_get->reset();
         query_get->bind(1, metadb->get_path());
         query_get->bind(2, metadb->get_subsong_index());
@@ -768,7 +790,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     if (query_put) {
       try {
         {
-          std::lock_guard<std::mutex> lock(mut);
+          std::lock_guard<std::mutex> lock(db_mutex);
           query_put->reset();
           query_put->bind(1, metadb->get_path());
           query_put->bind(2, metadb->get_subsong_index());
@@ -802,21 +824,41 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     }
 
     metadb_handle_ptr item = get_thumbnail_item_from_items(items);
+    // does this item match the configured thumbnail search query
     if (!test_thumb_pattern(item)) throw exception_album_art_not_found();
+
+    // check for cached image
     album_art_data_ptr ret = cache_get(item);
     if (!ret.is_empty()) return ret;
 
-    if (cfg_logging) {
-      FB2K_console_formatter()
-          << "mpv: Generating thumbnail: " << item->get_path() << "["
-          << item->get_subsong_index() << "]";
+    std::timed_mutex* mut = get_mutex_for_item(item);
+    while (!mut->try_lock_for(std::chrono::milliseconds(50))) {
+      if (p_abort.is_aborting()) {
+        throw exception_aborted();
+      }
+    };
+    try {
+      // check no other thread just generated the thumbnail
+      ret = cache_get(item);
+      if (ret.is_empty()) {
+        if (cfg_logging) {
+          FB2K_console_formatter()
+              << "mpv: Generating thumbnail: " << item->get_path() << "["
+              << item->get_subsong_index() << "]";
+        }
+
+        thumbnailer ex(item, p_abort);
+        ret = ex.get_art();
+        if (ret.is_empty()) throw exception_album_art_not_found();
+        cache_put(item, ret);
+      }
+
+    } catch (...) {
+      mut->unlock();
+      throw std::current_exception();
     }
 
-    thumbnailer ex(item, p_abort);
-    ret = ex.get_art();
-    if (ret.is_empty()) throw exception_album_art_not_found();
-    cache_put(item, ret);
-
+    mut->unlock();
     return ret;
   }
 
