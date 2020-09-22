@@ -677,7 +677,7 @@ album_art_data_ptr thumbnailer::get_art() {
     }
   } else {
     if (cfg_thumb_histogram) {
-      unsigned l_seektime = cfg_thumb_seek;
+      unsigned l_seektime = 10;
       // find a good frame, keyframe version
       if (!seek(0.01 * l_seektime)) throw exception_album_art_not_found();
       if (!decode_frame(true)) throw exception_album_art_not_found();
@@ -696,7 +696,7 @@ album_art_data_ptr thumbnailer::get_art() {
       unsigned best_seektime = l_seektime;
       for (int i = 0; i < tries; i++) {
         abort.check();
-        l_seektime = (l_seektime + 5) % 100;
+        l_seektime = (l_seektime + 4) % 100;
 
         if (!seek(0.01 * (double)l_seektime) || !decode_frame(true)) {
           throw exception_album_art_not_found();
@@ -840,9 +840,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
 
     std::timed_mutex* mut = get_mutex_for_item(item);
     while (!mut->try_lock_for(std::chrono::milliseconds(50))) {
-      if (p_abort.is_aborting()) {
-        throw exception_aborted();
-      }
+      p_abort.check();
     };
     try {
       // check no other thread just generated the thumbnail
@@ -859,10 +857,14 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
         if (ret.is_empty()) throw exception_album_art_not_found();
         cache_put(item, ret);
       }
-
+    } catch (exception_album_art_not_found e) {
+      mut->unlock();
+      throw e;
+    } catch (exception_aborted e) {
+      mut->unlock();
+      throw e;
     } catch (...) {
       mut->unlock();
-      throw std::current_exception();
     }
 
     mut->unlock();
