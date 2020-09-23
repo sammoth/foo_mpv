@@ -24,6 +24,7 @@ metadb_handle_ptr get_thumbnail_item_from_items(metadb_handle_list items);
 
 class thumbnailer {
   metadb_handle_ptr metadb;
+  pfc::string8 filename;
   abort_callback& abort;
   double time_start_in_file;
   double time_end_in_file;
@@ -59,7 +60,7 @@ class thumbnailer {
   double frame_quality();
 
  public:
-  thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort);
+  thumbnailer(pfc::string8 p_filename, metadb_handle_ptr p_metadb, abort_callback& p_abort);
   ~thumbnailer();
 
   album_art_data_ptr get_art();

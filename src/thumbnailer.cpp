@@ -303,24 +303,13 @@ static void libavtry(int error, const char* cmd) {
   }
 }
 
-thumbnailer::thumbnailer(metadb_handle_ptr p_metadb, abort_callback& p_abort)
+thumbnailer::thumbnailer(pfc::string8 p_filename, metadb_handle_ptr p_metadb,
+                         abort_callback& p_abort)
     : metadb(p_metadb),
       abort(p_abort),
+      filename(p_filename),
       time_start_in_file(0.0),
       time_end_in_file(metadb->get_length()) {
-  // get filename
-  pfc::string8 filename;
-  filename.add_filename(metadb->get_path());
-  if (filename.has_prefix("\\file://")) {
-    filename.remove_chars(0, 8);
-
-    if (filename.is_empty()) {
-      throw exception_album_art_not_found();
-    }
-  } else {
-    throw exception_album_art_not_found();
-  }
-
   // get start/end time of track
   if (metadb->get_subsong_index() > 1) {
     for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
@@ -841,6 +830,18 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     album_art_data_ptr ret = cache_get(item);
     if (!ret.is_empty()) return ret;
 
+    pfc::string8 filename;
+    filename.add_filename(item->get_path());
+    if (filename.has_prefix("\\file://")) {
+      filename.remove_chars(0, 8);
+
+      if (filename.is_empty()) {
+        throw exception_album_art_not_found();
+      }
+    } else {
+      throw exception_album_art_not_found();
+    }
+
     p_abort.check();
     std::timed_mutex* mut = get_mutex_for_item(item);
     while (!mut->try_lock_for(std::chrono::milliseconds(50))) {
@@ -858,7 +859,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
               << item->get_subsong_index() << "]";
         }
 
-        thumbnailer ex(item, p_abort);
+        thumbnailer ex(filename, item, p_abort);
         ret = ex.get_art();
         if (ret.is_empty()) throw exception_album_art_not_found();
         cache_put(item, ret);
