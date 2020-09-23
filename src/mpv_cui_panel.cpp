@@ -57,9 +57,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
-  void on_double_click(UINT, CPoint) { container_toggle_fullscreen(); }
-
-  void on_fullscreen(bool fullscreen) override {}
+  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
   HWND container_wnd() override { return m_hWnd; }
 

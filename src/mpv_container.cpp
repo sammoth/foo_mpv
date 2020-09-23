@@ -1,6 +1,8 @@
 #include "stdafx.h"
 // PCH ^
 
+#include <algorithm>
+
 #include "mpv_container.h"
 #include "mpv_player.h"
 #include "preferences.h"
@@ -17,40 +19,41 @@ void invalidate_all_containers() {
   }
 }
 
+bool container_compare(mpv_container* a, mpv_container* b) {
+  // true if a goes before b
+  if (a->is_fullscreen()) return true;
+  if (b->is_fullscreen()) return false;
+  if (a->container_is_pinned()) return true;
+  if (b->container_is_pinned()) return false;
+  if (a->is_popup()) return true;
+  if (b->is_popup()) return false;
+  if (!a->is_visible()) return false;
+  if (!b->is_visible()) return true;
+
+  switch (cfg_panel_metric) {
+    case 0:
+      return (a->cx * a->cy > b->cx * b->cy);
+    case 1:
+      return (a->cx > b->cx);
+    case 2:
+      return (a->cy > b->cy);
+    default:
+      uBugCheck();
+  }
+}
+
 mpv_container* get_main_container() {
-  double top_priority = -1.0;
+  if (g_mpv_containers.empty()) return NULL;
   mpv_container* main = NULL;
-  for (auto it = g_mpv_containers.begin(); it != g_mpv_containers.end(); ++it) {
-    if ((*it)->container_is_pinned() ||
-        ((*it)->is_popup() && (main == NULL || !main->container_is_pinned()))) {
-      main = (*it);
-      break;
-    }
-    if (!(*it)->is_visible()) continue;
-
-    double priority = 0;
-    switch (cfg_panel_metric) {
-      case 0:
-        priority = (*it)->cx * (*it)->cy;
-        break;
-      case 1:
-        priority = (*it)->cx;
-        break;
-      case 2:
-        priority = (*it)->cy;
-        break;
-    }
-    if (priority > top_priority) {
-      main = *it;
-      top_priority = priority;
-      continue;
+  std::sort(g_mpv_containers.begin(), g_mpv_containers.end(),
+            container_compare);
+  if ((*g_mpv_containers.begin())->container_is_pinned()) {
+    for (auto it = g_mpv_containers.begin() + 1; it != g_mpv_containers.end();
+         ++it) {
+      (*it)->notify_pinned_elsewhere();
     }
   }
-
-  if (main == NULL) {
-    main = *g_mpv_containers.begin();
-  }
-  return main;
+  return *g_mpv_containers.begin();
 }
 
 bool mpv_container::container_is_on() {
@@ -115,19 +118,14 @@ void mpv_container::container_on_context_menu(CWindow wnd, CPoint point) {
           menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
                               point.x, point.y, menudesc, 0);
 
+      handle_menu_cmd(cmd);
+
       if (g_mpv_player) {
         g_mpv_player->handle_menu_cmd(cmd);
       }
-      handle_menu_cmd(cmd);
     }
   } catch (std::exception const& e) {
     console::complain("Context menu failure", e);
-  }
-}
-
-void mpv_container::container_toggle_fullscreen() {
-  if (g_mpv_player) {
-    g_mpv_player->toggle_fullscreen();
   }
 }
 

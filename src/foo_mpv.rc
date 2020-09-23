@@ -44,7 +44,7 @@ BEGIN
     LTEXT           "Popup window title format:",IDC_STATIC,7,14,144,8
     CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,71,157,10
     CONTROL         "Stop video playback when not visible",IDC_CHECK_STOP,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,42,173,10
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,42,152,10
     CONTROL         "Enable thumbnails",IDC_CHECK_THUMBNAILS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,93,243,10
     LTEXT           "Maximum cache size:",IDC_STATIC,184,166,94,8
     LTEXT           "Thumbnail size:",IDC_STATIC,14,239,78,8

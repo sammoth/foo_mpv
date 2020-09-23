@@ -5,11 +5,12 @@
 
 #include <sstream>
 
-#include "resource.h"
 #include "mpv_container.h"
 #include "preferences.h"
+#include "resource.h"
 
 void RunMpvPopupWindow();
+void RunMpvFullscreenWindow(bool reopen_popup);
 
 namespace {
 struct CMpvPopupWindow;
@@ -50,8 +51,9 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
-    return WS_POPUP | WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+    return WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU | WS_VISIBLE;
   }
+
   static DWORD GetWndExStyle(DWORD dwExStyle) {
     if (cfg_mpv_popup_alwaysontop) {
       return WS_EX_TOPMOST;
@@ -77,6 +79,10 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   }
 
   void on_playback_event() override { update_title(); }
+
+  void toggle_fullscreen() override { RunMpvFullscreenWindow(true); DestroyWindow(); };
+
+  void notify_pinned_elsewhere() override { DestroyWindow(); }
 
   LRESULT on_create(LPCREATESTRUCT st) {
     if (cfg_mpv_popup_separate) {
@@ -167,11 +173,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   HWND get_wnd() { return m_hWnd; }
 
-  void on_fullscreen(bool fullscreen) override {
-    ShowWindow(fullscreen ? SW_HIDE : SW_NORMAL);
-  }
-
-  void on_double_click(UINT, CPoint) { container_toggle_fullscreen(); }
+  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
@@ -179,6 +181,9 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   void invalidate() override { Invalidate(); }
 
  private:
+  LONG saved_style;
+  LONG saved_ex_style;
+
  protected:
 };
 

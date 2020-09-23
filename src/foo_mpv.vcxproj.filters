@@ -78,6 +78,9 @@
     <ClCompile Include="thumbnail_chooser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="mpv_fullscreen.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">

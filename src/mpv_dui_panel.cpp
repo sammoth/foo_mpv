@@ -52,13 +52,11 @@ struct CMpvDuiWindow : public ui_element_instance,
     }
   }
 
-  void on_double_click(UINT, CPoint) { container_toggle_fullscreen(); }
+  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
 
   void on_destroy() { container_destroy(); }
-
-  void on_fullscreen(bool fullscreen) override {}
 
   HWND container_wnd() override { return m_hWnd; }
 

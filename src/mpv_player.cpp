@@ -76,14 +76,6 @@ BOOL mpv_player::on_erase_bg(CDCHandle dc) {
   WIN32_OP_D(dc.FillRect(&rc, brush));
   return TRUE;
 }
-void mpv_player::on_keydown(UINT key, WPARAM, LPARAM) {
-  switch (key) {
-    case VK_ESCAPE:
-      if (fullscreen_) toggle_fullscreen();
-    default:
-      break;
-  }
-}
 
 enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
 void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
@@ -116,8 +108,8 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
   menu->AppendMenu(cfg_video_enabled ? MF_CHECKED : MF_UNCHECKED, ID_ENABLED,
                    _T("Enabled"));
   menudesc->Set(ID_ENABLED, "Enable/disable video playback");
-  menu->AppendMenu(fullscreen_ ? MF_CHECKED : MF_UNCHECKED, ID_FULLSCREEN,
-                   _T("Fullscreen"));
+  menu->AppendMenu(container->is_fullscreen() ? MF_CHECKED : MF_UNCHECKED,
+                   ID_FULLSCREEN, _T("Fullscreen"));
   menudesc->Set(ID_FULLSCREEN, "Toggle video fullscreen");
 }
 
@@ -128,7 +120,7 @@ void mpv_player::handle_menu_cmd(int cmd) {
       update();
       break;
     case ID_FULLSCREEN:
-      toggle_fullscreen();
+      container->toggle_fullscreen();
       break;
     default:
       break;
@@ -136,70 +128,11 @@ void mpv_player::handle_menu_cmd(int cmd) {
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
-  if (fullscreen_) {
-    try {
-      {
-        // handle the context menu key case - center the menu
-        if (point == CPoint(-1, -1)) {
-          CRect rc;
-          WIN32_OP(wnd.GetWindowRect(&rc));
-          point = rc.CenterPoint();
-        }
-
-        CMenuDescriptionHybrid menudesc(*this);
-
-        static_api_ptr_t<contextmenu_manager> api;
-        CMenu menu;
-        WIN32_OP(menu.CreatePopupMenu());
-
-        add_menu_items(&menu, &menudesc);
-
-        int cmd =
-            menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-                                point.x, point.y, menudesc, 0);
-
-        handle_menu_cmd(cmd);
-      }
-    } catch (std::exception const& e) {
-      console::complain("Context menu failure", e);
-    }
-  } else {
-    container->container_on_context_menu(wnd, point);
-  }
+  container->container_on_context_menu(wnd, point);
 }
 
-void mpv_player::on_double_click(UINT, CPoint) { toggle_fullscreen(); }
-
-void mpv_player::toggle_fullscreen() {
-  if (!fullscreen_) {
-    saved_style = GetWindowLong(GWL_STYLE);
-    saved_ex_style = GetWindowLong(GWL_EXSTYLE);
-  }
-  fullscreen_ = !fullscreen_;
-  update();
-  if (fullscreen_) {
-    SetParent(NULL);
-    SetWindowLong(GWL_STYLE,
-                  saved_style & ~(WS_CHILD | WS_CAPTION | WS_THICKFRAME) |
-                      WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU);
-
-    MONITORINFO monitor_info;
-    monitor_info.cbSize = sizeof(monitor_info);
-    GetMonitorInfoW(MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST),
-                    &monitor_info);
-    SetWindowPos(NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
-                 monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
-                 monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
-                 SWP_NOZORDER | SWP_FRAMECHANGED);
-
-  } else {
-    SetParent(container->container_wnd());
-    SetWindowLong(GWL_STYLE, saved_style);
-    SetWindowLong(GWL_EXSTYLE, saved_ex_style);
-    SetWindowPos(NULL, 0, 0, container->cx, container->cy,
-                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-  }
-  container->on_fullscreen(fullscreen_);
+void mpv_player::on_double_click(UINT, CPoint) {
+  container->toggle_fullscreen();
 }
 
 void mpv_player::on_destroy() { mpv_terminate(); }
@@ -220,17 +153,15 @@ void mpv_player::update() {
 }
 
 void mpv_player::update_window() {
-  if (!fullscreen_) {
-    if (GetParent() != container->container_wnd()) {
-      SetParent(container->container_wnd());
-      invalidate_all_containers();
-    }
-    ResizeClient(container->cx, container->cy);
+  if (GetParent() != container->container_wnd()) {
+    SetParent(container->container_wnd());
+    invalidate_all_containers();
   }
+  ResizeClient(container->cx, container->cy);
 
   bool vis = container->is_visible();
   if (cfg_video_enabled &&
-      (fullscreen_ || container->is_visible() || !cfg_stop_hidden)) {
+      (container->is_fullscreen() || container->is_visible() || !cfg_stop_hidden)) {
     bool starting = !enabled;
     enabled = true;
 
@@ -266,7 +197,7 @@ void mpv_player::set_background() {
 
   std::stringstream colorstrings;
   colorstrings << "#";
-  t_uint32 bgcolor = fullscreen_ && cfg_black_fullscreen ? 0 : cfg_bg_color;
+  t_uint32 bgcolor = container->is_fullscreen() && cfg_black_fullscreen ? 0 : cfg_bg_color;
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
                << (unsigned)GetRValue(bgcolor);
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
@@ -315,6 +246,7 @@ bool mpv_player::mpv_init() {
     // seek fast
     libmpv()->set_option_string(mpv, "hr-seek-framedrop", "yes");
     libmpv()->set_option_string(mpv, "hr-seek-demuxer-offset", "0");
+    libmpv()->set_option_string(mpv, "no-initial-audio-sync", "yes");
 
     // foobar plays the audio
     libmpv()->set_option_string(mpv, "audio", "no");

@@ -57,9 +57,6 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void update_window();
   void update_title();
   void set_background();
-  bool fullscreen_ = false;
-  LONG saved_style;
-  LONG saved_ex_style;
 
   // callbacks
   void on_playback_starting(play_control::t_track_command p_command,
@@ -72,7 +69,6 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
 
   LRESULT on_create(LPCREATESTRUCT lpcreate);
   BOOL on_erase_bg(CDCHandle dc);
-  void on_keydown(UINT key, WPARAM, LPARAM);
   void on_context_menu(CWindow wnd, CPoint point);
   void on_double_click(UINT, CPoint);
   void on_destroy();
@@ -88,8 +84,6 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
   void handle_menu_cmd(int cmd);
 
-  void toggle_fullscreen();
-
   // window
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
@@ -103,7 +97,6 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_LBUTTONDBLCLK(on_double_click)
-  MSG_WM_KEYDOWN(on_keydown)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 };
