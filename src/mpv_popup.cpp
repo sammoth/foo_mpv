@@ -181,8 +181,6 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   void invalidate() override { Invalidate(); }
 
  private:
-  LONG saved_style;
-  LONG saved_ex_style;
 
  protected:
 };
