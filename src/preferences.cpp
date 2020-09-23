@@ -333,6 +333,7 @@ void CMpvPreferences::OnBgClick(UINT, int, CWindow) {
   if (ChooseColor(&cc) == TRUE) {
     bg_col = cc.rgbResult;
     button_brush = CreateSolidBrush(bg_col);
+    dirty = true;
     OnChanged();
   }
 }
@@ -451,7 +452,6 @@ void CMpvPreferences::set_controls_enabled() {
 void CMpvPreferences::OnChanged() {
   m_callback->on_state_changed();
   set_controls_enabled();
-  //Invalidate();
 }
 
 class preferences_page_mpv_impl
