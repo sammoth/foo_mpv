@@ -81,11 +81,11 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   }
 
   void on_destroy() {
-    container_destroy();
-    g_open_mpv_fullscreen = NULL;
     if (reopen_popup) {
       RunMpvPopupWindow();
     }
+    container_destroy();
+    g_open_mpv_fullscreen = NULL;
   }
 
   void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
