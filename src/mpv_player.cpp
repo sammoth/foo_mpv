@@ -160,8 +160,8 @@ void mpv_player::update_window() {
   ResizeClient(container->cx, container->cy);
 
   bool vis = container->is_visible();
-  if (cfg_video_enabled &&
-      (container->is_fullscreen() || container->is_visible() || !cfg_stop_hidden)) {
+  if (cfg_video_enabled && (container->is_fullscreen() ||
+                            container->is_visible() || !cfg_stop_hidden)) {
     bool starting = !enabled;
     enabled = true;
 
@@ -197,7 +197,8 @@ void mpv_player::set_background() {
 
   std::stringstream colorstrings;
   colorstrings << "#";
-  t_uint32 bgcolor = container->is_fullscreen() && cfg_black_fullscreen ? 0 : cfg_bg_color;
+  t_uint32 bgcolor =
+      container->is_fullscreen() && cfg_black_fullscreen ? 0 : cfg_bg_color;
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
                << (unsigned)GetRValue(bgcolor);
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
@@ -381,6 +382,7 @@ void mpv_player::mpv_play(metadb_handle_ptr metadb, bool new_file) {
             cfg_logging) {
           console::error("mpv: Error pausing");
         }
+        timing_info::force_refresh();
         sync_task = sync_task_type::FirstFrameSync;
         if (cfg_logging) {
           console::info("mpv: Starting first frame sync after load");
@@ -451,6 +453,7 @@ void mpv_player::mpv_pause(bool state) {
 
     if (!state && sync_on_unpause) {
       sync_on_unpause = false;
+      timing_info::force_refresh();
       sync_task = sync_task_type::FirstFrameSync;
     }
 
@@ -549,6 +552,7 @@ void mpv_player::mpv_seek(double time) {
         console::info("mpv: Queueing sync after paused seek");
       }
     } else {
+      timing_info::force_refresh();
       sync_task = sync_task_type::FirstFrameSync;
       if (cfg_logging) {
         console::info("mpv: Starting first frame sync after seek");
