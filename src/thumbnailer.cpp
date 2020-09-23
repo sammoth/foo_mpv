@@ -280,7 +280,7 @@ metadb_handle_ptr get_thumbnail_item_from_items(metadb_handle_list items) {
   double time;
   if (!thumb_time_store_get(item, time) && cfg_thumb_group_override) {
     for (unsigned i = 0; i < items.get_size(); i++) {
-      if (thumb_time_store_get(item, time)) {
+      if (thumb_time_store_get(items[i], time)) {
         item = items[i];
         break;
       }
