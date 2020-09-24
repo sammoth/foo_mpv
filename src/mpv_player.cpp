@@ -259,6 +259,8 @@ bool mpv_player::mpv_init() {
     // don't unload the file when finished, maybe fb is still playing and we
     // could be asked to seek backwards
     libmpv()->set_option_string(mpv, "keep-open", "yes");
+    libmpv()->set_option_string(mpv, "keep-open-pause", "no");
+    libmpv()->set_option_string(mpv, "cache-pause", "no");
 
     if (libmpv()->initialize(mpv) != 0) {
       libmpv()->destroy(mpv);
