@@ -51,7 +51,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
-    return WS_OVERLAPPED | WS_MINIMIZEBOX | WS_SYSMENU | WS_VISIBLE;
+    return WS_OVERLAPPEDWINDOW | WS_VISIBLE;
   }
 
   static DWORD GetWndExStyle(DWORD dwExStyle) {
