@@ -309,7 +309,9 @@ thumbnailer::thumbnailer(pfc::string8 p_filename, metadb_handle_ptr p_metadb,
       abort(p_abort),
       filename(p_filename),
       time_start_in_file(0.0),
-      time_end_in_file(metadb->get_length()) {
+      time_end_in_file(metadb->get_length()) {}
+
+void thumbnailer::load_stream() {
   // get start/end time of track
   if (metadb->get_subsong_index() > 1) {
     for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {
@@ -660,6 +662,8 @@ double thumbnailer::frame_quality() {
 }
 
 album_art_data_ptr thumbnailer::get_art() {
+  load_stream();
+
   double override_time = 0.0;
   if (thumb_time_store_get(metadb, override_time)) {
     if (!seek_exact_and_decode(override_time)) {

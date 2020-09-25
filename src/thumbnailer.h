@@ -52,6 +52,7 @@ class thumbnailer {
 
   int stream_index;
 
+  void load_stream();
   bool seek(double percent);
   bool seek_exact_and_decode(double percent);
   double get_frame_time();
