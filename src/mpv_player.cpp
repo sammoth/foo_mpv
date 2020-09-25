@@ -380,8 +380,6 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 void mpv_player::on_playback_seek(double p_time) {
   update_title();
 
-  timing_info::force_refresh();
-
   task t;
   t.type = task_type::Seek;
   t.time = p_time;
