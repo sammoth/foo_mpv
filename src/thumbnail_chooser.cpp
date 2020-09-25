@@ -182,10 +182,6 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   mpv_handle* mpv = NULL;
 
   BOOL OnInitDialog(CWindow wnd, LPARAM lp) {
-    SetClassLong(get_wnd(), GCL_HICON,
-                 (LONG)LoadIcon(core_api::get_my_instance(),
-                                MAKEINTRESOURCE(IDI_ICON1)));
-
     update_title();
 
     CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER1);
