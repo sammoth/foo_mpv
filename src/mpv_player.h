@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <functional>
 #include <map>
+#include <queue>
 #include <sstream>
 #include <thread>
 
@@ -23,13 +24,39 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   mpv_handle* mpv;
   bool enabled;
 
+  // start mpv within the window
   bool mpv_init();
-  void mpv_terminate();
-  void mpv_play(metadb_handle_ptr metadb, bool new_track);
-  void mpv_stop();
-  void mpv_pause(bool state);
-  void mpv_seek(double time);
-  void mpv_sync(double debug_time);
+
+  // thread for deferred player control tasks
+  enum class task_type { Quit, FirstFrameSync, Play, Seek, Pause, Stop };
+  struct task {
+    task_type type;
+    metadb_handle_ptr play_file;
+    double time;
+    bool flag;
+  };
+  std::thread control_thread;
+  std::condition_variable cv;
+  std::mutex cv_mutex;
+  std::atomic_bool running_ffs;
+  std::queue<task> task_queue;
+  void queue_task(task t);
+  bool check_queue();
+
+  // methods run off thread
+  void play(metadb_handle_ptr metadb, double start_time);
+  void stop();
+  void pause(bool state);
+  void seek(double time);
+  void sync(double debug_time);
+  void initial_sync();
+
+  // state tracking
+  std::atomic<double>
+      time_base;  // start time of the current track/subsong within its file
+  std::atomic<double> last_mpv_seek;
+  std::atomic_bool sync_on_unpause;
+  double last_hard_sync;
 
   // utils
   bool is_idle();
@@ -37,28 +64,7 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   bool get_bool(const char* name);
   double get_double(const char* name);
 
-  std::atomic<double>
-      time_base;  // start time of the current track/subsong within its file
-  std::atomic<double> last_mpv_seek;
-  std::atomic_bool sync_on_unpause;
-
-  double last_hard_sync;
-
-  std::thread sync_thread;
-  std::condition_variable cv;
-  std::mutex cv_mutex;
-  enum class sync_task_type { Wait, Stop, Quit, FirstFrameSync };
-  std::atomic<sync_task_type> sync_task;
-  void sync_thread_sync();
-
-  // windowing
-  mpv_container* container;
-  void update_container();
-  void update_window();
-  void update_title();
-  void set_background();
-
-  // callbacks
+  // play callbacks
   void on_playback_starting(play_control::t_track_command p_command,
                             bool p_paused);
   void on_playback_new_track(metadb_handle_ptr p_track);
@@ -66,6 +72,13 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void on_playback_seek(double p_time);
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
+
+  // windowing
+  mpv_container* container;
+  void update_container();
+  void update_window();
+  void update_title();
+  void set_background();
 
   LRESULT on_create(LPCREATESTRUCT lpcreate);
   BOOL on_erase_bg(CDCHandle dc);
@@ -88,9 +101,7 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
 
-  static DWORD GetWndStyle(DWORD style) {
-    return WS_CHILD | WS_VISIBLE;
-  }
+  static DWORD GetWndStyle(DWORD style) { return WS_CHILD | WS_VISIBLE; }
 
   BEGIN_MSG_MAP_EX(CMpvWindow)
   MSG_WM_CREATE(on_create)
