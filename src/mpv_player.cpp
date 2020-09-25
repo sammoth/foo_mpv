@@ -15,6 +15,10 @@
 
 namespace mpv {
 
+static const int time_pos_userdata = 28903278;
+static const int seeking_userdata = 982628764;
+static const int idle_active_userdata = 12792384;
+
 extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden;
 extern cfg_uint cfg_bg_color;
 extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile;
@@ -29,11 +33,15 @@ mpv_player::mpv_player()
       last_mpv_seek(0),
       last_hard_sync(-99),
       running_ffs(false),
+      mpv_timepos(0),
+      mpv_seeking(false),
+      mpv_idle(false),
+      mpv_shutdown(false),
       time_base(0) {
   control_thread = std::thread([this]() {
     while (true) {
-      std::unique_lock<std::mutex> lock(cv_mutex);
-      cv.wait(lock, [this] { return !task_queue.empty(); });
+      std::unique_lock<std::mutex> lock(control_thread_cv_mutex);
+      control_thread_cv.wait(lock, [this] { return !task_queue.empty(); });
       task task = task_queue.front();
       task_queue.pop();
       lock.unlock();
@@ -67,27 +75,30 @@ mpv_player::mpv_player()
 
 mpv_player::~mpv_player() {
   {
-    std::lock_guard<std::mutex> lock(cv_mutex);
+    std::lock_guard<std::mutex> lock(control_thread_cv_mutex);
     while (!task_queue.empty()) task_queue.pop();
     task t;
     t.type = task_type::Quit;
     task_queue.push(t);
   }
-  cv.notify_all();
-  control_thread.join();
+  control_thread_cv.notify_all();
+
+  if (control_thread.joinable()) control_thread.join();
+  if (event_listener.joinable()) event_listener.join();
 }
 
 bool mpv_player::check_queue() {
-  std::lock_guard<std::mutex> lock(cv_mutex);
+  std::lock_guard<std::mutex> lock(control_thread_cv_mutex);
   return !task_queue.empty();
 }
 
 void mpv_player::queue_task(task t) {
   {
-    std::lock_guard<std::mutex> lock(cv_mutex);
+    std::lock_guard<std::mutex> lock(control_thread_cv_mutex);
     task_queue.push(t);
   }
-  cv.notify_all();
+  control_thread_cv.notify_all();
+  event_cv.notify_all();
 }
 
 void mpv_player::destroy() { DestroyWindow(); }
@@ -161,9 +172,7 @@ void mpv_player::on_double_click(UINT, CPoint) {
 
 void mpv_player::on_destroy() {
   if (mpv != NULL) {
-    mpv_handle* temp = mpv;
-    mpv = NULL;
-    libmpv()->terminate_destroy(temp);
+    libmpv()->command_string(mpv, "quit");
   }
 }
 
@@ -298,9 +307,44 @@ bool mpv_player::mpv_init() {
     libmpv()->set_option_string(mpv, "keep-open-pause", "no");
     libmpv()->set_option_string(mpv, "cache-pause", "no");
 
+    libmpv()->observe_property(mpv, seeking_userdata, "seeking",
+                               MPV_FORMAT_FLAG);
+    libmpv()->observe_property(mpv, idle_active_userdata, "idle-active",
+                               MPV_FORMAT_FLAG);
+
     if (libmpv()->initialize(mpv) != 0) {
       libmpv()->destroy(mpv);
       mpv = NULL;
+    } else {
+      event_listener = std::thread([this]() {
+        while (true) {
+          mpv_event* event = libmpv()->wait_event(mpv, 0);
+
+          if (event->event_id == MPV_EVENT_SHUTDOWN) {
+            mpv_shutdown = true;
+            libmpv()->terminate_destroy(mpv);
+            return;
+          }
+
+          if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+            mpv_event_property* event_property =
+                (mpv_event_property*)event->data;
+
+            if (event->reply_userdata == time_pos_userdata &&
+                event_property->format == MPV_FORMAT_DOUBLE) {
+              mpv_timepos = *(double*)(event_property->data);
+            } else if (event->reply_userdata == seeking_userdata &&
+                       event_property->format == MPV_FORMAT_FLAG) {
+              mpv_seeking = *(int*)(event_property->data) == 1;
+            } else if (event->reply_userdata == idle_active_userdata &&
+                       event_property->format == MPV_FORMAT_FLAG) {
+              mpv_idle = *(int*)(event_property->data) == 1;
+            }
+          }
+
+          event_cv.notify_all();
+        }
+      });
     }
   }
 
@@ -496,40 +540,25 @@ void mpv_player::seek(double time) {
       console::error("mpv: Error seeking, waiting for file to load first");
     }
 
-    const int64_t userdata = 853727396;
-    if (libmpv()->observe_property(mpv, userdata, "seeking", MPV_FORMAT_FLAG) <
-        0) {
-      if (cfg_logging) {
-        console::error("mpv: Error observing seeking");
+    while (true) {
+      std::unique_lock<std::mutex> lock(event_cv_mutex);
+      event_cv.wait(lock, [this] {
+        return mpv_seeking == false || mpv_idle == true || mpv_shutdown == true;
+      });
+      lock.unlock();
+
+      if (mpv_idle || mpv_shutdown) {
+        return;
       }
-    } else {
-      while (true) {
-        mpv_event* event = libmpv()->wait_event(mpv, 0.05);
 
-        if (check_queue() || is_idle() ||
-            event->event_id == MPV_EVENT_SHUTDOWN) {
-          libmpv()->unobserve_property(mpv, userdata);
-          return;
-        }
-
-        if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
-            event->reply_userdata == userdata) {
-          mpv_event_property* event_property = (mpv_event_property*)event->data;
-
-          if (event_property->format != MPV_FORMAT_FLAG) continue;
-
-          int seeking = *(int*)(event_property->data);
-          if (seeking == 0) {
-            break;
+      if (!mpv_seeking) {
+        if (libmpv()->command(mpv, cmd) < 0) {
+          if (cfg_logging) {
+            console::error("mpv: Error seeking");
           }
+        } else {
+          break;
         }
-      }
-    }
-    libmpv()->unobserve_property(mpv, userdata);
-
-    if (libmpv()->command(mpv, cmd) < 0) {
-      if (cfg_logging) {
-        console::error("mpv: Error seeking");
       }
     }
   }
@@ -627,8 +656,7 @@ void mpv_player::initial_sync() {
   int paused_check = 0;
   libmpv()->get_property(mpv, "pause", MPV_FORMAT_FLAG, &paused_check);
   if (paused_check == 1) {
-    console::error(
-        "mpv: Player was paused when starting initial sync");
+    console::error("mpv: Player was paused when starting initial sync");
     console::info("mpv: Abort initial sync");
     return;
   }
@@ -637,77 +665,47 @@ void mpv_player::initial_sync() {
     console::info("mpv: Initial sync");
   }
 
-  const int64_t userdata = 208341047;
-  if (libmpv()->observe_property(mpv, userdata, "time-pos", MPV_FORMAT_DOUBLE) <
-      0) {
+  if (libmpv()->observe_property(mpv, time_pos_userdata, "time-pos",
+                                 MPV_FORMAT_DOUBLE) < 0) {
     if (cfg_logging) {
       console::error("mpv: Error observing time-pos");
     }
     return;
   }
 
-  double mpv_time = -1.0;
+  mpv_timepos = -1;
   while (true) {
-    if (check_queue()) {
-      libmpv()->unobserve_property(mpv, userdata);
+    std::unique_lock<std::mutex> lock(event_cv_mutex);
+    event_cv.wait(lock);
+    lock.unlock();
+
+    if (check_queue() || mpv_idle || mpv_shutdown) {
+      libmpv()->unobserve_property(mpv, time_pos_userdata);
       if (cfg_logging) {
-        console::info("mpv: Abort initial sync - command");
+        console::info("mpv: Abort initial sync");
       }
       return;
     }
 
-    mpv_event* event = libmpv()->wait_event(mpv, 0.01);
-    if (is_idle()) {
-      libmpv()->unobserve_property(mpv, userdata);
+    if (mpv_timepos > last_mpv_seek) {
+      // frame decoded, wait for fb
       if (cfg_logging) {
-        console::info("mpv: Abort initial sync - idle");
+        msg.str("");
+        msg << "mpv: First frame found at timestamp " << mpv_timepos
+            << " after seek to " << last_mpv_seek << ", pausing";
+        console::info(msg.str().c_str());
       }
-      return;
-    }
 
-    if (event->event_id == MPV_EVENT_SHUTDOWN) {
-      libmpv()->unobserve_property(mpv, userdata);
-      if (cfg_logging) {
-        console::info("mpv: Abort initial sync - shutdown");
+      if (libmpv()->set_property_string(mpv, "pause", "yes") < 0 &&
+          cfg_logging) {
+        console::error("mpv: Error pausing");
       }
-      return;
-    }
 
-    if (event->event_id == MPV_EVENT_PROPERTY_CHANGE &&
-        event->reply_userdata == userdata) {
-      mpv_event_property* event_property = (mpv_event_property*)event->data;
-
-      if (event_property->format != MPV_FORMAT_DOUBLE)
-        continue;  // no frame decoded yet
-
-      mpv_time = *(double*)(event_property->data);
-      if (mpv_time > last_mpv_seek) {
-        // frame decoded, wait for fb
-        if (cfg_logging) {
-          msg.str("");
-          msg << "mpv: First frame found at timestamp "
-              << mpv_time << " after seek to " << last_mpv_seek << ", pausing";
-          console::info(msg.str().c_str());
-        }
-
-        if (check_queue()) {
-          libmpv()->unobserve_property(mpv, userdata);
-          if (cfg_logging) {
-            console::info("mpv: Abort initial sync - command");
-          }
-          return;
-        }
-
-        if (libmpv()->set_property_string(mpv, "pause", "yes") < 0 &&
-            cfg_logging) {
-          console::error("mpv: Error pausing");
-        }
-
-        break;
-      }
+      break;
     }
   }
-  libmpv()->unobserve_property(mpv, userdata);
+
+  libmpv()->unobserve_property(mpv, time_pos_userdata);
 
   // wait for fb to catch up to the first frame
   double vis_time = 0.0;
@@ -742,7 +740,7 @@ void mpv_player::initial_sync() {
   int count = 0;
   while (time_base + timing_info::get().last_fb_seek + vis_time -
              timing_info::get().last_seek_vistime <
-         mpv_time) {
+         mpv_timepos) {
     if (check_queue()) {
       if (libmpv()->set_property_string(mpv, "pause", "no") < 0 &&
           cfg_logging) {

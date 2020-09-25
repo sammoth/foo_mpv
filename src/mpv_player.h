@@ -27,8 +27,17 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   // start mpv within the window
   bool mpv_init();
 
+  // thread for dispatching libmpv events
+  std::thread event_listener;
+  std::condition_variable event_cv;
+  std::mutex event_cv_mutex;
+  std::atomic<double> mpv_timepos;
+  std::atomic_bool mpv_seeking;
+  std::atomic_bool mpv_idle;
+  std::atomic_bool mpv_shutdown;
+
   // thread for deferred player control tasks
-  enum class task_type { Quit, FirstFrameSync, Play, Seek, Pause, Stop };
+  enum class task_type { Quit, FirstFrameSync, Play, Seek, Pause, Stop, Artwork };
   struct task {
     task_type type;
     metadb_handle_ptr play_file;
@@ -36,8 +45,8 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
     bool flag;
   };
   std::thread control_thread;
-  std::condition_variable cv;
-  std::mutex cv_mutex;
+  std::condition_variable control_thread_cv;
+  std::mutex control_thread_cv_mutex;
   std::atomic_bool running_ffs;
   std::queue<task> task_queue;
   void queue_task(task t);
