@@ -10,5 +10,5 @@ struct timing_info {
 };
 
 timing_info get();
-void force_refresh();
+void refresh(bool resetting);
 }  // namespace mpv

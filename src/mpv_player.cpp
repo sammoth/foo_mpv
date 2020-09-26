@@ -362,7 +362,7 @@ void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
   update_title();
   update();
 
-  timing_info::force_refresh();
+  timing_info::refresh(false);
 
   task t;
   t.type = task_type::Play;
@@ -379,6 +379,8 @@ void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
 }
 void mpv_player::on_playback_seek(double p_time) {
   update_title();
+
+  timing_info::refresh(true);
 
   task t;
   t.type = task_type::Seek;
@@ -594,7 +596,7 @@ void mpv_player::sync(double debug_time) {
   if (abs(desync) > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
-    timing_info::force_refresh();
+    timing_info::refresh(false);
     {
       task t;
       t.type = task_type::Seek;
@@ -773,7 +775,7 @@ void mpv_player::initial_sync() {
 
   if (cfg_logging) {
     msg.str("");
-    msg << "mpv: Resuming playback, audio time now "
+    msg << "mpv: Resuming, audio time "
         << time_base + timing_info::get().last_fb_seek + vis_time -
                timing_info::get().last_seek_vistime;
     console::info(msg.str().c_str());
