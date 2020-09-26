@@ -303,6 +303,15 @@ static void libavtry(int error, const char* cmd) {
   }
 }
 
+static int ffmpeg_interrupt_cb(void* ctx) {
+  abort_callback* abort = reinterpret_cast<abort_callback*>(ctx);
+  if (abort->is_aborting()) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
 thumbnailer::thumbnailer(pfc::string8 p_filename, metadb_handle_ptr p_metadb,
                          abort_callback& p_abort)
     : metadb(p_metadb),
@@ -327,6 +336,9 @@ void thumbnailer::load_stream() {
   time_end_in_file = time_start_in_file + metadb->get_length();
 
   p_format_context = avformat_alloc_context();
+  p_format_context->interrupt_callback.callback = ffmpeg_interrupt_cb;
+  p_format_context->interrupt_callback.opaque = &abort;
+  p_format_context->protocol_whitelist = av_strdup("file");
   p_packet = av_packet_alloc();
   p_frame = av_frame_alloc();
 

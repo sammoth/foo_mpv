@@ -8,6 +8,7 @@
 
 #include "../helpers/atl-misc.h"
 #include "../helpers/win32_misc.h"
+#include "artwork_protocol.h"
 #include "mpv_player.h"
 #include "preferences.h"
 #include "resource.h"
@@ -17,10 +18,12 @@ namespace mpv {
 
 static const int time_pos_userdata = 28903278;
 static const int seeking_userdata = 982628764;
+static const int path_userdata = 982628764;
 static const int idle_active_userdata = 12792384;
 
-extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden;
-extern cfg_uint cfg_bg_color;
+extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
+    cfg_artwork;
+extern cfg_uint cfg_bg_color, cfg_artwork_type;
 extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile;
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
     cfg_hard_sync_interval;
@@ -34,13 +37,11 @@ mpv_player::mpv_player()
       last_hard_sync(-99),
       running_ffs(false),
       mpv_timepos(0),
-      mpv_seeking(false),
-      mpv_idle(false),
-      mpv_shutdown(false),
+      mpv_state(state::Unloaded),
       time_base(0) {
   control_thread = std::thread([this]() {
     while (true) {
-      std::unique_lock<std::mutex> lock(control_thread_cv_mutex);
+      std::unique_lock<std::mutex> lock(mutex);
       control_thread_cv.wait(lock, [this] { return !task_queue.empty(); });
       task task = task_queue.front();
       task_queue.pop();
@@ -66,6 +67,9 @@ mpv_player::mpv_player()
         case task_type::Pause:
           pause(task.flag);
           break;
+        case task_type::LoadArtwork:
+          load_artwork();
+          break;
       }
     }
   });
@@ -75,7 +79,7 @@ mpv_player::mpv_player()
 
 mpv_player::~mpv_player() {
   {
-    std::lock_guard<std::mutex> lock(control_thread_cv_mutex);
+    std::lock_guard<std::mutex> lock(mutex);
     while (!task_queue.empty()) task_queue.pop();
     task t;
     t.type = task_type::Quit;
@@ -87,18 +91,48 @@ mpv_player::~mpv_player() {
   if (event_listener.joinable()) event_listener.join();
 }
 
-bool mpv_player::check_queue() {
-  std::lock_guard<std::mutex> lock(control_thread_cv_mutex);
-  return !task_queue.empty();
-}
+bool mpv_player::check_queue_any() { return !task_queue.empty(); }
 
 void mpv_player::queue_task(task t) {
   {
-    std::lock_guard<std::mutex> lock(control_thread_cv_mutex);
+    std::lock_guard<std::mutex> lock(mutex);
     task_queue.push(t);
   }
   control_thread_cv.notify_all();
   event_cv.notify_all();
+}
+
+void mpv_player::set_state(state state) {
+  if (cfg_logging) {
+    switch (state) {
+      case state::Active:
+        FB2K_console_formatter() << "mpv: State -> Active";
+        break;
+      case state::Artwork:
+        FB2K_console_formatter() << "mpv: State -> Artwork";
+        break;
+      case state::Idle:
+        FB2K_console_formatter() << "mpv: State -> Idle";
+        break;
+      case state::Loading:
+        FB2K_console_formatter() << "mpv: State -> Loading";
+        break;
+      case state::Preload:
+        FB2K_console_formatter() << "mpv: State -> Preload";
+        break;
+      case state::Seeking:
+        FB2K_console_formatter() << "mpv: State -> Seeking";
+        break;
+      case state::Shutdown:
+        FB2K_console_formatter() << "mpv: State -> Shutdown";
+        break;
+      case state::Unloaded:
+        FB2K_console_formatter() << "mpv: State -> Unloaded";
+        break;
+    }
+  }
+
+  mpv_state = state;
 }
 
 void mpv_player::destroy() { DestroyWindow(); }
@@ -112,10 +146,19 @@ BOOL mpv_player::on_erase_bg(CDCHandle dc) {
   return TRUE;
 }
 
-enum { ID_ENABLED = 1, ID_FULLSCREEN = 2, ID_STATS = 99 };
+enum {
+  ID_ENABLED = 1,
+  ID_FULLSCREEN = 2,
+  ID_ART_FRONT = 3,
+  ID_ART_BACK = 4,
+  ID_ART_DISC = 5,
+  ID_ART_ARTIST = 6,
+  ID_STATS = 99
+};
+
 void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
   if (mpv != NULL) {
-    if (is_idle()) {
+    if (mpv_state == state::Idle || mpv_state == state::Artwork) {
       menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
     } else {
       std::wstringstream text;
@@ -146,6 +189,19 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
   menu->AppendMenu(container->is_fullscreen() ? MF_CHECKED : MF_UNCHECKED,
                    ID_FULLSCREEN, _T("Fullscreen"));
   menudesc->Set(ID_FULLSCREEN, "Toggle video fullscreen");
+
+  if (cfg_artwork && (mpv == NULL || mpv_state == state::Idle ||
+                      mpv_state == state::Artwork)) {
+    menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+    menu->AppendMenu(cfg_artwork_type == 0 ? MF_CHECKED : MF_UNCHECKED,
+                     ID_ART_FRONT, _T("Front"));
+    menu->AppendMenu(cfg_artwork_type == 1 ? MF_CHECKED : MF_UNCHECKED,
+                     ID_ART_BACK, _T("Back"));
+    menu->AppendMenu(cfg_artwork_type == 2 ? MF_CHECKED : MF_UNCHECKED,
+                     ID_ART_DISC, _T("Disc"));
+    menu->AppendMenu(cfg_artwork_type == 3 ? MF_CHECKED : MF_UNCHECKED,
+                     ID_ART_ARTIST, _T("Artist"));
+  }
 }
 
 void mpv_player::handle_menu_cmd(int cmd) {
@@ -156,6 +212,22 @@ void mpv_player::handle_menu_cmd(int cmd) {
       break;
     case ID_FULLSCREEN:
       container->toggle_fullscreen();
+      break;
+    case ID_ART_FRONT:
+      cfg_artwork_type = 0;
+      request_artwork(current_selection);
+      break;
+    case ID_ART_BACK:
+      cfg_artwork_type = 1;
+      request_artwork(current_selection);
+      break;
+    case ID_ART_DISC:
+      cfg_artwork_type = 2;
+      request_artwork(current_selection);
+      break;
+    case ID_ART_ARTIST:
+      cfg_artwork_type = 3;
+      request_artwork(current_selection);
       break;
     default:
       break;
@@ -217,7 +289,7 @@ void mpv_player::update_window() {
     bool stopping = enabled;
     enabled = false;
 
-    if (stopping) {
+    if (stopping && mpv_state != state::Artwork) {
       task t;
       t.type = task_type::Stop;
       queue_task(t);
@@ -256,6 +328,7 @@ void mpv_player::set_background() {
 
 bool mpv_player::mpv_init() {
   if (!libmpv()->load_dll()) return false;
+  std::lock_guard<std::mutex> lock_init(init_mutex);
 
   if (mpv == NULL && m_hWnd != NULL) {
     pfc::string_formatter path;
@@ -307,41 +380,74 @@ bool mpv_player::mpv_init() {
     libmpv()->set_option_string(mpv, "keep-open-pause", "no");
     libmpv()->set_option_string(mpv, "cache-pause", "no");
 
+    libmpv()->stream_cb_add_ro(mpv, "artwork", this, artwork_protocol_open);
+
     libmpv()->observe_property(mpv, seeking_userdata, "seeking",
                                MPV_FORMAT_FLAG);
     libmpv()->observe_property(mpv, idle_active_userdata, "idle-active",
                                MPV_FORMAT_FLAG);
+    libmpv()->observe_property(mpv, path_userdata, "path", MPV_FORMAT_STRING);
 
     if (libmpv()->initialize(mpv) != 0) {
       libmpv()->destroy(mpv);
       mpv = NULL;
     } else {
       event_listener = std::thread([this]() {
+        if (mpv == NULL) {
+          console::error(
+              "mpv: libmpv event listener started but mpv wasn't running");
+          return;
+        }
+
         while (true) {
-          mpv_event* event = libmpv()->wait_event(mpv, 0);
+          mpv_event* event = libmpv()->wait_event(mpv, -1);
 
-          if (event->event_id == MPV_EVENT_SHUTDOWN) {
-            mpv_shutdown = true;
-            libmpv()->terminate_destroy(mpv);
-            return;
-          }
+          {
+            std::lock_guard<std::mutex> lock(mutex);
 
-          if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
-            mpv_event_property* event_property =
-                (mpv_event_property*)event->data;
+            if (event->event_id == MPV_EVENT_SHUTDOWN) {
+              mpv_state = state::Shutdown;
+              libmpv()->terminate_destroy(mpv);
+              return;
+            }
 
-            if (event->reply_userdata == time_pos_userdata &&
-                event_property->format == MPV_FORMAT_DOUBLE) {
-              mpv_timepos = *(double*)(event_property->data);
-            } else if (event->reply_userdata == seeking_userdata &&
-                       event_property->format == MPV_FORMAT_FLAG) {
-              mpv_seeking = *(int*)(event_property->data) == 1;
-            } else if (event->reply_userdata == idle_active_userdata &&
-                       event_property->format == MPV_FORMAT_FLAG) {
-              mpv_idle = *(int*)(event_property->data) == 1;
+            if (event->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+              mpv_event_property* event_property =
+                  (mpv_event_property*)event->data;
+
+              if (event->reply_userdata == time_pos_userdata &&
+                  event_property->format == MPV_FORMAT_DOUBLE) {
+                mpv_timepos = *(double*)(event_property->data);
+              } else if (event->reply_userdata == seeking_userdata ||
+                         event->reply_userdata == idle_active_userdata ||
+                         event->reply_userdata == path_userdata) {
+                bool idle = get_bool("idle-active");
+                const char* path = get_string("path");
+                bool showing_art =
+                    path != NULL && strcmp(path, "artwork://") == 0;
+                bool seeking = get_bool("seeking");
+
+                state new_state =
+                    showing_art ? state::Artwork
+                                : seeking ? state::Seeking
+                                          : idle ? state::Idle : state::Active;
+
+                if (mpv_state == state::Preload && new_state == state::Idle) {
+                  new_state = state::Preload;
+                }
+
+                if (mpv_state != new_state) {
+                  if (new_state == state::Idle && mpv_state != state::Artwork) {
+                    request_artwork(current_selection);
+                  }
+
+                  set_state(new_state);
+                }
+              }
             }
           }
 
+          control_thread_cv.notify_all();
           event_cv.notify_all();
         }
       });
@@ -351,8 +457,29 @@ bool mpv_player::mpv_init() {
   return mpv != NULL;
 }
 
+void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
+  metadb_handle_ptr new_item;
+  if (p_selection.get_count() > 0) new_item = p_selection[0];
+
+  if (new_item == current_selection) return;
+
+  current_selection = new_item;
+
+  if (mpv_state == state::Idle || mpv_state == state::Artwork ||
+      mpv_state == state::Unloaded) {
+    if (current_selection.is_empty()) {
+      task t;
+      t.type = task_type::Stop;
+      queue_task(t);
+    } else {
+      request_artwork(current_selection);
+    }
+  }
+}
+
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {
+  set_state(state::Preload);
   task t1;
   t1.type = task_type::Pause;
   t1.flag = p_paused;
@@ -373,9 +500,11 @@ void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
 void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
   update_title();
 
-  task t;
-  t.type = task_type::Stop;
-  queue_task(t);
+  if (mpv_state != state::Artwork) {
+    task t;
+    t.type = task_type::Stop;
+    queue_task(t);
+  }
 }
 void mpv_player::on_playback_seek(double p_time) {
   update_title();
@@ -401,8 +530,13 @@ void mpv_player::on_playback_time(double p_time) {
 }
 
 void mpv_player::play(metadb_handle_ptr metadb, double time) {
-  if (!enabled) return;
   if (mpv == NULL && !mpv_init()) return;
+
+  if (!enabled) {
+    mpv_state = state::Idle;
+    request_artwork(current_selection);
+    return;
+  }
 
   pfc::string8 filename;
   filename.add_filename(metadb->get_path());
@@ -445,12 +579,21 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       console::error("mpv: Error setting speed");
     }
 
+    set_state(state::Loading);
     const char* cmd[] = {"loadfile", filename.c_str(), NULL};
     if (libmpv()->command(mpv, cmd) < 0 && cfg_logging) {
       std::stringstream msg;
       msg << "mpv: Error loading item '" << filename << "'";
       console::error(msg.str().c_str());
     }
+
+    // wait for file to load
+    std::unique_lock<std::mutex> lock_starting(mutex);
+    event_cv.wait(lock_starting, [this, filename]() {
+      const char* path = get_string("path");
+      return path != NULL && filename.equals(path);
+    });
+    lock_starting.unlock();
 
     if (get_bool("pause")) {
       sync_on_unpause = true;
@@ -483,14 +626,8 @@ void mpv_player::stop() {
   }
 }
 
-bool mpv_player::is_idle() {
-  int idle = 0;
-  libmpv()->get_property(mpv, "idle-active", MPV_FORMAT_FLAG, &idle);
-  return idle == 1;
-}
-
 void mpv_player::pause(bool state) {
-  if (mpv == NULL || !enabled || is_idle()) return;
+  if (mpv == NULL || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
     console::info(state ? "mpv: Pause" : "mpv: Unpause");
@@ -510,7 +647,7 @@ void mpv_player::pause(bool state) {
 }
 
 void mpv_player::seek(double time) {
-  if (mpv == NULL || !enabled || is_idle()) return;
+  if (mpv == NULL || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
     std::stringstream msg;
@@ -537,29 +674,37 @@ void mpv_player::seek(double time) {
 
   if (libmpv()->command(mpv, cmd) < 0) {
     if (cfg_logging) {
-      console::error("mpv: Error seeking, waiting for file to load first");
+      console::info("mpv: Cannot seek, waiting for file to load first");
     }
 
     while (true) {
-      std::unique_lock<std::mutex> lock(event_cv_mutex);
-      event_cv.wait(lock, [this] {
-        return mpv_seeking == false || mpv_idle == true || mpv_shutdown == true;
+      std::unique_lock<std::mutex> lock(mutex);
+      event_cv.wait(lock, [this]() {
+        return mpv_state == state::Idle || mpv_state == state::Shutdown ||
+               mpv_state == state::Active;
       });
-      lock.unlock();
 
-      if (mpv_idle || mpv_shutdown) {
+      if (mpv_state == state::Idle || mpv_state == state::Shutdown) {
+        if (cfg_logging) {
+          console::info("mpv: Aborting seeking");
+        }
+        lock.unlock();
         return;
       }
 
-      if (!mpv_seeking) {
+      if (mpv_state == state::Active) {
         if (libmpv()->command(mpv, cmd) < 0) {
           if (cfg_logging) {
-            console::error("mpv: Error seeking");
+            console::info("mpv: Cannot seek yet");
           }
         } else {
+          console::info("mpv: Seeking started");
+          lock.unlock();
           break;
         }
       }
+
+      lock.unlock();
     }
   }
 
@@ -579,7 +724,7 @@ void mpv_player::seek(double time) {
 }
 
 void mpv_player::sync(double debug_time) {
-  if (mpv == NULL || !enabled || is_idle()) return;
+  if (mpv == NULL || !enabled || mpv_state != state::Active) return;
 
   if (playback_control::get()->is_paused()) {
     return;
@@ -639,11 +784,40 @@ void mpv_player::sync(double debug_time) {
   }
 }
 
+void mpv_player::on_new_artwork() {
+  task t;
+  t.type = task_type::LoadArtwork;
+  queue_task(t);
+}
+
+void mpv_player::load_artwork() {
+  if (mpv == NULL && !mpv_init()) return;
+
+  if (mpv_state == state::Idle || mpv_state == state::Artwork ||
+      mpv_state == state::Preload) {
+    if (artwork_loaded()) {
+      const char* cmd[] = {"loadfile", "artwork://", NULL};
+      if (libmpv()->command(mpv, cmd) < 0) {
+        console::error("mpv: Error loading artwork");
+      } else if (cfg_logging) {
+        console::info("mpv: Loading artwork");
+      }
+    } else {
+      task t;
+      t.type = task_type::Stop;
+      queue_task(t);
+    }
+  }
+}
+
 void mpv_player::initial_sync() {
   if (mpv == NULL || !enabled) return;
 
-  if (check_queue()) {
-    return;
+  {
+    std::lock_guard<std::mutex> queuelock(mutex);
+    if (check_queue_any()) {
+      return;
+    }
   }
 
   sync_on_unpause = false;
@@ -657,7 +831,7 @@ void mpv_player::initial_sync() {
   libmpv()->get_property(mpv, "pause", MPV_FORMAT_FLAG, &paused_check);
   if (paused_check == 1) {
     console::error("mpv: Player was paused when starting initial sync");
-    console::info("mpv: Abort initial sync");
+    console::info("mpv: Abort initial sync - pause");
     return;
   }
 
@@ -675,15 +849,36 @@ void mpv_player::initial_sync() {
 
   mpv_timepos = -1;
   while (true) {
-    std::unique_lock<std::mutex> lock(event_cv_mutex);
-    event_cv.wait(lock);
-    lock.unlock();
+    std::unique_lock<std::mutex> lock(mutex);
+    event_cv.wait(lock, [this]() {
+      return check_queue_any() || mpv_state == state::Idle ||
+             mpv_state == state::Shutdown || mpv_timepos > last_mpv_seek;
+    });
 
-    if (check_queue() || mpv_idle || mpv_shutdown) {
+    if (check_queue_any()) {
       libmpv()->unobserve_property(mpv, time_pos_userdata);
       if (cfg_logging) {
-        console::info("mpv: Abort initial sync");
+        console::info("mpv: Abort initial sync - cmd");
       }
+      lock.unlock();
+      return;
+    }
+
+    if (mpv_state == state::Idle) {
+      libmpv()->unobserve_property(mpv, time_pos_userdata);
+      if (cfg_logging) {
+        console::info("mpv: Abort initial sync - idle");
+      }
+      lock.unlock();
+      return;
+    }
+
+    if (mpv_state == state::Shutdown) {
+      libmpv()->unobserve_property(mpv, time_pos_userdata);
+      if (cfg_logging) {
+        console::info("mpv: Abort initial sync - shutdown");
+      }
+      lock.unlock();
       return;
     }
 
@@ -701,8 +896,10 @@ void mpv_player::initial_sync() {
         console::error("mpv: Error pausing");
       }
 
+      lock.unlock();
       break;
     }
+    lock.unlock();
   }
 
   libmpv()->unobserve_property(mpv, time_pos_userdata);
@@ -741,15 +938,19 @@ void mpv_player::initial_sync() {
   while (time_base + timing_info::get().last_fb_seek + vis_time -
              timing_info::get().last_seek_vistime <
          mpv_timepos) {
-    if (check_queue()) {
-      if (libmpv()->set_property_string(mpv, "pause", "no") < 0 &&
-          cfg_logging) {
-        console::error("mpv: Error pausing");
+    {
+      std::lock_guard<std::mutex> queuelock(mutex);
+      if (check_queue_any()) {
+        if (libmpv()->set_property_string(mpv, "pause", "no") < 0 &&
+            cfg_logging) {
+          console::error("mpv: Error pausing");
+        }
+        if (cfg_logging) {
+          console::info("mpv: Abort initial sync - command");
+        }
+
+        return;
       }
-      if (cfg_logging) {
-        console::info("mpv: Abort initial sync - command");
-      }
-      return;
     }
     Sleep(10);
     vis_stream->get_absolute_time(vis_time);
@@ -784,7 +985,9 @@ void mpv_player::initial_sync() {
 
 const char* mpv_player::get_string(const char* name) {
   if (mpv == NULL) return "Error";
-  return libmpv()->get_property_string(mpv, name);
+  const char* ret = libmpv()->get_property_string(mpv, name);
+  if (ret == NULL) return "";
+  return ret;
 }
 
 bool mpv_player::get_bool(const char* name) {

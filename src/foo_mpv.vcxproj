@@ -126,6 +126,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="artwork_protocol.cpp" />
     <ClCompile Include="mpv_fullscreen.cpp" />
     <ClCompile Include="thumbnail_chooser.cpp" />
     <ClCompile Include="thumbnailer.cpp" />
@@ -173,6 +174,7 @@
     <ClCompile Include="timing_info.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="artwork_protocol.h" />
     <ClInclude Include="thumbnailer.h" />
     <ClInclude Include="preferences.h" />
     <ClInclude Include="libmpv.h" />

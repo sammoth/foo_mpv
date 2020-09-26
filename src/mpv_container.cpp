@@ -19,6 +19,12 @@ void invalidate_all_containers() {
   }
 }
 
+void mpv_on_new_artwork() {
+  if (g_mpv_player != NULL) {
+      g_mpv_player->on_new_artwork();
+  }
+}
+
 bool container_compare(mpv_container* a, mpv_container* b) {
   // true if a goes before b
   if (a->is_fullscreen()) return true;

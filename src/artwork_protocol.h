@@ -1,0 +1,12 @@
+#pragma once
+#include "stdafx.h"
+// PCH ^
+
+#include "libmpv.h"
+
+namespace mpv {
+int artwork_protocol_open(void* user_data, char* uri,
+                                 mpv_stream_cb_info* info);
+void request_artwork(metadb_handle_ptr item);
+bool artwork_loaded();
+}

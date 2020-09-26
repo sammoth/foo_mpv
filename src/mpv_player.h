@@ -19,25 +19,45 @@ namespace mpv {
 
 void get_popup_title(pfc::string8& s);
 
-class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
+class mpv_player : play_callback_impl_base,
+                   ui_selection_callback_impl_base,
+                   public CWindowImpl<mpv_player> {
   // player
   mpv_handle* mpv;
   bool enabled;
 
   // start mpv within the window
   bool mpv_init();
+  std::mutex init_mutex;
 
   // thread for dispatching libmpv events
   std::thread event_listener;
   std::condition_variable event_cv;
-  std::mutex event_cv_mutex;
+  std::mutex mutex;
   std::atomic<double> mpv_timepos;
-  std::atomic_bool mpv_seeking;
-  std::atomic_bool mpv_idle;
-  std::atomic_bool mpv_shutdown;
+  enum class state {
+    Unloaded,
+    Preload,
+    Loading,
+    Active,
+    Idle,
+    Seeking,
+    Artwork,
+    Shutdown
+  };
+  std::atomic<state> mpv_state;
+  void set_state(state new_state);
 
   // thread for deferred player control tasks
-  enum class task_type { Quit, FirstFrameSync, Play, Seek, Pause, Stop, Artwork };
+  enum class task_type {
+    Quit,
+    FirstFrameSync,
+    Play,
+    Seek,
+    Pause,
+    Stop,
+    LoadArtwork
+  };
   struct task {
     task_type type;
     metadb_handle_ptr play_file;
@@ -46,11 +66,10 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   };
   std::thread control_thread;
   std::condition_variable control_thread_cv;
-  std::mutex control_thread_cv_mutex;
   std::atomic_bool running_ffs;
   std::queue<task> task_queue;
   void queue_task(task t);
-  bool check_queue();
+  bool check_queue_any();
 
   // methods run off thread
   void play(metadb_handle_ptr metadb, double start_time);
@@ -59,6 +78,7 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void seek(double time);
   void sync(double debug_time);
   void initial_sync();
+  void load_artwork();
 
   // state tracking
   std::atomic<double>
@@ -81,6 +101,10 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
   void on_playback_seek(double p_time);
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
+
+  // artwork
+  void on_selection_changed(metadb_handle_list_cref selection) override;
+  metadb_handle_ptr current_selection;
 
   // windowing
   mpv_container* container;
@@ -105,6 +129,8 @@ class mpv_player : play_callback_impl_base, public CWindowImpl<mpv_player> {
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
   void handle_menu_cmd(int cmd);
+
+  void on_new_artwork();
 
   // window
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),

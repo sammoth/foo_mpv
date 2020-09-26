@@ -81,6 +81,9 @@
     <ClCompile Include="mpv_fullscreen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="artwork_protocol.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -105,6 +108,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="thumbnailer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="artwork_protocol.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

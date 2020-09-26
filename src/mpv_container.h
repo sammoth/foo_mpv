@@ -46,4 +46,5 @@ class mpv_container {
 
 mpv_container* get_main_container();
 void invalidate_all_containers();
+void mpv_on_new_artwork();
 }  // namespace mpv

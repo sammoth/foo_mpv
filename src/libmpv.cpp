@@ -110,6 +110,8 @@ bool libmpv_::load_dll() {
   hook_add = (mpv_hook_add)GetProcAddress(dll_module, "mpv_hook_add");
   hook_continue =
       (mpv_hook_continue)GetProcAddress(dll_module, "mpv_hook_continue");
+  stream_cb_add_ro =
+      (mpv_stream_cb_add_ro)GetProcAddress(dll_module, "mpv_stream_cb_add_ro");
 
   is_loaded = true;
   return true;

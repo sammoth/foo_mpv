@@ -117,6 +117,18 @@ static const GUID guid_cfg_cache_format = {
     0x6b5f,
     0x49a7,
     {0x8c, 0xa1, 0xca, 0x98, 0xdd, 0x5b, 0xa9, 0x20}};
+static const GUID guid_cfg_artwork
+    = {0xe0ce0090,
+       0x762f,
+       0x4cb4,
+       {0xad, 0xef, 0xfe, 0xd0, 0xae, 0xf1, 0xd1, 0x93}};
+static const GUID guid_cfg_artwork_type
+    = {0xf305ac3b,
+       0x9af1,
+       0x449f,
+       {0xb7, 0x95, 0x80, 0xd7, 0x11, 0x31, 0x18, 0xdf}};
+
+
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -140,6 +152,9 @@ cfg_bool cfg_thumb_histogram(guid_cfg_thumb_histogram, false);
 cfg_uint cfg_thumb_cache_size(guid_cfg_thumb_cache_size, 0);
 cfg_uint cfg_thumb_cache_format(guid_cfg_cache_format, 0);
 cfg_bool cfg_thumb_filter(guid_cfg_filter, false);
+
+cfg_bool cfg_artwork(guid_cfg_artwork, true);
+cfg_uint cfg_artwork_type(guid_cfg_artwork_type, 0);
 
 static const char* cfg_thumb_pattern_default =
     "\"$ext(%filename_ext%)\" IS mkv";
@@ -216,6 +231,7 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   MSG_WM_CTLCOLORBTN(on_color_button);
   MSG_WM_HSCROLL(OnScroll);
   COMMAND_HANDLER_EX(IDC_BUTTON_BG, BN_CLICKED, OnBgClick);
+  COMMAND_HANDLER_EX(IDC_CHECK_ARTWORK, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
@@ -265,6 +281,7 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
 
+  CheckDlgButton(IDC_CHECK_ARTWORK, cfg_artwork);
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
@@ -361,6 +378,7 @@ void CMpvPreferences::reset() {
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
   uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern_default);
 
+  CheckDlgButton(IDC_CHECK_ARTWORK, true);
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
@@ -384,6 +402,7 @@ void CMpvPreferences::reset() {
 void CMpvPreferences::apply() {
   cfg_bg_color = bg_col;
 
+  cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
   cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
   cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
 
