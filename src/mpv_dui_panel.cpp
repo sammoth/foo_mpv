@@ -125,9 +125,11 @@ struct CMpvDuiWindow : public ui_element_instance,
   enum {
     ID_PIN = 1003,
     ID_POPOUT = 1004,
+    ID_SEP = 9999,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
+    menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
     menu->AppendMenu(container_is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
                      _T("Pin here"));
     menudesc->Set(ID_PIN, "Pin the video to this container");

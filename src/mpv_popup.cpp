@@ -134,13 +134,11 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     ID_SETCOLOUR = 1004,
     ID_SEPARATE = 1005,
     ID_ONTOP = 1006,
+    ID_SEP=9999,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    if (!container_is_on()) {
-      menu->AppendMenu(MF_DEFAULT, ID_UNPIN, _T("Unpin"));
-      menudesc->Set(ID_UNPIN, "Unpin elsewhere");
-    }
+    menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
     menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
                      ID_ONTOP, _T("Always on-top"));
     menudesc->Set(ID_ONTOP, "Keep the video window above other windows");
