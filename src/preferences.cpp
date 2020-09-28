@@ -5,6 +5,7 @@
 #include "mpv_container.h"
 #include "preferences.h"
 #include "resource.h"
+#include "artwork_protocol.h"
 
 namespace mpv {
 static const GUID guid_cfg_bg_color = {
@@ -447,6 +448,7 @@ void CMpvPreferences::apply() {
   mpv::invalidate_all_containers();
   dirty = false;
   OnChanged();
+  reload_artwork();
 }
 
 bool CMpvPreferences::HasChanged() { return dirty; }

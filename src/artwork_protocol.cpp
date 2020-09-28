@@ -28,8 +28,22 @@ static std::atomic_bool load;
 
 bool artwork_loaded() { return art_data.is_valid(); }
 
+void reload_artwork() { request_artwork(item); }
+
 void request_artwork(metadb_handle_ptr p_item) {
-  if (!cfg_artwork) return;
+  if (!cfg_artwork) {
+    if (item.is_valid() || art_data.is_valid()) {
+      std::lock_guard<std::mutex> lock(mutex);
+      abort_loading.abort();
+      request++;
+      item.reset();
+      art_data.reset();
+      cursor = 0;
+      load = false;
+      mpv_on_new_artwork();
+    }
+    return;
+  }
 
   {
     std::lock_guard<std::mutex> lock(mutex);
