@@ -53,7 +53,7 @@ mpv_container* mpv_container::get_main_container() {
   return *g_containers.begin();
 }
 
-bool mpv_container::is_pinned() { return pinned; }
+bool mpv_container::is_pinned() { return pinned_container == this; }
 
 t_ui_color mpv_container::get_bg() { return cfg_bg_color; }
 

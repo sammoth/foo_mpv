@@ -22,6 +22,7 @@ void mpv_player::on_containers_change() {
   auto main = mpv_container::get_main_container();
   if (main && !g_player) {
     g_player = new CWindowAutoLifetime<mpv_player>(main->container_wnd());
+    main->on_gain_player();
   }
 
   if (g_player) g_player->update();
@@ -272,10 +273,20 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
 }
 
 void mpv_player::update() {
-  container = mpv_container::get_main_container();
-  if (container == NULL) {
+  mpv_container* new_container = mpv_container::get_main_container();
+  if (new_container == NULL) {
+    if (container != NULL) {
+      container->on_lose_player();
+    }
     DestroyWindow();
     return;
+  }
+
+  if (container != new_container) {
+    mpv_container* old_container = container;
+    container = new_container;
+    old_container->on_lose_player();
+    new_container->on_gain_player();
   }
 
   ResizeClient(container->cx,
@@ -397,15 +408,15 @@ bool mpv_player::mpv_init() {
     set_option_string("cache-pause", "no");
 
     libmpv::get()->stream_cb_add_ro(mpv_handle.get(), "artwork", this,
-                             artwork_protocol_open);
+                                    artwork_protocol_open);
     set_option_string("image-display-duration", "inf");
 
-    libmpv::get()->observe_property(mpv_handle.get(), seeking_userdata, "seeking",
-                             libmpv::MPV_FORMAT_FLAG);
+    libmpv::get()->observe_property(mpv_handle.get(), seeking_userdata,
+                                    "seeking", libmpv::MPV_FORMAT_FLAG);
     libmpv::get()->observe_property(mpv_handle.get(), idle_active_userdata,
-                             "idle-active", libmpv::MPV_FORMAT_FLAG);
+                                    "idle-active", libmpv::MPV_FORMAT_FLAG);
     libmpv::get()->observe_property(mpv_handle.get(), path_userdata, "path",
-                             libmpv::MPV_FORMAT_STRING);
+                                    libmpv::MPV_FORMAT_STRING);
 
     if (libmpv::get()->initialize(mpv_handle.get()) != 0) {
       libmpv::get()->destroy(mpv_handle.get());
@@ -419,7 +430,8 @@ bool mpv_player::mpv_init() {
         }
 
         while (true) {
-          libmpv::mpv_event* event = libmpv::get()->wait_event(mpv_handle.get(), -1);
+          libmpv::mpv_event* event =
+              libmpv::get()->wait_event(mpv_handle.get(), -1);
 
           {
             std::lock_guard<std::mutex> lock(mutex);
@@ -592,7 +604,8 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
 
     // reset speed
     double unity = 1.0;
-    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 && cfg_logging) {
+    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 &&
+        cfg_logging) {
       console::error("mpv: Error setting speed");
     }
 
@@ -675,7 +688,8 @@ void mpv_player::seek(double time) {
   last_hard_sync = -99;
   // reset speed
   double unity = 1.0;
-  if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 && cfg_logging) {
+  if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 &&
+      cfg_logging) {
     console::error("mpv: Error setting speed");
   }
 
@@ -744,7 +758,8 @@ void mpv_player::sync(double debug_time) {
   }
 
   double mpv_time = -1.0;
-  if (get_property("time-pos", libmpv::MPV_FORMAT_DOUBLE, &mpv_time) < 0) return;
+  if (get_property("time-pos", libmpv::MPV_FORMAT_DOUBLE, &mpv_time) < 0)
+    return;
 
   double fb_time = playback_control::get()->playback_get_position();
   double desync = time_base + fb_time - mpv_time;
@@ -789,7 +804,8 @@ void mpv_player::sync(double debug_time) {
       console::info(msg.str().c_str());
     }
 
-    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &new_speed) < 0 && cfg_logging) {
+    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &new_speed) < 0 &&
+        cfg_logging) {
       console::error("mpv: Error setting speed");
     }
   }
@@ -853,7 +869,8 @@ void mpv_player::initial_sync() {
   }
 
   if (libmpv::get()->observe_property(mpv_handle.get(), time_pos_userdata,
-                                 "time-pos", libmpv::MPV_FORMAT_DOUBLE) < 0) {
+                                      "time-pos",
+                                      libmpv::MPV_FORMAT_DOUBLE) < 0) {
     if (cfg_logging) {
       console::error("mpv: Error observing time-pos");
     }
@@ -1008,7 +1025,8 @@ int mpv_player::command_string(const char* args) {
   return libmpv::get()->command_string(mpv_handle.get(), args);
 }
 
-int mpv_player::get_property(const char* name, libmpv::mpv_format format, void* data) {
+int mpv_player::get_property(const char* name, libmpv::mpv_format format,
+                             void* data) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->get_property(mpv_handle.get(), name, format, data);
 }
@@ -1018,7 +1036,8 @@ int mpv_player::command(const char** args) {
   return libmpv::get()->command(mpv_handle.get(), args);
 }
 
-int mpv_player::set_option(const char* name, libmpv::mpv_format format, void* data) {
+int mpv_player::set_option(const char* name, libmpv::mpv_format format,
+                           void* data) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->set_option(mpv_handle.get(), name, format, data);
 }
@@ -1033,14 +1052,16 @@ const char* mpv_player::get_string(const char* name) {
 bool mpv_player::get_bool(const char* name) {
   if (!mpv_handle) return false;
   int flag = 0;
-  libmpv::get()->get_property(mpv_handle.get(), name, libmpv::MPV_FORMAT_FLAG, &flag);
+  libmpv::get()->get_property(mpv_handle.get(), name, libmpv::MPV_FORMAT_FLAG,
+                              &flag);
   return flag == 1;
 }
 
 double mpv_player::get_double(const char* name) {
   if (!mpv_handle) return 0;
   double num = 0;
-  libmpv::get()->get_property(mpv_handle.get(), name, libmpv::MPV_FORMAT_DOUBLE, &num);
+  libmpv::get()->get_property(mpv_handle.get(), name, libmpv::MPV_FORMAT_DOUBLE,
+                              &num);
   return num;
 }
 }  // namespace mpv

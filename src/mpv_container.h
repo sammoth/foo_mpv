@@ -8,8 +8,6 @@ void RunMpvFullscreenWindow(bool reopen_popup);
 
 namespace mpv {
 class mpv_container {
-  bool pinned = false;
-
  public:
   long cx = 0;
   long cy = 0;

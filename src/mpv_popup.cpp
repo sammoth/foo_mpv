@@ -80,7 +80,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void on_playback_event() override { update_title(); }
 
-  void toggle_fullscreen() override { RunMpvFullscreenWindow(true); DestroyWindow(); };
+  void toggle_fullscreen() override { RunMpvFullscreenWindow(true); };
 
   void on_lose_player() override { DestroyWindow(); }
 
