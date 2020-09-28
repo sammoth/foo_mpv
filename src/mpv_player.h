@@ -23,7 +23,7 @@ class mpv_player : play_callback_impl_base,
                    ui_selection_callback_impl_base,
                    public CWindowImpl<mpv_player> {
   // player
-  mpv_handle* mpv;
+  std::unique_ptr<mpv_handle, decltype(libmpv()->terminate_destroy)> mpv_handle;
   bool enabled;
 
   // start mpv within the window
@@ -74,7 +74,7 @@ class mpv_player : play_callback_impl_base,
   // methods run off thread
   void play(metadb_handle_ptr metadb, double start_time);
   void stop();
-  void pause(bool state);
+  void pause(bool p_state);
   void seek(double time);
   void sync(double debug_time);
   void initial_sync();
@@ -92,6 +92,12 @@ class mpv_player : play_callback_impl_base,
   const char* get_string(const char* name);
   bool get_bool(const char* name);
   double get_double(const char* name);
+  int command_string(const char* args);
+  int set_option_string(const char* name, const char* data);
+  int set_property_string(const char* name, const char* data);
+  int get_property(const char* name, mpv_format format, void* data);
+  int command(const char** args);
+  int set_option(const char* name, mpv_format format, void* data);
 
   // play callbacks
   void on_playback_starting(play_control::t_track_command p_command,
@@ -103,13 +109,10 @@ class mpv_player : play_callback_impl_base,
   void on_playback_time(double p_time);
 
   // artwork
-  void on_selection_changed(metadb_handle_list_cref selection) override;
-  metadb_handle_ptr current_selection;
+  void on_selection_changed(metadb_handle_list_cref p_selection) override;
 
   // windowing
   mpv_container* container;
-  void update_container();
-  void update_window();
   void update_title();
   void set_background();
 
@@ -119,18 +122,17 @@ class mpv_player : play_callback_impl_base,
   void on_double_click(UINT, CPoint);
   void on_destroy();
 
+  void update();
+  void destroy();
+  bool contained_in(mpv_container* p_container);
+
  public:
   mpv_player();
   ~mpv_player();
-
-  void update();
-  void destroy();
-  bool contained_in(mpv_container* container);
-
-  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
-  void handle_menu_cmd(int cmd);
-
-  void on_new_artwork();
+  static void on_containers_change();
+  static void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
+  static void handle_menu_cmd(int cmd);
+  static void on_new_artwork();
 
   // window
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),

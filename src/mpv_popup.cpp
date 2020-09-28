@@ -47,7 +47,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_LBUTTONDBLCLK(on_double_click)
-  MSG_WM_CONTEXTMENU(container_on_context_menu)
+  MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
@@ -82,7 +82,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void toggle_fullscreen() override { RunMpvFullscreenWindow(true); DestroyWindow(); };
 
-  void notify_pinned_elsewhere() override { DestroyWindow(); }
+  void on_lose_player() override { DestroyWindow(); }
 
   LRESULT on_create(LPCREATESTRUCT st) {
     if (cfg_mpv_popup_separate) {
@@ -114,7 +114,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
                    height / 2, SWP_NOZORDER | SWP_FRAMECHANGED);
     }
 
-    container_create();
+    mpv_container::on_create();
 
     return 0;
   }
@@ -123,11 +123,11 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     RECT client_rect = {};
     GetWindowRect(&client_rect);
     cfg_mpv_popup_rect = client_rect;
-    container_destroy();
+    mpv_container::on_destroy();
     g_open_mpv_popup = NULL;
   }
 
-  void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
 
   enum {
     ID_UNPIN = 1003,
@@ -162,7 +162,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
         RunMpvPopupWindow();
         break;
       case ID_UNPIN:
-        container_unpin();
+        unpin();
         break;
       default:
         break;

@@ -445,7 +445,7 @@ void CMpvPreferences::apply() {
 
   cfg_thumb_seek = ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).GetPos();
 
-  mpv::invalidate_all_containers();
+  mpv_container::invalidate_all_containers();
   dirty = false;
   OnChanged();
   reload_artwork();

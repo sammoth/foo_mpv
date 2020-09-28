@@ -16,10 +16,23 @@
 
 namespace mpv {
 
+static CWindowAutoLifetime<mpv_player>* g_player;
+
+void mpv_player::on_containers_change() {
+  auto main = mpv_container::get_main_container();
+  if (main && !g_player) {
+    g_player = new CWindowAutoLifetime<mpv_player>(main->container_wnd());
+  }
+
+  if (g_player) g_player->update();
+}
+
 static const int time_pos_userdata = 28903278;
 static const int seeking_userdata = 982628764;
 static const int path_userdata = 982628764;
 static const int idle_active_userdata = 12792384;
+
+static metadb_handle_ptr current_selection;
 
 extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
     cfg_artwork;
@@ -30,7 +43,7 @@ extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
 
 mpv_player::mpv_player()
     : enabled(false),
-      mpv(NULL),
+      mpv_handle(nullptr, nullptr),
       task_queue(),
       sync_on_unpause(false),
       last_mpv_seek(0),
@@ -38,6 +51,7 @@ mpv_player::mpv_player()
       running_ffs(false),
       mpv_timepos(0),
       mpv_state(state::Unloaded),
+      container(mpv_container::get_main_container()),
       time_base(0) {
   control_thread = std::thread([this]() {
     while (true) {
@@ -73,8 +87,6 @@ mpv_player::mpv_player()
       }
     }
   });
-
-  update_container();
 }
 
 mpv_player::~mpv_player() {
@@ -135,8 +147,6 @@ void mpv_player::set_state(state state) {
   mpv_state = state;
 }
 
-void mpv_player::destroy() { DestroyWindow(); }
-
 BOOL mpv_player::on_erase_bg(CDCHandle dc) {
   CRect rc;
   WIN32_OP_D(GetClientRect(&rc));
@@ -157,25 +167,27 @@ enum {
 };
 
 void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-  if (mpv != NULL) {
-    if (mpv_state == state::Idle || mpv_state == state::Artwork) {
+  if (g_player && g_player->mpv_handle) {
+    if (g_player->mpv_state == state::Idle ||
+        g_player->mpv_state == state::Artwork) {
       menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
     } else {
       std::wstringstream text;
       text.setf(std::ios::fixed);
       text.precision(3);
-      text << get_string("video-codec") << " "
-           << get_string("video-params/pixelformat");
+      text << g_player->get_string("video-codec") << " "
+           << g_player->get_string("video-params/pixelformat");
       menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
       text.str(L"");
-      text << get_string("width") << "x" << get_string("height") << " "
-           << get_double("container-fps") << "fps (display "
-           << get_double("estimated-vf-fps") << "fps)";
+      text << g_player->get_string("width") << "x"
+           << g_player->get_string("height") << " "
+           << g_player->get_double("container-fps") << "fps (display "
+           << g_player->get_double("estimated-vf-fps") << "fps)";
       menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
-      std::string hwdec = get_string("hwdec-current");
+      std::string hwdec = g_player->get_string("hwdec-current");
       if (hwdec != "no") {
         text.str(L"");
-        text << "Hardware decoding: " << get_string("hwdec-current");
+        text << "Hardware decoding: " << g_player->get_string("hwdec-current");
         menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
       }
 
@@ -186,12 +198,14 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
   menu->AppendMenu(cfg_video_enabled ? MF_CHECKED : MF_UNCHECKED, ID_ENABLED,
                    _T("Enabled"));
   menudesc->Set(ID_ENABLED, "Enable/disable video playback");
-  menu->AppendMenu(container->is_fullscreen() ? MF_CHECKED : MF_UNCHECKED,
-                   ID_FULLSCREEN, _T("Fullscreen"));
+  menu->AppendMenu(
+      g_player->container->is_fullscreen() ? MF_CHECKED : MF_UNCHECKED,
+      ID_FULLSCREEN, _T("Fullscreen"));
   menudesc->Set(ID_FULLSCREEN, "Toggle video fullscreen");
 
-  if (cfg_artwork && (mpv == NULL || mpv_state == state::Idle ||
-                      mpv_state == state::Artwork)) {
+  if (cfg_artwork &&
+      (!g_player->mpv_handle || g_player->mpv_state == state::Idle ||
+       g_player->mpv_state == state::Artwork)) {
     menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
     menu->AppendMenu(cfg_artwork_type == 0 ? MF_CHECKED : MF_UNCHECKED,
                      ID_ART_FRONT, _T("Front"));
@@ -205,37 +219,39 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
 }
 
 void mpv_player::handle_menu_cmd(int cmd) {
-  switch (cmd) {
-    case ID_ENABLED:
-      cfg_video_enabled = !cfg_video_enabled;
-      update();
-      break;
-    case ID_FULLSCREEN:
-      container->toggle_fullscreen();
-      break;
-    case ID_ART_FRONT:
-      cfg_artwork_type = 0;
-      request_artwork(current_selection);
-      break;
-    case ID_ART_BACK:
-      cfg_artwork_type = 1;
-      request_artwork(current_selection);
-      break;
-    case ID_ART_DISC:
-      cfg_artwork_type = 2;
-      request_artwork(current_selection);
-      break;
-    case ID_ART_ARTIST:
-      cfg_artwork_type = 3;
-      request_artwork(current_selection);
-      break;
-    default:
-      break;
+  if (g_player) {
+    switch (cmd) {
+      case ID_ENABLED:
+        cfg_video_enabled = !cfg_video_enabled;
+        g_player->update();
+        break;
+      case ID_FULLSCREEN:
+        g_player->container->toggle_fullscreen();
+        break;
+      case ID_ART_FRONT:
+        cfg_artwork_type = 0;
+        request_artwork(current_selection);
+        break;
+      case ID_ART_BACK:
+        cfg_artwork_type = 1;
+        request_artwork(current_selection);
+        break;
+      case ID_ART_DISC:
+        cfg_artwork_type = 2;
+        request_artwork(current_selection);
+        break;
+      case ID_ART_ARTIST:
+        cfg_artwork_type = 3;
+        request_artwork(current_selection);
+        break;
+      default:
+        break;
+    }
   }
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
-  container->container_on_context_menu(wnd, point);
+  container->on_context_menu(wnd, point);
 }
 
 void mpv_player::on_double_click(UINT, CPoint) {
@@ -243,9 +259,8 @@ void mpv_player::on_double_click(UINT, CPoint) {
 }
 
 void mpv_player::on_destroy() {
-  if (mpv != NULL) {
-    libmpv()->command_string(mpv, "quit");
-  }
+  command_string("quit");
+  g_player = NULL;
 }
 
 LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
@@ -256,20 +271,19 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
   return 0;
 }
 
-void mpv_player::update_container() { container = get_main_container(); }
-
 void mpv_player::update() {
-  update_container();
-  update_window();
-}
+  container = mpv_container::get_main_container();
+  if (container == NULL) {
+    DestroyWindow();
+    return;
+  }
 
-void mpv_player::update_window() {
   ResizeClient(container->cx,
                container->cy);  // wine is less buggy if we resize first
 
   if (GetParent() != container->container_wnd()) {
     SetParent(container->container_wnd());
-    invalidate_all_containers();
+    mpv_container::invalidate_all_containers();
   }
 
   bool vis = container->is_visible();
@@ -312,7 +326,7 @@ void mpv_player::update_title() {
 }
 
 void mpv_player::set_background() {
-  if (mpv == NULL) return;
+  if (!mpv_handle) return;
 
   std::stringstream colorstrings;
   colorstrings << "#";
@@ -325,92 +339,97 @@ void mpv_player::set_background() {
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
                << (unsigned)GetBValue(bgcolor);
   std::string colorstring = colorstrings.str();
-  libmpv()->set_option_string(mpv, "background", colorstring.c_str());
+  libmpv()->set_option_string(mpv_handle.get(), "background",
+                              colorstring.c_str());
 }
 
 bool mpv_player::mpv_init() {
   if (!libmpv()->load_dll()) return false;
   std::lock_guard<std::mutex> lock_init(init_mutex);
 
-  if (mpv == NULL && m_hWnd != NULL) {
+  if (!mpv_handle && m_hWnd != NULL) {
     pfc::string_formatter path;
     path.add_filename(core_api::get_profile_path());
     path.add_filename("mpv");
     path.replace_string("\\file://", "");
-    mpv = libmpv()->create();
+    mpv_handle = {libmpv()->create(), libmpv()->terminate_destroy};
 
     int64_t l_wid = (intptr_t)(m_hWnd);
-    libmpv()->set_option(mpv, "wid", MPV_FORMAT_INT64, &l_wid);
+    libmpv()->set_option(mpv_handle.get(), "wid", MPV_FORMAT_INT64, &l_wid);
 
-    libmpv()->set_option_string(mpv, "load-scripts", "no");
-    libmpv()->set_option_string(mpv, "ytdl", "no");
-    libmpv()->set_option_string(mpv, "load-stats-overlay", "no");
-    libmpv()->set_option_string(mpv, "load-osd-console", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "load-scripts", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "ytdl", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "load-stats-overlay", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "load-osd-console", "no");
 
     set_background();
 
-    libmpv()->set_option_string(mpv, "config", "yes");
-    libmpv()->set_option_string(mpv, "config-dir", path.c_str());
+    libmpv()->set_option_string(mpv_handle.get(), "config", "yes");
+    libmpv()->set_option_string(mpv_handle.get(), "config-dir", path.c_str());
 
     if (cfg_mpv_logfile) {
       path.add_filename("mpv.log");
-      libmpv()->set_option_string(mpv, "log-file", path.c_str());
+      libmpv()->set_option_string(mpv_handle.get(), "log-file", path.c_str());
     }
 
     // no display for music
-    libmpv()->set_option_string(mpv, "audio-display", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "audio-display", "no");
 
     // everything syncs to foobar
-    libmpv()->set_option_string(mpv, "video-sync", "audio");
-    libmpv()->set_option_string(mpv, "untimed", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "video-sync", "audio");
+    libmpv()->set_option_string(mpv_handle.get(), "untimed", "no");
 
     // seek fast
-    libmpv()->set_option_string(mpv, "hr-seek-framedrop", "yes");
-    libmpv()->set_option_string(mpv, "hr-seek-demuxer-offset", "0");
-    libmpv()->set_option_string(mpv, "no-initial-audio-sync", "yes");
+    libmpv()->set_option_string(mpv_handle.get(), "hr-seek-framedrop", "yes");
+    libmpv()->set_option_string(mpv_handle.get(), "hr-seek-demuxer-offset",
+                                "0");
+    libmpv()->set_option_string(mpv_handle.get(), "no-initial-audio-sync",
+                                "yes");
 
     // foobar plays the audio
-    libmpv()->set_option_string(mpv, "audio", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "audio", "no");
 
     // keep the renderer initialised
-    libmpv()->set_option_string(mpv, "force-window", "yes");
-    libmpv()->set_option_string(mpv, "idle", "yes");
+    libmpv()->set_option_string(mpv_handle.get(), "force-window", "yes");
+    libmpv()->set_option_string(mpv_handle.get(), "idle", "yes");
 
     // don't unload the file when finished, maybe fb is still playing and we
     // could be asked to seek backwards
-    libmpv()->set_option_string(mpv, "keep-open", "yes");
-    libmpv()->set_option_string(mpv, "keep-open-pause", "no");
-    libmpv()->set_option_string(mpv, "cache-pause", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "keep-open", "yes");
+    libmpv()->set_option_string(mpv_handle.get(), "keep-open-pause", "no");
+    libmpv()->set_option_string(mpv_handle.get(), "cache-pause", "no");
 
-    libmpv()->stream_cb_add_ro(mpv, "artwork", this, artwork_protocol_open);
-    libmpv()->set_option_string(mpv, "image-display-duration", "inf");
+    libmpv()->stream_cb_add_ro(mpv_handle.get(), "artwork", this,
+                               artwork_protocol_open);
+    libmpv()->set_option_string(mpv_handle.get(), "image-display-duration",
+                                "inf");
 
-    libmpv()->observe_property(mpv, seeking_userdata, "seeking",
+    libmpv()->observe_property(mpv_handle.get(), seeking_userdata, "seeking",
                                MPV_FORMAT_FLAG);
-    libmpv()->observe_property(mpv, idle_active_userdata, "idle-active",
-                               MPV_FORMAT_FLAG);
-    libmpv()->observe_property(mpv, path_userdata, "path", MPV_FORMAT_STRING);
+    libmpv()->observe_property(mpv_handle.get(), idle_active_userdata,
+                               "idle-active", MPV_FORMAT_FLAG);
+    libmpv()->observe_property(mpv_handle.get(), path_userdata, "path",
+                               MPV_FORMAT_STRING);
 
-    if (libmpv()->initialize(mpv) != 0) {
-      libmpv()->destroy(mpv);
-      mpv = NULL;
+    if (libmpv()->initialize(mpv_handle.get()) != 0) {
+      libmpv()->destroy(mpv_handle.get());
+      mpv_handle = NULL;
     } else {
       event_listener = std::thread([this]() {
-        if (mpv == NULL) {
+        if (!mpv_handle) {
           console::error(
               "mpv: libmpv event listener started but mpv wasn't running");
           return;
         }
 
         while (true) {
-          mpv_event* event = libmpv()->wait_event(mpv, -1);
+          mpv_event* event = libmpv()->wait_event(mpv_handle.get(), -1);
 
           {
             std::lock_guard<std::mutex> lock(mutex);
 
             if (event->event_id == MPV_EVENT_SHUTDOWN) {
               mpv_state = state::Shutdown;
-              libmpv()->terminate_destroy(mpv);
               return;
             }
 
@@ -457,7 +476,7 @@ bool mpv_player::mpv_init() {
     }
   }
 
-  return mpv != NULL;
+  return mpv_handle != NULL;
 }
 
 void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
@@ -533,7 +552,7 @@ void mpv_player::on_playback_time(double p_time) {
 }
 
 void mpv_player::play(metadb_handle_ptr metadb, double time) {
-  if (mpv == NULL && !mpv_init()) return;
+  if (!mpv_handle && !mpv_init()) return;
 
   if (!enabled) {
     mpv_state = state::Idle;
@@ -567,7 +586,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     time_sstring.precision(3);
     time_sstring << time_base + time;
     std::string time_string = time_sstring.str();
-    libmpv()->set_option_string(mpv, "start", time_string.c_str());
+    set_option_string("start", time_string.c_str());
     if (cfg_logging) {
       std::stringstream msg;
       msg << "mpv: Loading item '" << filename << "' at start time "
@@ -577,14 +596,13 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
 
     // reset speed
     double unity = 1.0;
-    if (libmpv()->set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &unity) < 0 &&
-        cfg_logging) {
+    if (set_option("speed", MPV_FORMAT_DOUBLE, &unity) < 0 && cfg_logging) {
       console::error("mpv: Error setting speed");
     }
 
     set_state(state::Loading);
     const char* cmd[] = {"loadfile", filename.c_str(), NULL};
-    if (libmpv()->command(mpv, cmd) < 0 && cfg_logging) {
+    if (command(cmd) < 0 && cfg_logging) {
       std::stringstream msg;
       msg << "mpv: Error loading item '" << filename << "'";
       console::error(msg.str().c_str());
@@ -620,24 +638,23 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
 }
 
 void mpv_player::stop() {
-  if (mpv == NULL) return;
+  if (!mpv_handle) return;
 
   sync_on_unpause = false;
 
-  if (libmpv()->command_string(mpv, "stop") < 0 && cfg_logging) {
+  if (command_string("stop") < 0 && cfg_logging) {
     console::error("mpv: Error stopping video");
   }
 }
 
 void mpv_player::pause(bool state) {
-  if (mpv == NULL || !enabled || mpv_state == state::Idle) return;
+  if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
     console::info(state ? "mpv: Pause -> yes" : "mpv: Pause -> no");
   }
 
-  if (libmpv()->set_property_string(mpv, "pause", state ? "yes" : "no") < 0 &&
-      cfg_logging) {
+  if (set_property_string("pause", state ? "yes" : "no") < 0 && cfg_logging) {
     console::error("mpv: Error pausing");
   }
 
@@ -650,7 +667,7 @@ void mpv_player::pause(bool state) {
 }
 
 void mpv_player::seek(double time) {
-  if (mpv == NULL || !enabled || mpv_state == state::Idle) return;
+  if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
     std::stringstream msg;
@@ -662,8 +679,7 @@ void mpv_player::seek(double time) {
   last_hard_sync = -99;
   // reset speed
   double unity = 1.0;
-  if (libmpv()->set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &unity) < 0 &&
-      cfg_logging) {
+  if (set_option("speed", MPV_FORMAT_DOUBLE, &unity) < 0 && cfg_logging) {
     console::error("mpv: Error setting speed");
   }
 
@@ -675,7 +691,7 @@ void mpv_player::seek(double time) {
   std::string time_string = time_sstring.str();
   const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
 
-  if (libmpv()->command(mpv, cmd) < 0) {
+  if (command(cmd) < 0) {
     if (cfg_logging) {
       console::info("mpv: Cannot seek, waiting for file to load first");
     }
@@ -696,7 +712,7 @@ void mpv_player::seek(double time) {
       }
 
       if (mpv_state == state::Active) {
-        if (libmpv()->command(mpv, cmd) < 0) {
+        if (command(cmd) < 0) {
           Sleep(10);
         } else {
           console::info("mpv: Seeking started");
@@ -725,15 +741,14 @@ void mpv_player::seek(double time) {
 }
 
 void mpv_player::sync(double debug_time) {
-  if (mpv == NULL || !enabled || mpv_state != state::Active) return;
+  if (!mpv_handle || !enabled || mpv_state != state::Active) return;
 
   if (playback_control::get()->is_paused()) {
     return;
   }
 
   double mpv_time = -1.0;
-  if (libmpv()->get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) < 0)
-    return;
+  if (get_property("time-pos", MPV_FORMAT_DOUBLE, &mpv_time) < 0) return;
 
   double fb_time = playback_control::get()->playback_get_position();
   double desync = time_base + fb_time - mpv_time;
@@ -778,27 +793,28 @@ void mpv_player::sync(double debug_time) {
       console::info(msg.str().c_str());
     }
 
-    if (libmpv()->set_option(mpv, "speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 &&
-        cfg_logging) {
+    if (set_option("speed", MPV_FORMAT_DOUBLE, &new_speed) < 0 && cfg_logging) {
       console::error("mpv: Error setting speed");
     }
   }
 }
 
 void mpv_player::on_new_artwork() {
-  task t;
-  t.type = task_type::LoadArtwork;
-  queue_task(t);
+  if (g_player) {
+    task t;
+    t.type = task_type::LoadArtwork;
+    g_player->queue_task(t);
+  }
 }
 
 void mpv_player::load_artwork() {
-  if (mpv == NULL && !mpv_init()) return;
+  if (!mpv_handle && !mpv_init()) return;
 
   if (mpv_state == state::Idle || mpv_state == state::Artwork ||
       mpv_state == state::Preload) {
     if (artwork_loaded()) {
       const char* cmd[] = {"loadfile", "artwork://", NULL};
-      if (libmpv()->command(mpv, cmd) < 0) {
+      if (command(cmd) < 0) {
         console::error("mpv: Error loading artwork");
       } else if (cfg_logging) {
         console::info("mpv: Loading artwork");
@@ -812,7 +828,7 @@ void mpv_player::load_artwork() {
 }
 
 void mpv_player::initial_sync() {
-  if (mpv == NULL || !enabled) return;
+  if (!mpv_handle || !enabled) return;
 
   {
     std::lock_guard<std::mutex> queuelock(mutex);
@@ -829,7 +845,7 @@ void mpv_player::initial_sync() {
   msg.precision(10);
 
   int paused_check = 0;
-  libmpv()->get_property(mpv, "pause", MPV_FORMAT_FLAG, &paused_check);
+  get_property("pause", MPV_FORMAT_FLAG, &paused_check);
   if (paused_check == 1) {
     console::error("mpv: Player was paused when starting initial sync");
     console::info("mpv: Abort initial sync - pause");
@@ -840,8 +856,8 @@ void mpv_player::initial_sync() {
     console::info("mpv: Initial sync");
   }
 
-  if (libmpv()->observe_property(mpv, time_pos_userdata, "time-pos",
-                                 MPV_FORMAT_DOUBLE) < 0) {
+  if (libmpv()->observe_property(mpv_handle.get(), time_pos_userdata,
+                                 "time-pos", MPV_FORMAT_DOUBLE) < 0) {
     if (cfg_logging) {
       console::error("mpv: Error observing time-pos");
     }
@@ -857,7 +873,7 @@ void mpv_player::initial_sync() {
     });
 
     if (check_queue_any()) {
-      libmpv()->unobserve_property(mpv, time_pos_userdata);
+      libmpv()->unobserve_property(mpv_handle.get(), time_pos_userdata);
       if (cfg_logging) {
         console::info("mpv: Abort initial sync - cmd");
       }
@@ -866,7 +882,7 @@ void mpv_player::initial_sync() {
     }
 
     if (mpv_state == state::Idle) {
-      libmpv()->unobserve_property(mpv, time_pos_userdata);
+      libmpv()->unobserve_property(mpv_handle.get(), time_pos_userdata);
       if (cfg_logging) {
         console::info("mpv: Abort initial sync - idle");
       }
@@ -875,7 +891,7 @@ void mpv_player::initial_sync() {
     }
 
     if (mpv_state == state::Shutdown) {
-      libmpv()->unobserve_property(mpv, time_pos_userdata);
+      libmpv()->unobserve_property(mpv_handle.get(), time_pos_userdata);
       if (cfg_logging) {
         console::info("mpv: Abort initial sync - shutdown");
       }
@@ -892,8 +908,7 @@ void mpv_player::initial_sync() {
         console::info(msg.str().c_str());
       }
 
-      if (libmpv()->set_property_string(mpv, "pause", "yes") < 0 &&
-          cfg_logging) {
+      if (set_property_string("pause", "yes") < 0 && cfg_logging) {
         console::error("mpv: Error pausing");
       }
 
@@ -903,7 +918,7 @@ void mpv_player::initial_sync() {
     lock.unlock();
   }
 
-  libmpv()->unobserve_property(mpv, time_pos_userdata);
+  libmpv()->unobserve_property(mpv_handle.get(), time_pos_userdata);
 
   // wait for fb to catch up to the first frame
   double vis_time = 0.0;
@@ -913,7 +928,7 @@ void mpv_player::initial_sync() {
     console::error(
         "mpv: Video disabled: this output has no timing "
         "information");
-    if (libmpv()->set_property_string(mpv, "pause", "no") < 0 && cfg_logging) {
+    if (set_property_string("pause", "no") < 0 && cfg_logging) {
       console::error("mpv: Error pausing");
     }
     if (cfg_logging) {
@@ -942,8 +957,7 @@ void mpv_player::initial_sync() {
     {
       std::lock_guard<std::mutex> queuelock(mutex);
       if (check_queue_any()) {
-        if (libmpv()->set_property_string(mpv, "pause", "no") < 0 &&
-            cfg_logging) {
+        if (set_property_string("pause", "no") < 0 && cfg_logging) {
           console::error("mpv: Error pausing");
         }
         if (cfg_logging) {
@@ -960,8 +974,7 @@ void mpv_player::initial_sync() {
           "mpv: Initial sync failed, maybe this output does not "
           "have accurate "
           "timing info");
-      if (libmpv()->set_property_string(mpv, "pause", "no") < 0 &&
-          cfg_logging) {
+      if (set_property_string("pause", "no") < 0 && cfg_logging) {
         console::error("mpv: Error pausing");
       }
       if (cfg_logging) {
@@ -971,7 +984,7 @@ void mpv_player::initial_sync() {
     }
   }
 
-  if (libmpv()->set_property_string(mpv, "pause", "no") < 0 && cfg_logging) {
+  if (set_property_string("pause", "no") < 0 && cfg_logging) {
     console::error("mpv: Error pausing");
   }
 
@@ -984,24 +997,54 @@ void mpv_player::initial_sync() {
   }
 }
 
+int mpv_player::set_option_string(const char* name, const char* data) {
+  if (!mpv_handle) return MPV_ERROR_UNINITIALIZED;
+  return libmpv()->set_option_string(mpv_handle.get(), name, data);
+}
+
+int mpv_player::set_property_string(const char* name, const char* data) {
+  if (!mpv_handle) return MPV_ERROR_UNINITIALIZED;
+  return libmpv()->set_property_string(mpv_handle.get(), name, data);
+}
+
+int mpv_player::command_string(const char* args) {
+  if (!mpv_handle) return MPV_ERROR_UNINITIALIZED;
+  return libmpv()->command_string(mpv_handle.get(), args);
+}
+
+int mpv_player::get_property(const char* name, mpv_format format, void* data) {
+  if (!mpv_handle) return MPV_ERROR_UNINITIALIZED;
+  return libmpv()->get_property(mpv_handle.get(), name, format, data);
+}
+
+int mpv_player::command(const char** args) {
+  if (!mpv_handle) return MPV_ERROR_UNINITIALIZED;
+  return libmpv()->command(mpv_handle.get(), args);
+}
+
+int mpv_player::set_option(const char* name, mpv_format format, void* data) {
+  if (!mpv_handle) return MPV_ERROR_UNINITIALIZED;
+  return libmpv()->set_option(mpv_handle.get(), name, format, data);
+}
+
 const char* mpv_player::get_string(const char* name) {
-  if (mpv == NULL) return "Error";
-  const char* ret = libmpv()->get_property_string(mpv, name);
+  if (!mpv_handle) return "";
+  const char* ret = libmpv()->get_property_string(mpv_handle.get(), name);
   if (ret == NULL) return "";
   return ret;
 }
 
 bool mpv_player::get_bool(const char* name) {
-  if (mpv == NULL) return false;
+  if (!mpv_handle) return false;
   int flag = 0;
-  libmpv()->get_property(mpv, name, MPV_FORMAT_FLAG, &flag);
+  libmpv()->get_property(mpv_handle.get(), name, MPV_FORMAT_FLAG, &flag);
   return flag == 1;
 }
 
 double mpv_player::get_double(const char* name) {
-  if (mpv == NULL) return 0;
+  if (!mpv_handle) return 0;
   double num = 0;
-  libmpv()->get_property(mpv, name, MPV_FORMAT_DOUBLE, &num);
+  libmpv()->get_property(mpv_handle.get(), name, MPV_FORMAT_DOUBLE, &num);
   return num;
 }
 }  // namespace mpv

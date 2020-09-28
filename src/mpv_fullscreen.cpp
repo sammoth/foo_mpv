@@ -31,7 +31,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_KEYDOWN(on_keydown)
   MSG_WM_LBUTTONDBLCLK(on_double_click)
-  MSG_WM_CONTEXTMENU(container_on_context_menu)
+  MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
   static DWORD GetWndStyle(DWORD style) {
@@ -75,7 +75,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
                  monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
                  SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
 
-    container_create();
+    mpv_container::on_create();
 
     return 0;
   }
@@ -84,11 +84,11 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
     if (reopen_popup) {
       RunMpvPopupWindow();
     }
-    container_destroy();
+    mpv_container::on_destroy();
     g_open_mpv_fullscreen = NULL;
   }
 
-  void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {}
 

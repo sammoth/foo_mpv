@@ -6,7 +6,7 @@
 
 #include "artwork_protocol.h"
 #include "libmpv.h"
-#include "mpv_container.h"
+#include "mpv_player.h"
 
 namespace mpv {
 static std::mutex mutex;
@@ -40,7 +40,7 @@ void request_artwork(metadb_handle_ptr p_item) {
       art_data.reset();
       cursor = 0;
       load = false;
-      mpv_on_new_artwork();
+      mpv_player::on_new_artwork();
     }
     return;
   }
@@ -108,12 +108,12 @@ class artwork_register : public initquit {
             std::lock_guard<std::mutex> lock(mutex);
             if (request_number == request) {
               art_data = result;
-              mpv_on_new_artwork();
+              mpv_player::on_new_artwork();
             }
           }
         } catch (...) {
           if (request_number == request) {
-            mpv_on_new_artwork();
+            mpv_player::on_new_artwork();
           }
         }
       }

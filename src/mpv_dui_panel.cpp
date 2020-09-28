@@ -7,6 +7,7 @@
 
 #include "resource.h"
 #include "mpv_container.h"
+#include "mpv_player.h"
 
 void RunMpvPopupWindow();
 
@@ -26,7 +27,7 @@ struct CMpvDuiWindow : public ui_element_instance,
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_LBUTTONDBLCLK(on_double_click)
-  MSG_WM_CONTEXTMENU(container_on_context_menu)
+  MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
   CMpvDuiWindow(ui_element_config::ptr config,
@@ -45,7 +46,7 @@ struct CMpvDuiWindow : public ui_element_instance,
   void initialize_window(HWND parent) {
     WIN32_OP(Create(parent, 0, 0, WS_CHILD, 0));
     apply_configuration();
-    container_create();
+    mpv_container::on_create();
     if (m_callback->is_edit_mode_enabled()) {
       SetWindowLong(GWL_EXSTYLE, GetWindowLong(GWL_EXSTYLE) |
                                      WS_EX_TRANSPARENT | WS_EX_LAYERED);
@@ -54,9 +55,9 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
-  void on_size(UINT wparam, CSize size) { container_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
 
-  void on_destroy() { container_destroy(); }
+  void on_destroy() { mpv_container::on_destroy(); }
 
   HWND container_wnd() override { return m_hWnd; }
 
@@ -72,7 +73,7 @@ struct CMpvDuiWindow : public ui_element_instance,
       bool cfg_pinned;
       in >> cfg_pinned;
       if (cfg_pinned) {
-        container_pin();
+        pin();
       }
     } catch (exception_io_data) {
     }
@@ -85,7 +86,7 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   ui_element_config::ptr get_configuration() {
     ui_element_config_builder out;
-    out << container_is_pinned();
+    out << is_pinned();
     return out.finish(g_get_guid());
   }
 
@@ -103,7 +104,7 @@ struct CMpvDuiWindow : public ui_element_instance,
   void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
               t_size p_param2size) {
     if (p_what == ui_element_notify_visibility_changed) {
-      update_player_window();
+        mpv_player::on_containers_change();
     }
 
     if (p_what == ui_element_notify_colors_changed ||
@@ -130,11 +131,11 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
-    menu->AppendMenu(container_is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
+    menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
                      _T("Pin here"));
     menudesc->Set(ID_PIN, "Pin the video to this container");
 
-    if (container_is_on()) {
+    if (owns_player()) {
       menu->AppendMenu(MF_DEFAULT, ID_POPOUT, _T("Pop out"));
       menudesc->Set(ID_POPOUT, "Open video in popup");
     }
@@ -146,14 +147,14 @@ struct CMpvDuiWindow : public ui_element_instance,
 
     switch (cmd) {
       case ID_PIN:
-        if (container_is_pinned()) {
-          container_unpin();
+        if (is_pinned()) {
+          unpin();
         } else {
-          container_pin();
+          pin();
         }
         break;
       case ID_POPOUT:
-        container_unpin();
+        unpin();
         RunMpvPopupWindow();
         break;
       default:
