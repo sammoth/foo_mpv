@@ -134,7 +134,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
 
   metadb_handle_ptr metadb;
 
-  CThumbnailChooserWindow(metadb_handle_ptr p_metadb) : metadb(p_metadb) {}
+  CThumbnailChooserWindow(metadb_handle_ptr p_metadb)
+      : metadb(p_metadb), mpv_handle(nullptr, nullptr) {}
 
   BEGIN_MSG_MAP(CThumbnailChooserWindow)
   MSG_WM_INITDIALOG(OnInitDialog)
@@ -165,8 +166,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   void OnCancel(UINT, int, CWindow) { DestroyWindow(); }
   void OnAccept(UINT, int, CWindow) {
     double mpv_time = -1.0;
-    if (libmpv()->get_property(mpv, "time-pos", MPV_FORMAT_DOUBLE, &mpv_time) >
-        -1) {
+    if (libmpv::get()->get_property(mpv_handle.get(), "time-pos",
+                             libmpv::MPV_FORMAT_DOUBLE, &mpv_time) > -1) {
       thumb_time_store_set(metadb, mpv_time - time_base);
     }
 
@@ -179,7 +180,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     uSetWindowText(m_hWnd, title);
   }
 
-  mpv_handle* mpv = NULL;
+  std::unique_ptr<libmpv::mpv_handle, decltype(libmpv::get()->terminate_destroy)>
+      mpv_handle;
 
   BOOL OnInitDialog(CWindow wnd, LPARAM lp) {
     update_title();
@@ -192,7 +194,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     thumb_time_store_get(metadb, pos);
     if (pos > metadb->get_length()) pos = 0.0;
     slider_seek.SetPos(
-        (int)min(seek_resolution, max(0, (pos / metadb->get_length()) * seek_resolution)));
+        (int)min(seek_resolution,
+                 max(0, (pos / metadb->get_length()) * seek_resolution)));
 
     pfc::string8 filename;
     filename.add_filename(metadb->get_path());
@@ -216,41 +219,41 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
       return false;
     }
 
-    if (!libmpv()->load_dll()) return false;
+    if (!libmpv::get()->ready) return false;
 
-    mpv = libmpv()->create();
+    mpv_handle = {libmpv::get()->create(), libmpv::get()->terminate_destroy};
 
     int64_t l_wid = (intptr_t)(uGetDlgItem(IDC_STATIC_pic).m_hWnd);
-    libmpv()->set_option(mpv, "wid", MPV_FORMAT_INT64, &l_wid);
+    libmpv::get()->set_option(mpv_handle.get(), "wid", libmpv::MPV_FORMAT_INT64, &l_wid);
 
-    libmpv()->set_option_string(mpv, "load-scripts", "no");
-    libmpv()->set_option_string(mpv, "ytdl", "no");
-    libmpv()->set_option_string(mpv, "load-stats-overlay", "no");
-    libmpv()->set_option_string(mpv, "load-osd-console", "no");
+    set_option_string("load-scripts", "no");
+    set_option_string("ytdl", "no");
+    set_option_string("load-stats-overlay", "no");
+    set_option_string("load-osd-console", "no");
 
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(3);
     time_sstring << time_base + pos;
     std::string time_string = time_sstring.str();
-    libmpv()->set_option_string(mpv, "start", time_string.c_str());
-    libmpv()->set_option_string(mpv, "audio-display", "no");
-    libmpv()->set_option_string(mpv, "pause", "yes");
-    libmpv()->set_option_string(mpv, "hr-seek-framedrop", "no");
-    libmpv()->set_option_string(mpv, "hr-seek-demuxer-offset", "-2");
-    libmpv()->set_option_string(mpv, "audio", "no");
-    libmpv()->set_option_string(mpv, "force-window", "yes");
-    libmpv()->set_option_string(mpv, "idle", "yes");
-    libmpv()->set_option_string(mpv, "keep-open", "yes");
-    libmpv()->set_option_string(mpv, "vf-append", "bwdif:deint=1:mode=0");
-    libmpv()->set_option_string(mpv, "osd-msg1", "${?seeking==yes:Seeking...}");
+    set_option_string("start", time_string.c_str());
+    set_option_string("audio-display", "no");
+    set_option_string("pause", "yes");
+    set_option_string("hr-seek-framedrop", "no");
+    set_option_string("hr-seek-demuxer-offset", "-2");
+    set_option_string("audio", "no");
+    set_option_string("force-window", "yes");
+    set_option_string("idle", "yes");
+    set_option_string("keep-open", "yes");
+    set_option_string("vf-append", "bwdif:deint=1:mode=0");
+    set_option_string("osd-msg1", "${?seeking==yes:Seeking...}");
 
-    if (libmpv()->initialize(mpv) != 0) {
+    if (libmpv::get()->initialize(mpv_handle.get()) != 0) {
       console::error("mpv: Error loading thumbnail chooser");
       return false;
     } else {
       const char* cmd[] = {"loadfile", filename.c_str(), NULL};
-      if (libmpv()->command(mpv, cmd) < 0) {
+      if (libmpv::get()->command(mpv_handle.get(), cmd) < 0) {
         console::error("mpv: Error loading thumbnail chooser");
         return false;
       }
@@ -268,21 +271,21 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     std::string time_string = time_sstring.str();
     const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
 
-    libmpv()->command(mpv, cmd);
+    libmpv::get()->command(mpv_handle.get(), cmd);
   }
 
   void on_destroy() {
-    if (mpv != NULL) {
-      mpv_handle* temp = mpv;
-      mpv = NULL;
-      libmpv()->terminate_destroy(temp);
-    }
   }
 
   HWND get_wnd() { return m_hWnd; }
 
  private:
   double time_base;
+
+  int set_option_string(const char* name, const char* data) {
+    if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
+    return libmpv::get()->set_option_string(mpv_handle.get(), name, data);
+  }
 };
 
 static void RunThumbnailChooserWindow(metadb_handle_ptr metadb) {

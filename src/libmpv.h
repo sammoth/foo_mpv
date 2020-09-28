@@ -17,7 +17,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-namespace mpv {
+namespace libmpv {
 typedef unsigned long(__cdecl* mpv_client_api_version)();
 typedef struct mpv_handle mpv_handle;
 typedef enum mpv_error {
@@ -244,13 +244,8 @@ typedef int(__cdecl* mpv_stream_cb_add_ro)(mpv_handle* ctx,
                                            void* user_data,
                                            mpv_stream_cb_open_ro_fn open_fn);
 
-class libmpv_ {
-  bool is_loaded;
-
- public:
-  libmpv_();
-  bool load_dll();
-
+struct function_table {
+  bool ready = false;
   mpv_error_string error_string;
   mpv_free free;
   mpv_client_name client_name;
@@ -295,5 +290,5 @@ class libmpv_ {
   mpv_stream_cb_add_ro stream_cb_add_ro;
 };
 
-libmpv_* libmpv();
-}  // namespace mpv
+function_table* get();
+}  // namespace libmpv

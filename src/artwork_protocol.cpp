@@ -142,7 +142,7 @@ static initquit_factory_t<artwork_register> g_np_register;
 static int64_t artworkreader_size(void* cookie) {
   std::lock_guard<std::mutex> lock(mutex);
   if ((long)cookie != request || art_data.is_empty()) {
-    return MPV_ERROR_GENERIC;
+    return libmpv::MPV_ERROR_GENERIC;
   }
   return art_data->get_size();
 }
@@ -162,10 +162,10 @@ static int64_t artworkreader_read(void* cookie, char* buf, uint64_t nbytes) {
 static int64_t artworkreader_seek(void* cookie, int64_t offset) {
   std::lock_guard<std::mutex> lock(mutex);
   if ((long)cookie != request || art_data.is_empty()) {
-    return MPV_ERROR_GENERIC;
+    return libmpv::MPV_ERROR_GENERIC;
   }
   if (offset < 0 || offset > art_data->get_size()) {
-    return MPV_ERROR_UNSUPPORTED;
+    return libmpv::MPV_ERROR_UNSUPPORTED;
   }
   cursor = (t_size)offset;
   return cursor;
@@ -174,11 +174,11 @@ static int64_t artworkreader_seek(void* cookie, int64_t offset) {
 static void artworkreader_close(void* cookie) {}
 
 int artwork_protocol_open(void* user_data, char* uri,
-                          mpv_stream_cb_info* info) {
+                          libmpv::mpv_stream_cb_info* info) {
   {
     std::lock_guard<std::mutex> lock(mutex);
     if (art_data.is_empty()) {
-      return MPV_ERROR_NOTHING_TO_PLAY;
+      return libmpv::MPV_ERROR_NOTHING_TO_PLAY;
     }
     info->cookie = (void*)request;
   }

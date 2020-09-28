@@ -23,7 +23,7 @@ class mpv_player : play_callback_impl_base,
                    ui_selection_callback_impl_base,
                    public CWindowImpl<mpv_player> {
   // player
-  std::unique_ptr<mpv_handle, decltype(libmpv()->terminate_destroy)> mpv_handle;
+  std::unique_ptr<libmpv::mpv_handle, decltype(libmpv::get()->terminate_destroy)> mpv_handle;
   bool enabled;
 
   // start mpv within the window
@@ -95,9 +95,9 @@ class mpv_player : play_callback_impl_base,
   int command_string(const char* args);
   int set_option_string(const char* name, const char* data);
   int set_property_string(const char* name, const char* data);
-  int get_property(const char* name, mpv_format format, void* data);
+  int get_property(const char* name, libmpv::mpv_format format, void* data);
   int command(const char** args);
-  int set_option(const char* name, mpv_format format, void* data);
+  int set_option(const char* name, libmpv::mpv_format format, void* data);
 
   // play callbacks
   void on_playback_starting(play_control::t_track_command p_command,
