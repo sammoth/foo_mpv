@@ -383,6 +383,7 @@ bool mpv_player::mpv_init() {
     libmpv()->set_option_string(mpv, "cache-pause", "no");
 
     libmpv()->stream_cb_add_ro(mpv, "artwork", this, artwork_protocol_open);
+    libmpv()->set_option_string(mpv, "image-display-duration", "inf");
 
     libmpv()->observe_property(mpv, seeking_userdata, "seeking",
                                MPV_FORMAT_FLAG);
