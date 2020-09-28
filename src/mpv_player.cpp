@@ -264,7 +264,8 @@ void mpv_player::update() {
 }
 
 void mpv_player::update_window() {
-  ResizeClient(container->cx, container->cy); // wine is less buggy if we resize first
+  ResizeClient(container->cx,
+               container->cy);  // wine is less buggy if we resize first
 
   if (GetParent() != container->container_wnd()) {
     SetParent(container->container_wnd());
@@ -631,7 +632,7 @@ void mpv_player::pause(bool state) {
   if (mpv == NULL || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
-    console::info(state ? "mpv: Pause" : "mpv: Unpause");
+    console::info(state ? "mpv: Pause -> yes" : "mpv: Pause -> no");
   }
 
   if (libmpv()->set_property_string(mpv, "pause", state ? "yes" : "no") < 0 &&
@@ -695,9 +696,7 @@ void mpv_player::seek(double time) {
 
       if (mpv_state == state::Active) {
         if (libmpv()->command(mpv, cmd) < 0) {
-          if (cfg_logging) {
-            console::info("mpv: Cannot seek yet");
-          }
+          Sleep(10);
         } else {
           console::info("mpv: Seeking started");
           lock.unlock();
