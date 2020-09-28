@@ -264,11 +264,12 @@ void mpv_player::update() {
 }
 
 void mpv_player::update_window() {
+  ResizeClient(container->cx, container->cy); // wine is less buggy if we resize first
+
   if (GetParent() != container->container_wnd()) {
     SetParent(container->container_wnd());
     invalidate_all_containers();
   }
-  ResizeClient(container->cx, container->cy);
 
   bool vis = container->is_visible();
   if (cfg_video_enabled && (container->is_fullscreen() ||
