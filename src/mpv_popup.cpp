@@ -116,6 +116,8 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
     mpv_container::on_create();
 
+    unpin();
+
     return 0;
   }
 

@@ -277,7 +277,7 @@ void mpv_player::update() {
   if (new_container == NULL) {
     mpv_container* old_container = container;
     container = new_container;
-    if (container != NULL) {
+    if (old_container != NULL) {
       old_container->on_lose_player();
     }
     DestroyWindow();
