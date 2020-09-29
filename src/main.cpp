@@ -64,5 +64,5 @@ const char* about = "Copyright (c) sammoth, 2020\n"
 "zlib compression library:\n"
 "\t(C) 1995-2017 Jean-loup Gailly and Mark Adler";
 
-DECLARE_COMPONENT_VERSION("mpv Video", "0.4.0 beta", about);
+DECLARE_COMPONENT_VERSION("mpv Video", "0.4.1 beta", about);
 VALIDATE_COMPONENT_FILENAME("foo_mpv.dll");

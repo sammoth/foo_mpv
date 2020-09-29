@@ -275,8 +275,10 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
 void mpv_player::update() {
   mpv_container* new_container = mpv_container::get_main_container();
   if (new_container == NULL) {
+    mpv_container* old_container = container;
+    container = new_container;
     if (container != NULL) {
-      container->on_lose_player();
+      old_container->on_lose_player();
     }
     DestroyWindow();
     return;
