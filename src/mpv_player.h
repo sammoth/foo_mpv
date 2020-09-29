@@ -86,6 +86,8 @@ class mpv_player : play_callback_impl_base,
   std::atomic<double> last_mpv_seek;
   std::atomic_bool sync_on_unpause;
   double last_hard_sync;
+  std::mutex sync_lock;
+  int last_sync_time;
 
   // utils
   bool is_idle();

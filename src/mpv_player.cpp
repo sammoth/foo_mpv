@@ -49,6 +49,7 @@ mpv_player::mpv_player()
       sync_on_unpause(false),
       last_mpv_seek(0),
       last_hard_sync(-99),
+      last_sync_time(0),
       running_ffs(false),
       mpv_timepos(0),
       mpv_state(state::Unloaded),
@@ -523,6 +524,11 @@ void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
 
   timing_info::refresh(false);
 
+  {
+    std::lock_guard<std::mutex> lock(sync_lock);
+    last_sync_time = 0.0;
+  }
+
   task t;
   t.type = task_type::Play;
   t.play_file = p_track;
@@ -542,6 +548,11 @@ void mpv_player::on_playback_seek(double p_time) {
   update_title();
 
   timing_info::refresh(true);
+
+  {
+    std::lock_guard<std::mutex> lock(sync_lock);
+    last_sync_time = floor(p_time);
+  }
 
   task t;
   t.type = task_type::Seek;
@@ -754,6 +765,9 @@ void mpv_player::seek(double time) {
 
 void mpv_player::sync(double debug_time) {
   if (!mpv_handle || !enabled || mpv_state != state::Active) return;
+
+  std::lock_guard<std::mutex> lock(sync_lock);
+  last_sync_time = debug_time;
 
   if (playback_control::get()->is_paused()) {
     return;
@@ -978,7 +992,6 @@ void mpv_player::initial_sync() {
         if (cfg_logging) {
           console::info("mpv: Abort initial sync - command");
         }
-
         return;
       }
     }
@@ -999,16 +1012,64 @@ void mpv_player::initial_sync() {
     }
   }
 
-  if (set_property_string("pause", "no") < 0 && cfg_logging) {
-    console::error("mpv: Error pausing");
-  }
-
   if (cfg_logging) {
     msg.str("");
     msg << "mpv: Resuming, audio time "
         << time_base + timing_info::get().last_fb_seek + vis_time -
                timing_info::get().last_seek_vistime;
     console::info(msg.str().c_str());
+  }
+  if (set_property_string("pause", "no") < 0 && cfg_logging) {
+    console::error("mpv: Error pausing");
+  }
+
+  double fb_time = timing_info::get().last_fb_seek + vis_time -
+                   timing_info::get().last_seek_vistime;
+  // if mpv is behind on start, catch up
+  if (time_base + fb_time > mpv_timepos + cfg_hard_sync_threshold) {
+    // hard sync
+    task t;
+    t.type = task_type::Seek;
+    t.time = time_base + fb_time;
+    queue_task(t);
+    last_hard_sync = fb_time;
+    if (cfg_logging) {
+      console::info("mpv: Behind on initial sync - seeking");
+    }
+    return;
+  } else if (time_base + fb_time > mpv_timepos) {
+    // maybe soft sync
+    std::lock_guard<std::mutex> lock(sync_lock);
+
+    double desync = time_base + fb_time - mpv_timepos;
+    double time_before_next_sync = last_sync_time + 1.0 - fb_time;
+    // prefer to wait if next sync is soon instead of setting speed extremely
+    // high
+    if (time_before_next_sync < 0.05) return;
+    double new_speed = 1.0;
+    if (abs(desync) > 0.001 * cfg_max_drift) {
+      // aim to correct mpv internal timer by next sync time
+      new_speed = min(max(1.0 + desync / (time_before_next_sync), 0.01), 100.0);
+    }
+
+    if (cfg_logging) {
+      std::stringstream msg;
+      msg.setf(std::ios::fixed);
+      msg.setf(std::ios::showpos);
+      msg.precision(10);
+      msg << "mpv: At initial sync, desync " << desync << "; catching up in "
+          << time_before_next_sync << " before sync at " << last_sync_time + 1.0
+          << "; setting mpv speed to " << new_speed;
+      console::info(msg.str().c_str());
+    }
+
+    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &new_speed) < 0 &&
+        cfg_logging) {
+      console::error("mpv: Error setting speed");
+    }
+    // unset before we release the lock so the next sync isn't missed
+    running_ffs = false;
+    return;
   }
 }
 
