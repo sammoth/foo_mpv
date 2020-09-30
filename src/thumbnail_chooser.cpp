@@ -167,7 +167,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   void OnAccept(UINT, int, CWindow) {
     double mpv_time = -1.0;
     if (libmpv::get()->get_property(mpv_handle.get(), "time-pos",
-                             libmpv::MPV_FORMAT_DOUBLE, &mpv_time) > -1) {
+                                    libmpv::MPV_FORMAT_DOUBLE,
+                                    &mpv_time) > -1) {
       thumb_time_store_set(metadb, mpv_time - time_base);
     }
 
@@ -180,7 +181,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     uSetWindowText(m_hWnd, title);
   }
 
-  std::unique_ptr<libmpv::mpv_handle, decltype(libmpv::get()->terminate_destroy)>
+  std::unique_ptr<libmpv::mpv_handle,
+                  decltype(libmpv::get()->terminate_destroy)>
       mpv_handle;
 
   BOOL OnInitDialog(CWindow wnd, LPARAM lp) {
@@ -215,7 +217,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
       }
       time_base = time_base_l;
     } else {
-      console::error("mpv: Error loading thumbnail chooser");
+      FB2K_console_formatter() << "mpv: Error loading thumbnail chooser";
       return false;
     }
 
@@ -224,7 +226,8 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     mpv_handle = {libmpv::get()->create(), libmpv::get()->terminate_destroy};
 
     int64_t l_wid = (intptr_t)(uGetDlgItem(IDC_STATIC_pic).m_hWnd);
-    libmpv::get()->set_option(mpv_handle.get(), "wid", libmpv::MPV_FORMAT_INT64, &l_wid);
+    libmpv::get()->set_option(mpv_handle.get(), "wid", libmpv::MPV_FORMAT_INT64,
+                              &l_wid);
 
     set_option_string("load-scripts", "no");
     set_option_string("ytdl", "no");
@@ -249,12 +252,12 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     set_option_string("osd-msg1", "${?seeking==yes:Seeking...}");
 
     if (libmpv::get()->initialize(mpv_handle.get()) != 0) {
-      console::error("mpv: Error loading thumbnail chooser");
+      FB2K_console_formatter() << "mpv: Error loading thumbnail chooser";
       return false;
     } else {
       const char* cmd[] = {"loadfile", filename.c_str(), NULL};
       if (libmpv::get()->command(mpv_handle.get(), cmd) < 0) {
-        console::error("mpv: Error loading thumbnail chooser");
+        FB2K_console_formatter() << "mpv: Error loading thumbnail chooser";
         return false;
       }
     }
@@ -274,8 +277,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     libmpv::get()->command(mpv_handle.get(), cmd);
   }
 
-  void on_destroy() {
-  }
+  void on_destroy() {}
 
   HWND get_wnd() { return m_hWnd; }
 

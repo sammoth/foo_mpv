@@ -92,9 +92,9 @@ class db_loader : public initquit {
         query_trim.reset(new SQLite::Statement(*db_ptr, query_dbtrim_str));
         query_delete.reset(new SQLite::Statement(*db_ptr, query_delete_str));
       } catch (SQLite::Exception e) {
-        console::error(
-            "mpv: Error reading thumbnail table, attempting to recreate "
-            "database");
+        FB2K_console_formatter()
+            << "mpv: Error reading thumbnail table, attempting to recreate "
+               "database";
         db_ptr->exec("DROP TABLE thumbs");
         db_ptr->exec(query_create_str);
         query_get.reset(new SQLite::Statement(*db_ptr, query_get_str));
@@ -109,9 +109,8 @@ class db_loader : public initquit {
       db_size = query_size->getColumn(0).getInt64();
     } catch (SQLite::Exception e) {
       db_ptr.reset();
-      std::stringstream msg;
-      msg << "mpv: Error accessing thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Error accessing thumbnail cache: " << e.what();
     }
   }
 };
@@ -128,17 +127,15 @@ void clear_thumbnail_cache() {
       query_size->executeStep();
       db_size = query_size->getColumn(0).getInt64();
 
-      std::stringstream msg;
-      msg << "mpv: Deleted " << deletes << " thumbnails from database";
-      console::info(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Deleted " << deletes << " thumbnails from database";
     } catch (SQLite::Exception e) {
-      std::stringstream msg;
-      msg << "mpv: Error clearing thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Error clearing thumbnail cache: " << e.what();
     }
 
   } else {
-    console::error("mpv: Thumbnail cache not loaded");
+    FB2K_console_formatter() << "mpv: Thumbnail cache not loaded";
   }
 }
 
@@ -168,16 +165,14 @@ void clean_thumbnail_cache() {
       query_size->executeStep();
       db_size = query_size->getColumn(0).getInt64();
 
-      std::stringstream msg;
-      msg << "mpv: Deleted " << deletes << " dead thumbnails from database";
-      console::info(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Deleted " << deletes << " dead thumbnails from database";
     } catch (SQLite::Exception e) {
-      std::stringstream msg;
-      msg << "mpv: Error clearing thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Error clearing thumbnail cache: " << e.what();
     }
   } else {
-    console::error("mpv: Thumbnail cache not loaded");
+    FB2K_console_formatter() << "mpv: Thumbnail cache not loaded";
   }
 }
 
@@ -190,14 +185,13 @@ void compact_thumbnail_cache() {
       query_size->reset();
       query_trim->reset();
       db_ptr->exec("VACUUM");
-      console::info("mpv: Thumbnail database compacted");
+      FB2K_console_formatter() << "mpv: Thumbnail database compacted";
     } catch (SQLite::Exception e) {
-      std::stringstream msg;
-      msg << "mpv: Error clearing thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Error clearing thumbnail cache: " << e.what();
     }
   } else {
-    console::error("mpv: Thumbnail cache not loaded");
+    FB2K_console_formatter() << "mpv: Thumbnail cache not loaded";
   }
 }
 
@@ -221,7 +215,7 @@ void trim_db(int64_t newbytes) {
     case 4:
       return;
     default:
-      console::error("mpv: Unknown cache size setting");
+      FB2K_console_formatter() << "mpv: Unknown cache size setting";
       return;
   }
 
@@ -234,14 +228,13 @@ void trim_db(int64_t newbytes) {
         query_size->reset();
         query_size->executeStep();
         db_size = query_size->getColumn(0).getInt64();
-        console::info("mpv: Shrunk thumbnail cache");
+        FB2K_console_formatter() << "mpv: Shrunk thumbnail cache";
       } catch (SQLite::Exception e) {
-        std::stringstream msg;
-        msg << "mpv: Error shrinking thumbnail cache: " << e.what();
-        console::error(msg.str().c_str());
+        FB2K_console_formatter()
+            << "mpv: Error shrinking thumbnail cache: " << e.what();
       }
     } else {
-      console::error("mpv: Thumbnail cache not loaded");
+      FB2K_console_formatter() << "mpv: Thumbnail cache not loaded";
     }
   }
 }
@@ -255,12 +248,11 @@ void remove_from_cache(metadb_handle_ptr metadb) {
       query_delete->bind(2, metadb->get_subsong_index());
       query_delete->exec();
     } catch (SQLite::Exception e) {
-      std::stringstream msg;
-      msg << "mpv: Error deleting entry from thumbnail cache: " << e.what();
-      console::error(msg.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Error deleting entry from thumbnail cache: " << e.what();
     }
   } else {
-    console::error("mpv: Thumbnail cache not loaded");
+    FB2K_console_formatter() << "mpv: Thumbnail cache not loaded";
   }
 }
 
@@ -294,9 +286,8 @@ static void libavtry(int error, const char* cmd) {
   if (error < 0) {
     char* error_str = new char[500];
     av_strerror(error, error_str, 500);
-    std::stringstream msg;
-    msg << "mpv: libav error for " << cmd << ": " << error_str;
-    console::error(msg.str().c_str());
+    FB2K_console_formatter()
+        << "mpv: libav error for " << cmd << ": " << error_str;
     delete[] error_str;
 
     throw exception_album_art_unsupported_entry();
@@ -391,7 +382,8 @@ void thumbnailer::load_stream() {
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_PNG);
     output_codeccontext = avcodec_alloc_context3(output_encoder);
   } else {
-    console::error("mpv: Could not determine target thumbnail format");
+    FB2K_console_formatter()
+        << "mpv: Could not determine target thumbnail format";
     throw exception_album_art_not_found();
   }
 }
@@ -768,27 +760,24 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
           SQLite::Column blobcol = query_get->getColumn(0);
 
           if (blobcol.getBlob() == NULL) {
-            std::stringstream msg;
-            msg << "mpv: Image was null when fetching cached thumbnail: "
+            FB2K_console_formatter()
+                << "mpv: Image was null when fetching cached thumbnail: "
                 << metadb->get_path() << "[" << metadb->get_subsong_index()
                 << "]";
-            console::error(msg.str().c_str());
             return album_art_data_ptr();
           }
 
           if (cfg_logging) {
-            std::stringstream msg;
-            msg << "mpv: Fetch from thumbnail cache: " << metadb->get_path()
+            FB2K_console_formatter()
+                << "mpv: Fetch from thumbnail cache: " << metadb->get_path()
                 << "[" << metadb->get_subsong_index() << "]";
-            console::info(msg.str().c_str());
           }
           return album_art_data_impl::g_create(blobcol.getBlob(),
                                                blobcol.getBytes());
         }
       } catch (std::exception e) {
-        std::stringstream msg;
-        msg << "mpv: Error accessing thumbnail cache: " << e.what();
-        console::error(msg.str().c_str());
+        FB2K_console_formatter()
+            << "mpv: Error accessing thumbnail cache: " << e.what();
       }
     }
     return album_art_data_ptr();
@@ -807,17 +796,15 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
         }
 
         if (cfg_logging) {
-          std::stringstream msg;
-          msg << "mpv: Write to thumbnail cache: " << metadb->get_path() << "["
+          FB2K_console_formatter()
+              << "mpv: Write to thumbnail cache: " << metadb->get_path() << "["
               << metadb->get_subsong_index() << "]";
-          console::info(msg.str().c_str());
         }
 
         trim_db(data->get_size());
       } catch (SQLite::Exception e) {
-        std::stringstream msg;
-        msg << "mpv: Error writing to thumbnail cache: " << e.what();
-        console::error(msg.str().c_str());
+        FB2K_console_formatter()
+            << "mpv: Error writing to thumbnail cache: " << e.what();
       }
     }
   }

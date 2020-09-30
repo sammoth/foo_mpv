@@ -21,9 +21,8 @@ class libmpv_loader : public initquit {
                                 LOAD_WITH_ALTERED_SEARCH_PATH);
 
     if (dll_module == NULL) {
-      std::stringstream error;
-      error << "mpv: Could not load mpv-1.dll: error code " << GetLastError();
-      console::error(error.str().c_str());
+      FB2K_console_formatter()
+          << "mpv: Could not load mpv-1.dll: error code " << GetLastError();
       return;
     }
 
@@ -32,7 +31,8 @@ class libmpv_loader : public initquit {
     functions.free = (mpv_free)GetProcAddress(dll_module, "mpv_free");
     functions.client_name =
         (mpv_client_name)GetProcAddress(dll_module, "mpv_client_name");
-    functions.client_id = (mpv_client_id)GetProcAddress(dll_module, "mpv_client_id");
+    functions.client_id =
+        (mpv_client_id)GetProcAddress(dll_module, "mpv_client_id");
     functions.create = (mpv_create)GetProcAddress(dll_module, "mpv_create");
     functions.initialize =
         (mpv_initialize)GetProcAddress(dll_module, "mpv_initialize");
@@ -76,8 +76,9 @@ class libmpv_loader : public initquit {
         (mpv_get_property)GetProcAddress(dll_module, "mpv_get_property");
     functions.get_property_string = (mpv_get_property_string)GetProcAddress(
         dll_module, "mpv_get_property_string");
-    functions.get_property_osd_string = (mpv_get_property_osd_string)GetProcAddress(
-        dll_module, "mpv_get_property_osd_string");
+    functions.get_property_osd_string =
+        (mpv_get_property_osd_string)GetProcAddress(
+            dll_module, "mpv_get_property_osd_string");
     functions.get_property_async = (mpv_get_property_async)GetProcAddress(
         dll_module, "mpv_get_property_async");
     functions.observe_property = (mpv_observe_property)GetProcAddress(
@@ -99,7 +100,8 @@ class libmpv_loader : public initquit {
         dll_module, "mpv_set_wakeup_callback");
     functions.wait_async_requests = (mpv_wait_async_requests)GetProcAddress(
         dll_module, "mpv_wait_async_requests");
-    functions.hook_add = (mpv_hook_add)GetProcAddress(dll_module, "mpv_hook_add");
+    functions.hook_add =
+        (mpv_hook_add)GetProcAddress(dll_module, "mpv_hook_add");
     functions.hook_continue =
         (mpv_hook_continue)GetProcAddress(dll_module, "mpv_hook_continue");
     functions.stream_cb_add_ro = (mpv_stream_cb_add_ro)GetProcAddress(
