@@ -5,7 +5,7 @@ mpv video player UI element for foobar2000.
 
 ### Features
 - For playback of local video files
-- A/V sync should be approximately as fast and accurate as a standalone video player
+- A/V sync should be approximately as fast and accurate as a standalone video player most of the time
 - Optionally acts as an album art display when no video is available
 - On-screen control based on mpv's, can be enabled/disabled per-UI element
 - Thumbnail generator for providing album art for videos to foobar, with an on-disk cache
