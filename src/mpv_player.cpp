@@ -374,6 +374,7 @@ bool mpv_player::mpv_init() {
     set_option_string("ytdl", "no");
     set_option_string("load-stats-overlay", "no");
     set_option_string("load-osd-console", "no");
+    set_option_string("alpha", "blend");
 
     set_background();
 
@@ -620,6 +621,10 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       FB2K_console_formatter() << "mpv: Error setting speed";
     }
 
+    const char* cmd_profile[] = {"apply-profile", "video", NULL};
+    if (command(cmd_profile) < 0 && cfg_logging) {
+      FB2K_console_formatter() << "mpv: Error loading video profile";
+    }
     set_state(state::Loading);
     const char* cmd[] = {"loadfile", filename.c_str(), NULL};
     if (command(cmd) < 0 && cfg_logging) {
@@ -827,6 +832,10 @@ void mpv_player::load_artwork() {
   if (mpv_state == state::Idle || mpv_state == state::Artwork ||
       mpv_state == state::Preload) {
     if (artwork_loaded()) {
+      const char* cmd_profile[] = {"apply-profile", "albumart", NULL};
+      if (command(cmd_profile) < 0 && cfg_logging) {
+        FB2K_console_formatter() << "mpv: Error loading albumart profile";
+      }
       const char* cmd[] = {"loadfile", "artwork://", NULL};
       if (command(cmd) < 0) {
         FB2K_console_formatter() << "mpv: Error loading artwork";
