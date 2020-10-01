@@ -18,7 +18,7 @@ mpv video player UI element for foobar2000.
 - Developed to work in Wine
 - Can read mpv.conf from `mpv/mpv.conf` in your foobar2000 profile folder
 
-NB: go easy on the options in mpv.conf, you probably don't want to override any of the options set by the component or weird things might happen. Good options to set might be scaling, video filters, deinterlacing, etc. You can specify different profiles for use when displaying video and album art using `[video]` and `[albumart]` For example:
+NB: go easy on the options in mpv.conf, you probably don't want to override any of the options set by the component or weird things might happen. Good options to set might be scaling, video filters, deinterlacing, etc. You can specify different profiles for use when displaying video and album art using `[video]` and `[albumart]`. For example, a good place to start might be:
 
 ```
 profile=gpu-hq
