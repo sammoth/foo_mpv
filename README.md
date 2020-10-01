@@ -7,6 +7,7 @@ mpv video player UI element for foobar2000.
 - Local files only
 - Aims to quickly, accurately and continuously sync video to the audio
 - Optionally acts as an album art display when no video is available
+- On-screen control based on mpv's, can be enabled per-UI element
 - Thumbnail generator for providing album art for videos, with a cache
 - Allows mixing thumbnails and box art in different views. So you can achieve something like this:
 <img src="screenshot2.png" width="380">
