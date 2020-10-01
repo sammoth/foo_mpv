@@ -12,7 +12,7 @@ mpv video player UI element for foobar2000.
 - Thumbnails are used as a fallback to other art sources, which allows mixing thumbnails and box art in different views, eg:
 <img src="screenshot2.png" width="380">
 
-- Option to visually choose a thumbnail for a video
+- Thumbnail picker for visually choosing a thumbnail for a video
 - Algorithm for automatically choosing 'good' thumbnails
 - DefaultUI element, Columns UI panel, standalone popup and fullscreen mode
 - Single video instance moves to the largest currently visible UI element unless manually pinned to one area via the context menu, making it simple to switch between a small instance and larger instance in your layout
