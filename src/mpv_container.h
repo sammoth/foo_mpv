@@ -38,6 +38,7 @@ class mpv_container {
   virtual void add_menu_items(CMenu* menu,
                               CMenuDescriptionHybrid* menudesc) = 0;
   virtual void handle_menu_cmd(int cmd) = 0;
+  virtual bool is_osc_enabled() = 0;
 
   static mpv_container* get_main_container();
   static void invalidate_all_containers();

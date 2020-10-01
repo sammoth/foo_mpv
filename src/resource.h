@@ -30,6 +30,8 @@
 #define IDC_SLIDER1                     1052
 #define IDC_STATIC_pic                  1054
 #define IDC_CHECK_ARTWORK               1057
+#define IDC_CHECK1                      1058
+#define IDC_CHECK_OSC                   1058
 
 // Next default values for new objects
 // 
@@ -37,7 +39,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        106
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1058
+#define _APS_NEXT_CONTROL_VALUE         1060
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

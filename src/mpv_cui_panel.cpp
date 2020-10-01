@@ -1,15 +1,16 @@
 #include "stdafx.h"
 // PCH ^
 
-#include <commctrl.h>
 #include <../helpers/BumpableElem.h>
+#include <commctrl.h>
 #include <windows.h>
 #include <windowsx.h>
 
 #include "../columns_ui-sdk/ui_extension.h"
 #include "../foobar2000/SDK/foobar2000.h"
-#include "resource.h"
 #include "mpv_container.h"
+#include "mpv_player.h"
+#include "resource.h"
 
 void RunMpvPopupWindow();
 
@@ -19,6 +20,8 @@ static const GUID g_guid_mpv_cui_panel = {
     0x76c1,
     0x48e2,
     {0xa1, 0x39, 0x37, 0x6c, 0x39, 0xff, 0xe3, 0x3c}};
+
+extern cfg_bool cfg_osc;
 
 struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   DECLARE_WND_CLASS_EX(TEXT("{9D6179F4-0A94-4F76-B7EB-C4A853853DCB}"),
@@ -33,9 +36,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
-  static DWORD GetWndStyle(DWORD style) {
-    return WS_CHILD | WS_VISIBLE;
-  }
+  static DWORD GetWndStyle(DWORD style) { return WS_CHILD | WS_VISIBLE; }
 
   CMpvCuiWindow() {}
 
@@ -55,7 +56,9 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 
   void on_destroy() { mpv_container::on_destroy(); }
 
-  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) {
+    mpv_container::on_resize(size.cx, size.cy);
+  }
 
   void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
@@ -69,16 +72,30 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 
   bool is_popup() override { return false; }
 
+  bool is_osc_enabled() override { return osc_enabled; }
+
+  void set_osc_enabled(bool p_enabled) {
+    osc_enabled = p_enabled;
+    mpv_player::on_containers_change();
+  }
+
   HWND get_wnd() { return m_hWnd; }
 
   enum {
     ID_PIN = 1003,
     ID_POPOUT = 1004,
+    ID_OSC = 1005,
     ID_SEP = 9999,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+    if (cfg_osc) {
+      menu->AppendMenu(is_osc_enabled() ? MF_CHECKED : MF_UNCHECKED, ID_OSC,
+                       _T("Controls"));
+      menudesc->Set(ID_OSC,
+                    "Enable or disable the video controls for this UI element");
+    }
     menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
                      _T("Pin here"));
     menudesc->Set(ID_PIN, "Pin the video to this container");
@@ -105,10 +122,17 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
         unpin();
         RunMpvPopupWindow();
         break;
+      case ID_OSC:
+        osc_enabled = !osc_enabled;
+        mpv_player::on_containers_change();
+        break;
       default:
         break;
     }
   }
+
+ private:
+  bool osc_enabled = true;
 };
 
 class MpvCuiWindow : public uie::container_ui_extension {
@@ -126,15 +150,22 @@ class MpvCuiWindow : public uie::container_ui_extension {
     if (cfg_pinned && wnd_child != NULL) {
       wnd_child->pin();
     }
+    p_reader->read(&cfg_osc_enabled, sizeof(bool), p_abort);
+    if (wnd_child != NULL) {
+      wnd_child->set_osc_enabled(cfg_osc_enabled);
+    }
   }
 
   void get_config(stream_writer* p_writer, abort_callback& p_abort) const {
     bool pinned = wnd_child == NULL ? false : wnd_child->is_pinned();
+    bool osc_enabled = wnd_child == NULL ? false : wnd_child->is_osc_enabled();
     p_writer->write(&pinned, sizeof(bool), p_abort);
+    p_writer->write(&osc_enabled, sizeof(bool), p_abort);
   }
 
  private:
   bool cfg_pinned = false;
+  bool cfg_osc_enabled = true;
   class_data& get_class_data() const override {
     __implement_get_class_data(_T("{EF25F318-A1F7-46CB-A86E-70F568ADDCE6}"),
                                false);
@@ -152,6 +183,7 @@ LRESULT MpvCuiWindow::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
       if (cfg_pinned) {
         wnd_child->pin();
       }
+      wnd_child->set_osc_enabled(cfg_osc_enabled);
       break;
     case WM_SHOWWINDOW:
       wnd_child->ShowWindow(wp);

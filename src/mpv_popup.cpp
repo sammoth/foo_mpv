@@ -84,6 +84,8 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void on_lose_player() override { DestroyWindow(); }
 
+  bool is_osc_enabled() override { return true; }
+
   LRESULT on_create(LPCREATESTRUCT st) {
     if (cfg_mpv_popup_separate) {
       SetWindowLongPtr(GWLP_HWNDPARENT, NULL);

@@ -36,7 +36,7 @@ static const int idle_active_userdata = 12792384;
 static metadb_handle_ptr current_selection;
 
 extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
-    cfg_artwork;
+    cfg_artwork, cfg_osc;
 extern cfg_uint cfg_bg_color, cfg_artwork_type;
 extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile;
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
@@ -44,7 +44,9 @@ extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
 
 mpv_player::mpv_player()
     : enabled(false),
+      mouse_over(false),
       mpv_handle(nullptr, nullptr),
+      mpv_window_hwnd(NULL),
       task_queue(),
       sync_on_unpause(false),
       last_mpv_seek(0),
@@ -273,6 +275,79 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
   return 0;
 }
 
+void mpv_player::on_mouse_leave() {
+  mouse_over = false;
+
+  if (!mpv_handle) return;
+  struct libmpv::mpv_node cmd[3] = {};
+
+  const char* cmdname = "mouse";
+  cmd[0].format = libmpv::MPV_FORMAT_STRING;
+  cmd[1].format = libmpv::MPV_FORMAT_INT64;
+  cmd[2].format = libmpv::MPV_FORMAT_INT64;
+  cmd[0].u.string = (char*)cmdname;
+  cmd[1].u.int64 = 1;
+  cmd[2].u.int64 = 1;
+  libmpv::mpv_node_list list;
+  list.num = 3;
+  list.values = cmd;
+
+  libmpv::mpv_node args;
+  args.format = libmpv::MPV_FORMAT_NODE_ARRAY;
+  args.u.list = &list;
+  libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
+}
+
+void mpv_player::on_mouse_move(UINT, CPoint point) {
+  if (!mpv_handle) return;
+
+  if (!mouse_over) {
+    mouse_over = true;
+    TRACKMOUSEEVENT tme = {sizeof(tme)};
+    tme.dwFlags = TME_LEAVE;
+    tme.hwndTrack = m_hWnd;
+    TrackMouseEvent(&tme);
+  }
+
+  struct libmpv::mpv_node cmd[3] = {};
+
+  const char* cmdname = "mouse";
+  cmd[0].format = libmpv::MPV_FORMAT_STRING;
+  cmd[1].format = libmpv::MPV_FORMAT_INT64;
+  cmd[2].format = libmpv::MPV_FORMAT_INT64;
+  cmd[0].u.string = (char*)cmdname;
+  cmd[1].u.int64 = point.x;
+  cmd[2].u.int64 = point.y;
+  libmpv::mpv_node_list list;
+  list.num = 3;
+  list.values = cmd;
+
+  libmpv::mpv_node args;
+  args.format = libmpv::MPV_FORMAT_NODE_ARRAY;
+  args.u.list = &list;
+  libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
+}
+
+void mpv_player::on_mouse_down(UINT wp, CPoint point) {
+  if (!mpv_window_hwnd) {
+    mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
+    if (!mpv_window_hwnd) return;
+  }
+
+  ::SendMessage(mpv_window_hwnd, WM_LBUTTONDOWN, wp,
+                MAKELPARAM(point.x, point.y));
+}
+
+void mpv_player::on_mouse_up(UINT wp, CPoint point) {
+  if (!mpv_window_hwnd) {
+    mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
+    if (!mpv_window_hwnd) return;
+  }
+
+  ::SendMessage(mpv_window_hwnd, WM_LBUTTONUP, wp,
+                MAKELPARAM(point.x, point.y));
+}
+
 void mpv_player::update() {
   mpv_container* new_container = mpv_container::get_main_container();
   if (new_container == NULL) {
@@ -291,6 +366,10 @@ void mpv_player::update() {
     old_container->on_lose_player();
     new_container->on_gain_player();
   }
+
+  const char* osc_cmd_1[] = {"script-message", "osc-setenabled",
+                             cfg_osc && container->is_osc_enabled() ? "1" : "0", NULL};
+  command(osc_cmd_1);
 
   ResizeClient(container->cx,
                container->cy);  // wine is less buggy if we resize first
@@ -336,6 +415,10 @@ bool mpv_player::contained_in(mpv_container* p_container) {
 void mpv_player::update_title() {
   pfc::string8 title;
   mpv::get_popup_title(title);
+
+  const char* osc_cmd_1[] = {"script-message", "osc-settitle", title.c_str(),
+                             NULL};
+  command(osc_cmd_1);
   uSetWindowText(m_hWnd, title);
 }
 
@@ -370,16 +453,16 @@ bool mpv_player::mpv_init() {
     int64_t l_wid = (intptr_t)(m_hWnd);
     set_option("wid", libmpv::MPV_FORMAT_INT64, &l_wid);
 
-    set_option_string("load-scripts", "no");
+    set_option_string("config", "yes");
+    set_option_string("config-dir", path.c_str());
+
     set_option_string("ytdl", "no");
+    set_option_string("osc", "no");
     set_option_string("load-stats-overlay", "no");
     set_option_string("load-osd-console", "no");
     set_option_string("alpha", "blend");
 
     set_background();
-
-    set_option_string("config", "yes");
-    set_option_string("config-dir", path.c_str());
 
     if (cfg_mpv_logfile) {
       path.add_filename("mpv.log");
@@ -411,6 +494,13 @@ bool mpv_player::mpv_init() {
     set_option_string("keep-open-pause", "no");
     set_option_string("cache-pause", "no");
 
+    pfc::string_formatter osc_path = core_api::get_my_full_path();
+    osc_path.truncate(osc_path.scan_filename());
+    osc_path << "mpv\\osc.lua";
+    osc_path.replace_char('\\','/',0);
+    set_option_string("scripts", osc_path.c_str());
+
+
     libmpv::get()->stream_cb_add_ro(mpv_handle.get(), "artwork", this,
                                     artwork_protocol_open);
     set_option_string("image-display-duration", "inf");
@@ -439,6 +529,33 @@ bool mpv_player::mpv_init() {
 
           {
             std::lock_guard<std::mutex> lock(mutex);
+
+            if (event->event_id == libmpv::MPV_EVENT_CLIENT_MESSAGE) {
+              libmpv::mpv_event_client_message* event_message =
+                  (libmpv::mpv_event_client_message*)event->data;
+              if (event_message->num_args > 0) {
+                if (strcmp(event_message->args[0], "foobar-seek") == 0) {
+                  if (event_message->num_args > 1) {
+                    const char* time_str = event_message->args[1];
+                    double time = std::stod(time_str);
+                    fb2k::inMainThread([time]() {
+                      playback_control::get()->playback_seek(time);
+                    });
+                  }
+                }
+                if (strcmp(event_message->args[0], "foobar-pause") == 0) {
+                  fb2k::inMainThread(
+                      []() { playback_control::get()->toggle_pause(); });
+                }
+                if (strcmp(event_message->args[0], "foobar-prev") == 0) {
+                  fb2k::inMainThread(
+                      []() { playback_control::get()->previous(); });
+                }
+                if (strcmp(event_message->args[0], "foobar-next") == 0) {
+                  fb2k::inMainThread([]() { playback_control::get()->next(); });
+                }
+              }
+            }
 
             if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
               mpv_state = state::Shutdown;
@@ -632,6 +749,16 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
           << "mpv: Error loading item '" << filename << "'";
     }
 
+    std::string start = std::to_string(time_base);
+    const char* osc_cmd_1[] = {"script-message", "osc-setstart", start.c_str(),
+                               NULL};
+    command(osc_cmd_1);
+
+    std::string fin = std::to_string(time_base + metadb->get_length());
+    const char* osc_cmd_2[] = {"script-message", "osc-setfinish", fin.c_str(),
+                               NULL};
+    command(osc_cmd_2);
+
     // wait for file to load
     std::unique_lock<std::mutex> lock_starting(mutex);
     event_cv.wait(lock_starting, [this, filename]() {
@@ -673,8 +800,8 @@ void mpv_player::pause(bool state) {
   if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
-    FB2K_console_formatter() << state ? "mpv: Pause -> yes"
-                                      : "mpv: Pause -> no";
+    FB2K_console_formatter()
+        << (state ? "mpv: Pause -> yes" : "mpv: Pause -> no");
   }
 
   if (set_property_string("pause", state ? "yes" : "no") < 0 && cfg_logging) {

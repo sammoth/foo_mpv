@@ -23,7 +23,10 @@ class mpv_player : play_callback_impl_base,
                    ui_selection_callback_impl_base,
                    public CWindowImpl<mpv_player> {
   // player
-  std::unique_ptr<libmpv::mpv_handle, decltype(libmpv::get()->terminate_destroy)> mpv_handle;
+  std::unique_ptr<libmpv::mpv_handle,
+                  decltype(libmpv::get()->terminate_destroy)>
+      mpv_handle;
+  HWND mpv_window_hwnd;
   bool enabled;
 
   // start mpv within the window
@@ -123,6 +126,11 @@ class mpv_player : play_callback_impl_base,
   void on_context_menu(CWindow wnd, CPoint point);
   void on_double_click(UINT, CPoint);
   void on_destroy();
+  void on_mouse_move(UINT, CPoint);
+  void on_mouse_leave();
+  void on_mouse_down(UINT, CPoint);
+  void on_mouse_up(UINT, CPoint);
+  bool mouse_over;
 
   void update();
   void destroy();
@@ -148,6 +156,10 @@ class mpv_player : play_callback_impl_base,
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_LBUTTONDBLCLK(on_double_click)
   MSG_WM_CONTEXTMENU(on_context_menu)
+  MSG_WM_MOUSEMOVE(on_mouse_move)
+  MSG_WM_LBUTTONDOWN(on_mouse_down)
+  MSG_WM_LBUTTONUP(on_mouse_up)
+  MSG_WM_MOUSELEAVE(on_mouse_leave)
   END_MSG_MAP()
 };
 }  // namespace mpv

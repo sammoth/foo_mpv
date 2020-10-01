@@ -128,6 +128,12 @@ static const GUID guid_cfg_artwork_type
        0x9af1,
        0x449f,
        {0xb7, 0x95, 0x80, 0xd7, 0x11, 0x31, 0x18, 0xdf}};
+static const GUID guid_cfg_osc
+    = {0xf00436f5,
+       0x5ceb,
+       0x480b,
+       {0x9d, 0xd6, 0x87, 0x89, 0x45, 0xc0, 0x98, 0x48}};
+
 
 
 
@@ -137,6 +143,7 @@ cfg_uint cfg_bg_color(guid_cfg_bg_color, 0);
 cfg_bool cfg_black_fullscreen(guid_cfg_black_fullscreen, true);
 cfg_bool cfg_stop_hidden(guid_cfg_stop_hidden, true);
 cfg_uint cfg_panel_metric(guid_cfg_panel_metric, 0);
+cfg_bool cfg_osc(guid_cfg_osc, true);
 
 static const char* cfg_popup_titleformat_default =
     "%title% - %artist%[' ('%album%')']";
@@ -233,6 +240,7 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   MSG_WM_HSCROLL(OnScroll);
   COMMAND_HANDLER_EX(IDC_BUTTON_BG, BN_CLICKED, OnBgClick);
   COMMAND_HANDLER_EX(IDC_CHECK_ARTWORK, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_OSC, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
@@ -283,6 +291,7 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   button_brush = CreateSolidBrush(bg_col);
 
   CheckDlgButton(IDC_CHECK_ARTWORK, cfg_artwork);
+  CheckDlgButton(IDC_CHECK_OSC, cfg_osc);
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
@@ -380,6 +389,7 @@ void CMpvPreferences::reset() {
   uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern_default);
 
   CheckDlgButton(IDC_CHECK_ARTWORK, true);
+  CheckDlgButton(IDC_CHECK_OSC, true);
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
@@ -404,6 +414,7 @@ void CMpvPreferences::apply() {
   cfg_bg_color = bg_col;
 
   cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
+  cfg_osc = IsDlgButtonChecked(IDC_CHECK_OSC);
   cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
   cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
 

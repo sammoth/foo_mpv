@@ -5,15 +5,17 @@
 
 #include <sstream>
 
-#include "resource.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
+#include "resource.h"
 
 void RunMpvPopupWindow();
 
 namespace mpv {
 static const GUID guid_mpv_dui_panel = {
     0x777a523a, 0x1ed, 0x48b9, {0xb9, 0x1, 0xda, 0xb1, 0xbe, 0x31, 0x7c, 0xa4}};
+
+extern cfg_bool cfg_osc;
 
 struct CMpvDuiWindow : public ui_element_instance,
                        public mpv_container,
@@ -55,7 +57,9 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
-  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) {
+    mpv_container::on_resize(size.cx, size.cy);
+  }
 
   void on_destroy() { mpv_container::on_destroy(); }
 
@@ -63,10 +67,21 @@ struct CMpvDuiWindow : public ui_element_instance,
 
   bool is_visible() override { return m_callback->is_elem_visible_(this); }
   bool is_popup() override { return false; }
+  bool is_osc_enabled() override { return osc_enabled; }
   void invalidate() override { Invalidate(); }
 
   HWND get_wnd() { return m_hWnd; }
 
+  static GUID g_get_guid() { return guid_mpv_dui_panel; }
+  static GUID g_get_subclass() { return ui_element_subclass_utility; }
+  static void g_get_name(pfc::string_base& out) { out = "mpv"; }
+
+  static ui_element_config::ptr g_get_default_configuration() {
+    ui_element_config_builder out;
+    out << false;
+    out << true;
+    return out.finish(g_get_guid());
+  }
   void apply_configuration() {
     try {
       ::ui_element_config_parser in(m_config);
@@ -75,36 +90,26 @@ struct CMpvDuiWindow : public ui_element_instance,
       if (cfg_pinned) {
         pin();
       }
+      in >> osc_enabled;
     } catch (exception_io_data) {
     }
-  };
-
+  }
   void set_configuration(ui_element_config::ptr config) {
     m_config = config;
     apply_configuration();
   }
-
   ui_element_config::ptr get_configuration() {
     ui_element_config_builder out;
     out << is_pinned();
+    out << osc_enabled;
     return out.finish(g_get_guid());
   }
 
-  static GUID g_get_guid() { return guid_mpv_dui_panel; }
-  static GUID g_get_subclass() { return ui_element_subclass_utility; }
-  static void g_get_name(pfc::string_base& out) { out = "mpv"; }
-  static ui_element_config::ptr g_get_default_configuration() {
-    ui_element_config_builder out;
-    out << false;
-    out << false;
-    out << (t_ui_color)0;
-    return out.finish(g_get_guid());
-  }
   static const char* g_get_description() { return "mpv Video"; }
   void notify(const GUID& p_what, t_size p_param1, const void* p_param2,
               t_size p_param2size) {
     if (p_what == ui_element_notify_visibility_changed) {
-        mpv_player::on_containers_change();
+      mpv_player::on_containers_change();
     }
 
     if (p_what == ui_element_notify_colors_changed ||
@@ -126,11 +131,18 @@ struct CMpvDuiWindow : public ui_element_instance,
   enum {
     ID_PIN = 1003,
     ID_POPOUT = 1004,
+    ID_OSC = 1005,
     ID_SEP = 9999,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
     menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+    if (cfg_osc) {
+      menu->AppendMenu(is_osc_enabled() ? MF_CHECKED : MF_UNCHECKED, ID_OSC,
+                       _T("Controls"));
+      menudesc->Set(ID_OSC,
+                    "Enable or disable the video controls for this UI element");
+    }
     menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
                      _T("Pin here"));
     menudesc->Set(ID_PIN, "Pin the video to this container");
@@ -157,6 +169,10 @@ struct CMpvDuiWindow : public ui_element_instance,
         unpin();
         RunMpvPopupWindow();
         break;
+      case ID_OSC:
+        osc_enabled = !osc_enabled;
+        mpv_player::on_containers_change();
+        break;
       default:
         break;
     }
@@ -164,6 +180,7 @@ struct CMpvDuiWindow : public ui_element_instance,
 
  private:
   ui_element_config::ptr m_config;
+  bool osc_enabled;
 
  protected:
   const ui_element_instance_callback_ptr m_callback;
