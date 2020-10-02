@@ -389,11 +389,13 @@ void mpv_player::update() {
     if (starting && playback_control::get()->is_playing()) {
       metadb_handle_ptr handle;
       playback_control::get()->get_now_playing(handle);
-      task t;
-      t.type = task_type::Play;
-      t.play_file = handle;
-      t.time = playback_control::get()->playback_get_position();
-      queue_task(t);
+      if (handle.is_valid()) {
+        task t;
+        t.type = task_type::Play;
+        t.play_file = handle;
+        t.time = playback_control::get()->playback_get_position();
+        queue_task(t);
+      }
     }
   } else {
     bool stopping = enabled;
@@ -685,6 +687,7 @@ void mpv_player::on_playback_time(double p_time) {
 }
 
 void mpv_player::play(metadb_handle_ptr metadb, double time) {
+  if (metadb.is_empty()) return;
   if (!mpv_handle && !mpv_init()) return;
 
   if (!enabled) {
