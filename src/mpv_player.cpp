@@ -368,7 +368,8 @@ void mpv_player::update() {
   }
 
   const char* osc_cmd_1[] = {"script-message", "osc-setenabled",
-                             cfg_osc && container->is_osc_enabled() ? "1" : "0", NULL};
+                             cfg_osc && container->is_osc_enabled() ? "1" : "0",
+                             NULL};
   command(osc_cmd_1);
 
   ResizeClient(container->cx,
@@ -497,9 +498,8 @@ bool mpv_player::mpv_init() {
     pfc::string_formatter osc_path = core_api::get_my_full_path();
     osc_path.truncate(osc_path.scan_filename());
     osc_path << "mpv\\osc.lua";
-    osc_path.replace_char('\\','/',0);
+    osc_path.replace_char('\\', '/', 0);
     set_option_string("scripts", osc_path.c_str());
-
 
     libmpv::get()->stream_cb_add_ro(mpv_handle.get(), "artwork", this,
                                     artwork_protocol_open);
@@ -542,27 +542,21 @@ bool mpv_player::mpv_init() {
                       playback_control::get()->playback_seek(time);
                     });
                   }
-                }
-                if (strcmp(event_message->args[0], "foobar-pause") == 0) {
+                } else if (strcmp(event_message->args[0], "foobar-pause") ==
+                           0) {
                   fb2k::inMainThread(
                       []() { playback_control::get()->toggle_pause(); });
-                }
-                if (strcmp(event_message->args[0], "foobar-prev") == 0) {
+                } else if (strcmp(event_message->args[0], "foobar-prev") == 0) {
                   fb2k::inMainThread(
                       []() { playback_control::get()->previous(); });
-                }
-                if (strcmp(event_message->args[0], "foobar-next") == 0) {
+                } else if (strcmp(event_message->args[0], "foobar-next") == 0) {
                   fb2k::inMainThread([]() { playback_control::get()->next(); });
                 }
               }
-            }
-
-            if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
+            } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
               mpv_state = state::Shutdown;
               return;
-            }
-
-            if (event->event_id == libmpv::MPV_EVENT_PROPERTY_CHANGE) {
+            } else if (event->event_id == libmpv::MPV_EVENT_PROPERTY_CHANGE) {
               libmpv::mpv_event_property* event_property =
                   (libmpv::mpv_event_property*)event->data;
 

@@ -1420,7 +1420,7 @@ function osc_init()
 		end
     ne.slider.tooltipF = function (pos)
         if not ((state.start == nil) or (state.finish == nil) or (pos == nil)) then
-            possec = state.start + ((state.finish - state.start) * (pos / 100))
+            possec = ((state.finish - state.start) * (pos / 100))
             return mp.format_time(possec)
         else
             return ""
@@ -1450,9 +1450,9 @@ function osc_init()
 			ptime = 0
 		end
 		if state.tc_ms then
-			return os.date("%H:%M:", ptime) .. string.format("%0.3f", ptime % 60)
+			return mp.format_time(ptime) .. "." .. string.format("%03d", (ptime * 1000) % 1000)
 		else
-			return os.date("%H:%M:%S", ptime)
+			return mp.format_time(ptime)
 		end
     end
     ne.eventresponder["mbtn_left_down"] = function ()
@@ -1471,17 +1471,17 @@ function osc_init()
 		end
 		
         if (state.rightTC_trem) then
-            if state.tc_ms then
-                return "-" .. os.date("%H:%M:", state.finish - ptime) .. string.format("%0.3f", (state.finish - ptime) % 60)
-            else
-                return "-" .. os.date("%H:%M:%S", state.finish - ptime)
-            end
+			if state.tc_ms then
+				return "-" .. mp.format_time(state.finish - ptime) .. "." .. string.format("%03d", ((state.finish - ptime) * 1000) % 1000)
+			else
+				return "-" .. mp.format_time(state.finish - ptime)
+			end
         else
 			if state.tc_ms then
-                return os.date("%H:%M:", state.finish - state.start) .. string.format("%0.3f", (state.finish - state.start) % 60)
-            else
-                return os.date("%H:%M:%S", state.finish - state.start)
-            end
+				return mp.format_time(state.finish - state.start) .. "." .. string.format("%03d", ((state.finish - state.start) * 1000) % 1000)
+			else
+				return mp.format_time(state.finish - state.start)
+			end
         end
     end
     ne.eventresponder["mbtn_left_down"] =
