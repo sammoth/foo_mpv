@@ -25,10 +25,10 @@ NB: be careful choosing options in mpv.conf. You probably don't want to override
 profile=gpu-hq
 
 [video]
-vf=bwdif:deint=1
+vf=bwdif:deint=1 # deinterlace videos automatically
 
 [albumart]
-vf=
+vf=              # turn off video filters for album art so that PNG transparency works
 ```
 
 The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths relative to this in `mpv.conf` by using `~~` as normal.
