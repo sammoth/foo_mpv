@@ -114,6 +114,7 @@ class mpv_player : play_callback_impl_base,
   void on_playback_seek(double p_time);
   void on_playback_pause(bool p_state);
   void on_playback_time(double p_time);
+  void on_volume_change(float new_vol);
 
   // artwork
   void on_selection_changed(metadb_handle_list_cref p_selection) override;
@@ -132,6 +133,7 @@ class mpv_player : play_callback_impl_base,
   void on_mouse_leave();
   void on_mouse_down(UINT, CPoint);
   void on_mouse_up(UINT, CPoint);
+  LRESULT on_mouse_wheel(UINT, UINT, CPoint);
   bool mouse_over;
 
   void update();
@@ -162,6 +164,7 @@ class mpv_player : play_callback_impl_base,
   MSG_WM_LBUTTONDOWN(on_mouse_down)
   MSG_WM_LBUTTONUP(on_mouse_up)
   MSG_WM_MOUSELEAVE(on_mouse_leave)
+  MSG_WM_MOUSEWHEEL(on_mouse_wheel)
   END_MSG_MAP()
 };
 }  // namespace mpv

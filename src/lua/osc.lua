@@ -134,6 +134,7 @@ local state = {
 	start,
 	finish,
 	title,
+	volume = 0,
 }
 
 local window_control_box_width = 80
@@ -973,6 +974,158 @@ end
 
 local layouts = {}
 
+-- Classic box layout
+layouts["box"] = function ()
+
+    local osc_geo = {
+        w = 550,    -- width
+        h = 138,    -- height
+        r = 10,     -- corner-radius
+        p = 15,     -- padding
+    }
+
+    -- make sure the OSC actually fits into the video
+    if (osc_param.playresx < (osc_geo.w + (2 * osc_geo.p))) then
+        osc_param.playresy = (osc_geo.w+(2*osc_geo.p))/osc_param.display_aspect
+        osc_param.playresx = osc_param.playresy * osc_param.display_aspect
+    end
+
+    -- position of the controller according to video aspect and valignment
+    local posX = math.floor(get_align(user_opts.halign, osc_param.playresx,
+        osc_geo.w, 0))
+    local posY = math.floor(get_align(user_opts.valign, osc_param.playresy,
+        osc_geo.h, 0))
+
+    -- position offset for contents aligned at the borders of the box
+    local pos_offsetX = (osc_geo.w - (2*osc_geo.p)) / 2
+    local pos_offsetY = (osc_geo.h - (2*osc_geo.p)) / 2
+
+    osc_param.areas = {} -- delete areas
+
+    -- area for active mouse input
+    add_area("input", get_hitbox_coords(posX, posY, 5, osc_geo.w, osc_geo.h))
+
+    -- area for show/hide
+    local sh_area_y0, sh_area_y1
+    if user_opts.valign > 0 then
+        -- deadzone above OSC
+        sh_area_y0 = get_align(-1 + (2*user_opts.deadzonesize),
+            posY - (osc_geo.h / 2), 0, 0)
+        sh_area_y1 = osc_param.playresy
+    else
+        -- deadzone below OSC
+        sh_area_y0 = 0
+        sh_area_y1 = (posY + (osc_geo.h / 2)) +
+            get_align(1 - (2*user_opts.deadzonesize),
+            osc_param.playresy - (posY + (osc_geo.h / 2)), 0, 0)
+    end
+    add_area("showhide", 0, sh_area_y0, osc_param.playresx, sh_area_y1)
+
+    -- fetch values
+    local osc_w, osc_h, osc_r, osc_p =
+        osc_geo.w, osc_geo.h, osc_geo.r, osc_geo.p
+
+    local lo
+
+    --
+    -- Background box
+    --
+
+    new_element("bgbox", "box")
+    lo = add_layout("bgbox")
+
+    lo.geometry = {x = posX, y = posY, an = 5, w = osc_w, h = osc_h}
+    lo.layer = 10
+    lo.style = osc_styles.box
+    lo.alpha[1] = user_opts.boxalpha
+    lo.alpha[3] = user_opts.boxalpha
+    lo.box.radius = osc_r
+
+    --
+    -- Title row
+    --
+
+    local titlerowY = posY - pos_offsetY - 10
+
+    lo = add_layout("title")
+    lo.geometry = {x = posX, y = titlerowY, an = 8, w = 496, h = 12}
+    lo.style = osc_styles.vidtitle
+    lo.button.maxchars = user_opts.boxmaxchars
+
+
+    --
+    -- Big buttons
+    --
+
+    local bigbtnrowY = posY - pos_offsetY + 35
+    local bigbtndist = 60
+
+    lo = add_layout("playpause")
+    lo.geometry =
+        {x = posX, y = bigbtnrowY, an = 5, w = 40, h = 40}
+    lo.style = osc_styles.bigButtons
+
+    lo = add_layout("ch_prev")
+    lo.geometry =
+        {x = posX - (bigbtndist * 2), y = bigbtnrowY, an = 5, w = 40, h = 40}
+    lo.style = osc_styles.bigButtons
+
+    lo = add_layout("ch_next")
+    lo.geometry =
+        {x = posX + (bigbtndist * 2), y = bigbtnrowY, an = 5, w = 40, h = 40}
+    lo.style = osc_styles.bigButtons
+
+    lo = add_layout("cy_sub")
+    lo.geometry =
+        {x = posX - pos_offsetX, y = bigbtnrowY, an = 7, w = 70, h = 18}
+    lo.style = osc_styles.smallButtonsL
+
+    lo = add_layout("tog_fs")
+    lo.geometry =
+        {x = posX+pos_offsetX - 25, y = bigbtnrowY, an = 4, w = 25, h = 25}
+    lo.style = osc_styles.smallButtonsR
+
+    lo = add_layout("volume")
+    lo.geometry =
+        {x = posX+pos_offsetX - (25 * 2) - osc_geo.p,
+         y = bigbtnrowY, an = 4, w = 25, h = 25}
+    lo.style = osc_styles.smallButtonsR
+
+    --
+    -- Seekbar
+    --
+
+    lo = add_layout("seekbar")
+    lo.geometry =
+        {x = posX, y = posY+pos_offsetY-22, an = 2, w = pos_offsetX*2, h = 15}
+    lo.style = osc_styles.timecodes
+    lo.slider.tooltip_style = osc_styles.vidtitle
+    lo.slider.stype = user_opts["seekbarstyle"]
+    lo.slider.rtype = user_opts["seekrangestyle"]
+
+    --
+    -- Timecodes + Cache
+    --
+
+    local bottomrowY = posY + pos_offsetY - 5
+
+    lo = add_layout("tc_left")
+    lo.geometry =
+        {x = posX - pos_offsetX, y = bottomrowY, an = 4, w = 110, h = 18}
+    lo.style = osc_styles.timecodes
+
+    lo = add_layout("tc_right")
+    lo.geometry =
+        {x = posX + pos_offsetX, y = bottomrowY, an = 6, w = 110, h = 18}
+    lo.style = osc_styles.timecodes
+
+    lo = add_layout("cache")
+    lo.geometry =
+        {x = posX, y = bottomrowY, an = 5, w = 110, h = 18}
+    lo.style = osc_styles.timecodes
+
+end
+
 -- slim box layout
 layouts["slimbox"] = function ()
 
@@ -1197,8 +1350,17 @@ function bar_layout(direction)
     local sb_l = geo.x + padX
 
     -- Fullscreen button
-    geo = { x = osc_geo.x + osc_geo.w, y = geo.y, an = 4,
-            w = 0, h = geo.h }
+    geo = { x = osc_geo.x + osc_geo.w - buttonW - padX - padwc_r, y = geo.y, an = 4,
+            w = buttonW, h = geo.h }
+    lo = add_layout("tog_fs")
+    lo.geometry = geo
+    lo.style = osc_styles.smallButtonsBar
+
+    -- Volume
+    geo = { x = geo.x - geo.w - padX, y = geo.y, an = geo.an, w = geo.w, h = geo.h }
+    lo = add_layout("volume")
+    lo.geometry = geo
+    lo.style = osc_styles.smallButtonsBar
 
     -- Track selection buttons
     geo = { x = geo.x - tsW - padX, y = geo.y, an = geo.an, w = tsW, h = geo.h }
@@ -1405,6 +1567,14 @@ function osc_init()
     end
     ne.eventresponder["mbtn_left_down"] =
         function () set_track("sub", 1) end
+		
+	--tog_fs
+    ne = new_element("tog_fs", "button")
+    ne.content = function ()
+           return ("\238\132\137")
+    end
+    ne.eventresponder["mbtn_left_down"] =
+        function () mp.commandv("script-message", "foobar-fullscreen") end
 
     --seekbar
     ne = new_element("seekbar", "slider")
@@ -1510,6 +1680,27 @@ function osc_init()
             string.format("%sm%02.0fs", min, sec) or
             string.format("%3.0fs", dmx_cache))
     end
+	
+	-- volume
+    ne = new_element("volume", "button")
+
+    ne.content = function()
+        local volicon = {"\238\132\139", "\238\132\140",
+                         "\238\132\141"}
+        if state.volume == 0 then
+            return "\238\132\138"
+        else
+            return volicon[math.min(3,math.ceil(state.volume * 3))]
+        end
+    end
+    ne.eventresponder["wheel_up_press"] =
+        function ()
+			mp.commandv("script-message", "foobar-volup")
+		end
+    ne.eventresponder["wheel_down_press"] =
+        function ()
+			mp.commandv("script-message", "foobar-voldown")
+		end
 
     -- load layout
     layouts[user_opts.layout]()
@@ -1974,6 +2165,9 @@ mp.register_script_message("osc-setstart", function(dur)
 end)
 mp.register_script_message("osc-setfinish", function(dur)
     state.finish = tonumber(dur)
+end)
+mp.register_script_message("osc-setvolume", function(dur)
+    state.volume = tonumber(dur)
 end)
 mp.register_script_message("osc-settitle", function(dur)
     state.title = dur

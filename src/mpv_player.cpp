@@ -6,6 +6,7 @@
 #include <set>
 #include <thread>
 
+#include "../helpers/VolumeMap.h"
 #include "../helpers/atl-misc.h"
 #include "../helpers/win32_misc.h"
 #include "artwork_protocol.h"
@@ -346,6 +347,38 @@ void mpv_player::on_mouse_move(UINT, CPoint point) {
   libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
 }
 
+LRESULT mpv_player::on_mouse_wheel(UINT l, UINT h, CPoint point) {
+  if (!mpv_handle) return 0;
+
+  auto zDelta = GET_WHEEL_DELTA_WPARAM(MAKELPARAM(l, h));
+
+  POINT point_struct = {point.x, point.y};
+
+  ::MapWindowPoints(NULL, m_hWnd, &point_struct, 1);
+
+  struct libmpv::mpv_node cmd[4] = {};
+
+  const char* cmdname = "mouse";
+  cmd[0].format = libmpv::MPV_FORMAT_STRING;
+  cmd[1].format = libmpv::MPV_FORMAT_INT64;
+  cmd[2].format = libmpv::MPV_FORMAT_INT64;
+  cmd[3].format = libmpv::MPV_FORMAT_STRING;
+  cmd[0].u.string = (char*)cmdname;
+  cmd[1].u.int64 = point_struct.x;
+  cmd[2].u.int64 = point_struct.y;
+  cmd[3].u.string = zDelta >= 0 ? (char*)"3" : (char*)"4";
+  libmpv::mpv_node_list list;
+  list.num = 4;
+  list.values = cmd;
+
+  libmpv::mpv_node args;
+  args.format = libmpv::MPV_FORMAT_NODE_ARRAY;
+  args.u.list = &list;
+  libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
+
+  return 0;
+}
+
 void mpv_player::on_mouse_down(UINT wp, CPoint point) {
   if (!mpv_window_hwnd) {
     mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
@@ -571,6 +604,29 @@ bool mpv_player::mpv_init() {
                       []() { playback_control::get()->previous(); });
                 } else if (strcmp(event_message->args[0], "foobar-next") == 0) {
                   fb2k::inMainThread([]() { playback_control::get()->next(); });
+                } else if (strcmp(event_message->args[0], "foobar-volup") ==
+                           0) {
+                  fb2k::inMainThread(
+                      []() { playback_control::get()->volume_up(); });
+                } else if (strcmp(event_message->args[0], "foobar-voldown") ==
+                           0) {
+                  fb2k::inMainThread(
+                      []() { playback_control::get()->volume_down(); });
+                } else if (strcmp(event_message->args[0],
+                                  "foobar-fullscreen") == 0) {
+                  fb2k::inMainThread([this]() {
+                    if (container) container->toggle_fullscreen();
+                  });
+                } else if (strcmp(event_message->args[0], "foobar-seekback") ==
+                           0) {
+                  fb2k::inMainThread([]() {
+                    playback_control::get()->playback_seek_delta(-5);
+                  });
+                } else if (strcmp(event_message->args[0],
+                                  "foobar-seekforward") == 0) {
+                  fb2k::inMainThread([]() {
+                    playback_control::get()->playback_seek_delta(5);
+                  });
                 }
               }
             } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
@@ -625,8 +681,8 @@ bool mpv_player::mpv_init() {
         std::string name = (*it)["name"];
         auto profilecond = (*it)["profile-cond"];
         // ignore built-in profiles; list might change in future
-        if (profilecond.is_null() && name.compare("default") != 0 && name.compare("gpu-hq") != 0 &&
-            name.compare("low-latency") != 0 &&
+        if (profilecond.is_null() && name.compare("default") != 0 &&
+            name.compare("gpu-hq") != 0 && name.compare("low-latency") != 0 &&
             name.compare("pseudo-gui") != 0 &&
             name.compare("builtin-pseudo-gui") != 0 &&
             name.compare("libmpv") != 0 && name.compare("encoding") != 0 &&
@@ -659,6 +715,12 @@ void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
       request_artwork(current_selection);
     }
   }
+}
+
+void mpv_player::on_volume_change(float new_vol) {
+  std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
+  const char* cmd[] = {"script-message", "osc-setvolume", vol.c_str(), NULL};
+  command(cmd);
 }
 
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
@@ -788,10 +850,18 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
                                NULL};
     command(osc_cmd_1);
 
-    std::string fin = std::to_string(time_base + metadb->get_length());
-    const char* osc_cmd_2[] = {"script-message", "osc-setfinish", fin.c_str(),
-                               NULL};
+    std::string finish = std::to_string(time_base + metadb->get_length());
+    const char* osc_cmd_2[] = {"script-message", "osc-setfinish",
+                               finish.c_str(), NULL};
     command(osc_cmd_2);
+
+    fb2k::inMainThread([this]() {
+      std::string vol = std::to_string(
+          VolumeMap::DBToSlider(playback_control::get()->get_volume()));
+      const char* osc_cmd_3[] = {"script-message", "osc-setvolume", vol.c_str(),
+                                 NULL};
+      command(osc_cmd_3);
+    });
 
     // wait for file to load
     std::unique_lock<std::mutex> lock_starting(mutex);
