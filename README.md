@@ -22,7 +22,7 @@ mpv video player UI element for foobar2000.
 NB: be careful choosing options in mpv.conf. You probably don't want to override any of the options set by the component or performance might suffer. Good options to set might be scaling, video filters, deinterlacing, etc. You can specify different profiles for use when displaying video and album art using `[video]` and `[albumart]`. For example, a good place to start might be:
 
 ```
-profile=gpu-hq
+profile=gpu-hq   # use high quality scaling etc.
 
 [video]
 vf=bwdif:deint=1 # deinterlace videos automatically
