@@ -21,7 +21,7 @@ mpv video player UI element for foobar2000.
 - Switch mpv configuration profiles at runtime via the context menu
 - Mouse wheel can be bound in `mpv/input.conf` (but nothing else)
 
-NB: be careful choosing options in mpv.conf. You probably don't want to override any of the options set by the component or performance might suffer. Good options to set might be scaling, video filters, deinterlacing, etc. You can specify different profiles for use when displaying video and album art using `[video]` and `[albumart]`. Any other profiles will be available to apply at runtime using the context menu. For example, a good place to start might be:
+Be careful choosing options in mpv.conf. You probably don't want to override any of the options set by the component or performance might suffer. Good options to set might be scaling, video filters, deinterlacing, etc. You can specify different profiles for use when displaying video and album art using `[video]` and `[albumart]`. Any other profiles will be available to apply at runtime using the context menu. For example, a good place to start might be:
 
 ```
 profile=gpu-hq   # use high quality scaling etc.
@@ -34,3 +34,5 @@ vf=              # turn off video filters for album art so that PNG transparency
 ```
 
 The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths relative to this in `mpv.conf` by using `~~` as normal.
+
+The synchronisation between foobar and mpv is somewhat less jarring if mpv finishes loading/seeking in the file first, as it will just wait on the first frame for the audio to catch up. If foobar begins playback first, the video will need to be sped up momentarily. Therefore it is preferable for mpv to load/seek within files as fast as possible, and enabling mpv's `low-latency` profile might help with this.
