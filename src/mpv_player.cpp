@@ -9,6 +9,7 @@
 #include "../helpers/atl-misc.h"
 #include "../helpers/win32_misc.h"
 #include "artwork_protocol.h"
+#include "json.hpp"
 #include "mpv_player.h"
 #include "preferences.h"
 #include "resource.h"
@@ -167,7 +168,8 @@ enum {
   ID_ART_BACK = 4,
   ID_ART_DISC = 5,
   ID_ART_ARTIST = 6,
-  ID_STATS = 99
+  ID_STATS = 99,
+  ID_PROFILES = 5000,
 };
 
 void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
@@ -196,6 +198,14 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
       }
 
       menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+
+      if (g_player->profiles.size() > 0) {
+        for (int i = 0; i < g_player->profiles.size(); i++) {
+          uAppendMenu(menu->m_hMenu, MF_DEFAULT, ID_PROFILES + i,
+                      g_player->profiles[i].c_str());
+        }
+        menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+      }
     }
   }
 
@@ -249,6 +259,14 @@ void mpv_player::handle_menu_cmd(int cmd) {
         request_artwork(current_selection);
         break;
       default:
+        int profile_id = cmd - ID_PROFILES;
+        if (profile_id > -1 && profile_id < g_player->profiles.size()) {
+          const char* cmd_profile[] = {
+              "apply-profile", g_player->profiles[profile_id].c_str(), NULL};
+          if (g_player->command(cmd_profile) < 0 && cfg_logging) {
+            FB2K_console_formatter() << "mpv: Error loading video profile";
+          }
+        }
         break;
     }
   }
@@ -598,6 +616,25 @@ bool mpv_player::mpv_init() {
           event_cv.notify_all();
         }
       });
+
+      char* profiles_str =
+          libmpv::get()->get_property_string(mpv_handle.get(), "profile-list");
+
+      auto profiles_json = nlohmann::json::parse(profiles_str);
+      for (auto it = profiles_json.rbegin(); it != profiles_json.rend(); ++it) {
+        std::string name = (*it)["name"];
+        auto profilecond = (*it)["profile-cond"];
+        // ignore built-in profiles; list might change in future
+        if (profilecond.is_null() && name.compare("default") != 0 && name.compare("gpu-hq") != 0 &&
+            name.compare("low-latency") != 0 &&
+            name.compare("pseudo-gui") != 0 &&
+            name.compare("builtin-pseudo-gui") != 0 &&
+            name.compare("libmpv") != 0 && name.compare("encoding") != 0 &&
+            name.compare("video") != 0 && name.compare("albumart") != 0 &&
+            name.compare("sw-fast") != 0 && name.compare("opengl-hq") != 0) {
+          profiles.push_back(name);
+        }
+      }
     }
   }
 
@@ -640,7 +677,7 @@ void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
 
   {
     std::lock_guard<std::mutex> lock(sync_lock);
-    last_sync_time = 0.0;
+    last_sync_time = 0;
   }
 
   task t;
@@ -665,7 +702,7 @@ void mpv_player::on_playback_seek(double p_time) {
 
   {
     std::lock_guard<std::mutex> lock(sync_lock);
-    last_sync_time = floor(p_time);
+    last_sync_time = (int)floor(p_time);
   }
 
   task t;
@@ -887,7 +924,7 @@ void mpv_player::seek(double time) {
 
 void mpv_player::sync(double debug_time) {
   std::lock_guard<std::mutex> lock(sync_lock);
-  last_sync_time = debug_time;
+  last_sync_time = std::lround(debug_time);
 
   double mpv_time = -1.0;
   if (!mpv_handle || !enabled || mpv_state != state::Active ||

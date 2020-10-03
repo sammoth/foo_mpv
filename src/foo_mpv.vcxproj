@@ -175,6 +175,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="artwork_protocol.h" />
+    <ClInclude Include="json.hpp" />
     <ClInclude Include="thumbnailer.h" />
     <ClInclude Include="preferences.h" />
     <ClInclude Include="libmpv.h" />
