@@ -19,7 +19,7 @@ mpv video player UI element for foobar2000.
 - Developed to work well in Wine
 - Can read mpv.conf from `mpv/mpv.conf` in your foobar2000 profile folder
 - Switch mpv configuration profiles at runtime via the context menu
-- Mouse can be bound in `mpv/input.conf` (but not keyboard)
+- Mouse wheel can be bound in `mpv/input.conf` (but not keyboard)
 
 Be careful choosing options in mpv.conf. You probably don't want to override any of the options set by the component or performance might suffer. Good options to set might be scaling, video filters, deinterlacing, etc. You can specify different profiles for use when displaying video and album art using `[video]` and `[albumart]`. Any other profiles will be available to apply at runtime using the context menu. For example, a good place to start might be:
 
