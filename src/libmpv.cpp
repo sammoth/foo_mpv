@@ -7,7 +7,38 @@
 
 namespace libmpv {
 static function_table functions = {};
-function_table* get() { return &functions; }
+function_table *get() { return &functions; }
+
+pfc::string8 get_version() {
+  pfc::string8 ret;
+
+  pfc::string_formatter path = core_api::get_my_full_path();
+  path.truncate(path.scan_filename());
+  std::wstringstream wpath_mpv;
+  wpath_mpv << path << "mpv\\mpv-1.dll";
+
+  DWORD verHandle = 0;
+  UINT size = 0;
+  LPBYTE lpBuffer = NULL;
+  DWORD verSize = GetFileVersionInfoSize(wpath_mpv.str().c_str(), &verHandle);
+
+  if (verSize != NULL) {
+    LPSTR verData = new char[verSize];
+
+    if (GetFileVersionInfo(wpath_mpv.str().c_str(), verHandle, verSize,
+                           verData)) {
+      if (VerQueryValue(verData, _T("\\StringFileInfo\\000004b0\\FileVersion"),
+                        (LPVOID*)&lpBuffer, &size)) {
+        if (size) {
+            ret << (wchar_t*)lpBuffer;
+        }
+      }
+    }
+    delete[] verData;
+  }
+
+  return ret;
+}
 
 class libmpv_loader : public initquit {
  public:
