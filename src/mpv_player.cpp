@@ -42,7 +42,7 @@ extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
 extern cfg_uint cfg_bg_color, cfg_artwork_type;
 extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile;
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
-    cfg_hard_sync_interval;
+    cfg_hard_sync_interval, cfg_seek_seconds;
 
 mpv_player::mpv_player()
     : enabled(false),
@@ -618,14 +618,18 @@ bool mpv_player::mpv_init() {
                     if (container) container->toggle_fullscreen();
                   });
                 } else if (strcmp(event_message->args[0], "foobar-seekback") ==
-                           0) {
+                               0 &&
+                           cfg_seek_seconds > 0) {
                   fb2k::inMainThread([]() {
-                    playback_control::get()->playback_seek_delta(-5);
+                    playback_control::get()->playback_seek_delta(
+                        0.0 - cfg_seek_seconds);
                   });
                 } else if (strcmp(event_message->args[0],
-                                  "foobar-seekforward") == 0) {
+                                  "foobar-seekforward") == 0 &&
+                           cfg_seek_seconds > 0) {
                   fb2k::inMainThread([]() {
-                    playback_control::get()->playback_seek_delta(5);
+                    playback_control::get()->playback_seek_delta(
+                        cfg_seek_seconds);
                   });
                 }
               }
