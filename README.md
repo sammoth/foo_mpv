@@ -37,4 +37,4 @@ The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths re
 
 The synchronisation between foobar and mpv is somewhat less jarring if mpv finishes loading/seeking in the file first, as it will just wait on the first frame for the audio to catch up. If foobar begins playback first, the video will need to be sped up momentarily. Therefore it is preferable for mpv to load/seek within files as fast as possible, and enabling mpv's `low-latency` profile might help with this.
 
-If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge. Some ffmpeg-muxed mkv files seem problematic.
+If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge. Some ffmpeg-muxed mkv files seem problematic in foobar.
