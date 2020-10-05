@@ -2,10 +2,10 @@
 // PCH ^
 
 #include "../helpers/atl-misc.h"
+#include "artwork_protocol.h"
 #include "mpv_container.h"
 #include "preferences.h"
 #include "resource.h"
-#include "artwork_protocol.h"
 
 namespace mpv {
 static const GUID guid_cfg_bg_color = {
@@ -118,24 +118,21 @@ static const GUID guid_cfg_cache_format = {
     0x6b5f,
     0x49a7,
     {0x8c, 0xa1, 0xca, 0x98, 0xdd, 0x5b, 0xa9, 0x20}};
-static const GUID guid_cfg_artwork
-    = {0xe0ce0090,
-       0x762f,
-       0x4cb4,
-       {0xad, 0xef, 0xfe, 0xd0, 0xae, 0xf1, 0xd1, 0x93}};
-static const GUID guid_cfg_artwork_type
-    = {0xf305ac3b,
-       0x9af1,
-       0x449f,
-       {0xb7, 0x95, 0x80, 0xd7, 0x11, 0x31, 0x18, 0xdf}};
-static const GUID guid_cfg_osc
-    = {0xf00436f5,
-       0x5ceb,
-       0x480b,
-       {0x9d, 0xd6, 0x87, 0x89, 0x45, 0xc0, 0x98, 0x48}};
-
-
-
+static const GUID guid_cfg_artwork = {
+    0xe0ce0090,
+    0x762f,
+    0x4cb4,
+    {0xad, 0xef, 0xfe, 0xd0, 0xae, 0xf1, 0xd1, 0x93}};
+static const GUID guid_cfg_artwork_type = {
+    0xf305ac3b,
+    0x9af1,
+    0x449f,
+    {0xb7, 0x95, 0x80, 0xd7, 0x11, 0x31, 0x18, 0xdf}};
+static const GUID guid_cfg_osc = {
+    0xf00436f5,
+    0x5ceb,
+    0x480b,
+    {0x9d, 0xd6, 0x87, 0x89, 0x45, 0xc0, 0x98, 0x48}};
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -222,10 +219,10 @@ bool test_thumb_pattern(metadb_handle_ptr metadb) {
   return out;
 }
 
-class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
-                        public preferences_page_instance {
+class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
+                              public preferences_page_instance {
  public:
-  CMpvPreferences(preferences_page_callback::ptr callback)
+  CMpvPlayerPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback), button_brush(CreateSolidBrush(cfg_bg_color)) {}
 
   enum { IDD = IDD_MPV_PREFS };
@@ -234,7 +231,7 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   void apply();
   void reset();
 
-  BEGIN_MSG_MAP_EX(CMyPreferences)
+  BEGIN_MSG_MAP_EX(CMpvPlayerPreferences)
   MSG_WM_INITDIALOG(OnInitDialog);
   MSG_WM_CTLCOLORBTN(on_color_button);
   MSG_WM_HSCROLL(OnScroll);
@@ -244,17 +241,6 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_EDIT_PATTERN, EN_CHANGE, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_CHECK_THUMBNAILS, BN_CLICKED, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_RADIO_FIRSTINGROUP, BN_CLICKED, OnEditChange)
-  COMMAND_HANDLER_EX(IDC_RADIO_LONGESTINGROUP, BN_CLICKED, OnEditChange)
-  COMMAND_HANDLER_EX(IDC_CHECK_HISTOGRAM, BN_CLICKED, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_COMBO_COVERTYPE, CBN_SELCHANGE, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_CHECK_GROUPOVERRIDE, BN_CLICKED, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_CHECK_FILTER, BN_CLICKED, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_COMBO_FORMAT, CBN_SELCHANGE, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_COMBO_CACHESIZE, CBN_SELCHANGE, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_COMBO_THUMBSIZE, CBN_SELCHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_PANELMETRIC, CBN_SELCHANGE, OnEditChange);
   END_MSG_MAP()
 
@@ -276,16 +262,15 @@ class CMpvPreferences : public CDialogImpl<CMpvPreferences>,
   COLORREF bg_col = 0;
 };
 
-HBRUSH CMpvPreferences::on_color_button(HDC wp, HWND lp) {
+HBRUSH CMpvPlayerPreferences::on_color_button(HDC wp, HWND lp) {
   if (lp == GetDlgItem(IDC_BUTTON_BG)) {
     return button_brush;
   }
   return NULL;
 }
 
-BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
+BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
-  uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern);
 
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
@@ -294,6 +279,147 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   CheckDlgButton(IDC_CHECK_OSC, cfg_osc);
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
+
+  CComboBox combo_panelmetric = (CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC);
+  combo_panelmetric.AddString(L"Area");
+  combo_panelmetric.AddString(L"Width");
+  combo_panelmetric.AddString(L"Height");
+  combo_panelmetric.SetCurSel(cfg_panel_metric);
+
+  set_controls_enabled();
+
+  dirty = false;
+
+  return FALSE;
+}
+
+void CMpvPlayerPreferences::OnBgClick(UINT, int, CWindow) {
+  CHOOSECOLOR cc = {};
+  static COLORREF acrCustClr[16];
+  cc.lStructSize = sizeof(cc);
+  cc.hwndOwner = get_wnd();
+  cc.lpCustColors = (LPDWORD)acrCustClr;
+  cc.rgbResult = bg_col;
+  cc.Flags = CC_FULLOPEN | CC_RGBINIT;
+
+  if (ChooseColor(&cc) == TRUE) {
+    bg_col = cc.rgbResult;
+    button_brush = CreateSolidBrush(bg_col);
+    dirty = true;
+    OnChanged();
+    Invalidate();
+  }
+}
+
+void CMpvPlayerPreferences::OnEditChange(UINT, int, CWindow) {
+  dirty = true;
+  OnChanged();
+}
+
+void CMpvPlayerPreferences::OnScroll(UINT, int, CWindow) {
+  dirty = true;
+  m_callback->on_state_changed();
+}
+
+t_uint32 CMpvPlayerPreferences::get_state() {
+  t_uint32 state = preferences_state::resettable;
+  if (HasChanged()) state |= preferences_state::changed;
+  return state;
+}
+
+void CMpvPlayerPreferences::reset() {
+  bg_col = 0;
+  button_brush = CreateSolidBrush(bg_col);
+
+  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
+
+  CheckDlgButton(IDC_CHECK_ARTWORK, true);
+  CheckDlgButton(IDC_CHECK_OSC, true);
+  CheckDlgButton(IDC_CHECK_FSBG, true);
+  CheckDlgButton(IDC_CHECK_STOP, true);
+
+  ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
+
+  OnChanged();
+}
+
+void CMpvPlayerPreferences::apply() {
+  cfg_bg_color = bg_col;
+
+  cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
+  cfg_osc = IsDlgButtonChecked(IDC_CHECK_OSC);
+  cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
+  cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
+
+  pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_POPUP);
+  cfg_popup_titleformat.reset();
+  cfg_popup_titleformat.set_string(format.get_ptr());
+
+  static_api_ptr_t<titleformat_compiler>()->compile_safe(
+      popup_titlefomat_script, cfg_popup_titleformat);
+
+  cfg_panel_metric =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
+
+  mpv_container::invalidate_all_containers();
+  dirty = false;
+  OnChanged();
+  reload_artwork();
+}
+
+bool CMpvPlayerPreferences::HasChanged() { return dirty; }
+
+void CMpvPlayerPreferences::set_controls_enabled() {}
+
+void CMpvPlayerPreferences::OnChanged() {
+  m_callback->on_state_changed();
+  set_controls_enabled();
+}
+
+class CMpvThumbnailPreferences : public CDialogImpl<CMpvThumbnailPreferences>,
+                                 public preferences_page_instance {
+ public:
+  CMpvThumbnailPreferences(preferences_page_callback::ptr callback)
+      : m_callback(callback) {}
+
+  enum { IDD = IDD_MPV_PREFS1 };
+
+  t_uint32 get_state();
+  void apply();
+  void reset();
+
+  BEGIN_MSG_MAP_EX(CMpvThumbnailPreferences)
+  MSG_WM_INITDIALOG(OnInitDialog);
+  MSG_WM_HSCROLL(OnScroll);
+  COMMAND_HANDLER_EX(IDC_EDIT_PATTERN, EN_CHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_THUMBNAILS, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_RADIO_FIRSTINGROUP, BN_CLICKED, OnEditChange)
+  COMMAND_HANDLER_EX(IDC_RADIO_LONGESTINGROUP, BN_CLICKED, OnEditChange)
+  COMMAND_HANDLER_EX(IDC_CHECK_HISTOGRAM, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_COVERTYPE, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_GROUPOVERRIDE, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_FILTER, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_FORMAT, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_CACHESIZE, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_THUMBSIZE, CBN_SELCHANGE, OnEditChange);
+  END_MSG_MAP()
+
+ private:
+  BOOL OnInitDialog(CWindow, LPARAM);
+  void OnEditChange(UINT, int, CWindow);
+  void OnScroll(UINT, int, CWindow);
+  bool HasChanged();
+  void OnChanged();
+  bool dirty = false;
+
+  void set_controls_enabled();
+
+  const preferences_page_callback::ptr m_callback;
+};
+
+BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
+  uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern);
+
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
   CheckDlgButton(IDC_CHECK_HISTOGRAM, cfg_thumb_histogram);
   CheckDlgButton(IDC_CHECK_FILTER, cfg_thumb_filter);
@@ -308,12 +434,6 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_covertype.AddString(L"Artist");
   combo_covertype.AddString(L"All");
   combo_covertype.SetCurSel(cfg_thumb_cover_type);
-
-  CComboBox combo_panelmetric = (CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC);
-  combo_panelmetric.AddString(L"Area");
-  combo_panelmetric.AddString(L"Width");
-  combo_panelmetric.AddString(L"Height");
-  combo_panelmetric.SetCurSel(cfg_panel_metric);
 
   CComboBox combo_thumbsize = (CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE);
   combo_thumbsize.AddString(L"200px");
@@ -348,50 +468,25 @@ BOOL CMpvPreferences::OnInitDialog(CWindow, LPARAM) {
   return FALSE;
 }
 
-void CMpvPreferences::OnBgClick(UINT, int, CWindow) {
-  CHOOSECOLOR cc = {};
-  static COLORREF acrCustClr[16];
-  cc.lStructSize = sizeof(cc);
-  cc.hwndOwner = get_wnd();
-  cc.lpCustColors = (LPDWORD)acrCustClr;
-  cc.rgbResult = bg_col;
-  cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-
-  if (ChooseColor(&cc) == TRUE) {
-    bg_col = cc.rgbResult;
-    button_brush = CreateSolidBrush(bg_col);
-    dirty = true;
-    OnChanged();
-  }
-}
-
-void CMpvPreferences::OnEditChange(UINT, int, CWindow) {
+void CMpvThumbnailPreferences::OnEditChange(UINT, int, CWindow) {
   dirty = true;
   OnChanged();
 }
 
-void CMpvPreferences::OnScroll(UINT, int, CWindow) {
+void CMpvThumbnailPreferences::OnScroll(UINT, int, CWindow) {
   dirty = true;
   m_callback->on_state_changed();
 }
 
-t_uint32 CMpvPreferences::get_state() {
+t_uint32 CMpvThumbnailPreferences::get_state() {
   t_uint32 state = preferences_state::resettable;
   if (HasChanged()) state |= preferences_state::changed;
   return state;
 }
 
-void CMpvPreferences::reset() {
-  bg_col = 0;
-  button_brush = CreateSolidBrush(bg_col);
-
-  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
+void CMpvThumbnailPreferences::reset() {
   uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern_default);
 
-  CheckDlgButton(IDC_CHECK_ARTWORK, true);
-  CheckDlgButton(IDC_CHECK_OSC, true);
-  CheckDlgButton(IDC_CHECK_FSBG, true);
-  CheckDlgButton(IDC_CHECK_STOP, true);
   CheckDlgButton(IDC_CHECK_THUMBNAILS, true);
   CheckDlgButton(IDC_CHECK_FILTER, false);
   CheckDlgButton(IDC_CHECK_HISTOGRAM, false);
@@ -400,7 +495,6 @@ void CMpvPreferences::reset() {
   CheckDlgButton(IDC_RADIO_FIRSTINGROUP, true);
 
   ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).SetCurSel(0);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).SetCurSel(2);
   ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).SetCurSel(0);
   ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).SetCurSel(0);
@@ -410,24 +504,8 @@ void CMpvPreferences::reset() {
   OnChanged();
 }
 
-void CMpvPreferences::apply() {
-  cfg_bg_color = bg_col;
-
-  cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
-  cfg_osc = IsDlgButtonChecked(IDC_CHECK_OSC);
-  cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
-  cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
-
-  auto length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_POPUP));
-  pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_POPUP);
-  cfg_popup_titleformat.reset();
-  cfg_popup_titleformat.set_string(format.get_ptr());
-
-  static_api_ptr_t<titleformat_compiler>()->compile_safe(
-      popup_titlefomat_script, cfg_popup_titleformat);
-
-  length = ::GetWindowTextLength(GetDlgItem(IDC_EDIT_PATTERN));
-  format = uGetDlgItemText(m_hWnd, IDC_EDIT_PATTERN);
+void CMpvThumbnailPreferences::apply() {
+  pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_PATTERN);
   cfg_thumb_pattern.reset();
   cfg_thumb_pattern.set_string(format.get_ptr());
 
@@ -446,8 +524,6 @@ void CMpvPreferences::apply() {
 
   cfg_thumb_cover_type =
       ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).GetCurSel();
-  cfg_panel_metric =
-      ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
   cfg_thumb_size = ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).GetCurSel();
   cfg_thumb_cache_size =
       ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).GetCurSel();
@@ -462,9 +538,9 @@ void CMpvPreferences::apply() {
   reload_artwork();
 }
 
-bool CMpvPreferences::HasChanged() { return dirty; }
+bool CMpvThumbnailPreferences::HasChanged() { return dirty; }
 
-void CMpvPreferences::set_controls_enabled() {
+void CMpvThumbnailPreferences::set_controls_enabled() {
   bool thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
   bool pattern = IsDlgButtonChecked(IDC_CHECK_FILTER);
 
@@ -481,15 +557,23 @@ void CMpvPreferences::set_controls_enabled() {
   ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs);
 }
 
-void CMpvPreferences::OnChanged() {
+void CMpvThumbnailPreferences::OnChanged() {
   m_callback->on_state_changed();
   set_controls_enabled();
 }
 
-class preferences_page_mpv_impl
-    : public preferences_page_impl<CMpvPreferences> {
+static const GUID guid_mpv_branch = {
+    0xe73c725e,
+    0xd85b,
+    0x47f2,
+    {0x87, 0x35, 0xb4, 0xce, 0x14, 0x17, 0xa5, 0x41}};
+static preferences_branch_factory mpv_branch(guid_mpv_branch, preferences_page::guid_tools,
+                                             "mpv");
+
+class preferences_page_mpv_player_impl
+    : public preferences_page_impl<CMpvPlayerPreferences> {
  public:
-  const char* get_name() { return "mpv"; }
+  const char* get_name() { return "Player"; }
   GUID get_guid() {
     static const GUID guid = {0x11c90957,
                               0xf691,
@@ -498,20 +582,27 @@ class preferences_page_mpv_impl
 
     return guid;
   }
-  GUID get_parent_guid() { return guid_tools; }
+  GUID get_parent_guid() { return guid_mpv_branch; }
 };
 
-static preferences_page_factory_t<preferences_page_mpv_impl>
-    g_preferences_page_mpv_impl_factory;
+static preferences_page_factory_t<preferences_page_mpv_player_impl>
+    g_preferences_page_mpv_player_impl_factory;
 
-bool video_enabled() { return cfg_video_enabled; }
-void set_video_enabled(bool enabled) { cfg_video_enabled = enabled; }
-bool stop_when_hidden() { return cfg_stop_hidden; }
-bool logging_enabled() { return cfg_logging; }
-bool mpv_log_enabled() { return cfg_mpv_logfile; }
-bool black_fullscreen() { return cfg_black_fullscreen; }
-unsigned background_color() { return cfg_bg_color; }
-t_uint64 hard_sync_threshold() { return cfg_hard_sync_threshold; }
-t_uint64 hard_sync_interval() { return cfg_hard_sync_interval; }
-t_uint64 max_drift() { return cfg_max_drift; }
+class preferences_page_mpv_thumbnails_impl
+    : public preferences_page_impl<CMpvThumbnailPreferences> {
+ public:
+  const char* get_name() { return "Thumbnails"; }
+  GUID get_guid() {
+    static const GUID guid = {0xa99227a2,
+                              0x7fe8,
+                              0x4ed0,
+                              {0x85, 0xdf, 0xe2, 0xef, 0x91, 0x94, 0x5, 0xa1}};
+
+    return guid;
+  }
+  GUID get_parent_guid() { return guid_mpv_branch; }
+};
+
+static preferences_page_factory_t<preferences_page_mpv_thumbnails_impl>
+    g_preferences_page_mpv_thumbnails_impl_factory;
 }  // namespace mpv

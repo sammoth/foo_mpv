@@ -45,29 +45,8 @@ BEGIN
     CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,72,150,10
     CONTROL         "Stop video playback when not visible",IDC_CHECK_STOP,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,42,152,10
-    CONTROL         "Enable thumbnails",IDC_CHECK_THUMBNAILS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,110,243,10
-    LTEXT           "Maximum cache size:",IDC_STATIC,184,187,94,8
-    LTEXT           "Thumbnail size:",IDC_STATIC,14,239,78,8
-    LTEXT           "Thumbnail format:",IDC_STATIC,184,218,95,10
-    COMBOBOX        IDC_COMBO_THUMBSIZE,14,250,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    COMBOBOX        IDC_COMBO_CACHESIZE,184,198,83,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Use first item in group",IDC_RADIO_FIRSTINGROUP,"Button",BS_AUTORADIOBUTTON | WS_GROUP,14,163,165,11
-    CONTROL         "Use longest item in group",IDC_RADIO_LONGESTINGROUP,
-                    "Button",BS_AUTORADIOBUTTON,14,175,168,11
-    CONTROL         "Attempt to choose interesting video frame (experimental, slow)",IDC_CHECK_HISTOGRAM,
-                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,126,249,131,20
-    CONTROL         "",IDC_SLIDER_SEEK,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,14,218,139,15
-    LTEXT           "Cover type to provide:",IDC_STATIC,184,157,86,8
-    COMBOBOX        IDC_COMBO_COVERTYPE,184,169,83,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Use any custom thumbnail from group",IDC_CHECK_GROUPOVERRIDE,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,190,163,10
-    LTEXT           "Thumbnail seek position:",IDC_STATIC,14,207,137,8
     LTEXT           "Move video to greatest panel:",IDC_STATIC,164,44,126,8
     COMBOBOX        IDC_COMBO_PANELMETRIC,164,56,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    GROUPBOX        "",IDC_STATIC,7,100,270,171
-    CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,14,125,239,10
-    EDITTEXT        IDC_EDIT_PATTERN,14,138,256,13,ES_AUTOHSCROLL
-    COMBOBOX        IDC_COMBO_FORMAT,184,229,83,30,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Display artwork in video window",IDC_CHECK_ARTWORK,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,87,150,10
     CONTROL         "Enable OSC",IDC_CHECK_OSC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,164,87,110,10
@@ -82,6 +61,32 @@ BEGIN
     PUSHBUTTON      "Cancel",IDCANCEL,314,190,50,14
     CONTROL         "",IDC_SLIDER1,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | WS_TABSTOP,7,189,235,15
     CONTROL         "",IDC_STATIC_pic,"Static",SS_BLACKFRAME,7,7,357,177
+END
+
+IDD_MPV_PREFS1 DIALOGEX 0, 0, 446, 420
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x0
+BEGIN
+    CONTROL         "Enable thumbnails",IDC_CHECK_THUMBNAILS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,18,243,10
+    LTEXT           "Maximum cache size:",-1,185,95,94,8
+    LTEXT           "Thumbnail size:",-1,15,146,78,8
+    LTEXT           "Thumbnail format:",-1,185,126,95,10
+    COMBOBOX        IDC_COMBO_THUMBSIZE,15,158,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_CACHESIZE,185,106,83,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Use first item in group",IDC_RADIO_FIRSTINGROUP,"Button",BS_AUTORADIOBUTTON | WS_GROUP,15,71,165,11
+    CONTROL         "Use longest item in group",IDC_RADIO_LONGESTINGROUP,
+                    "Button",BS_AUTORADIOBUTTON,15,82,168,11
+    CONTROL         "Attempt to choose interesting video frame (experimental, slow)",IDC_CHECK_HISTOGRAM,
+                    "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,127,157,131,20
+    CONTROL         "",IDC_SLIDER_SEEK,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,15,126,139,15
+    LTEXT           "Cover type to provide:",-1,185,65,86,8
+    COMBOBOX        IDC_COMBO_COVERTYPE,185,77,83,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Use any custom thumbnail from group",IDC_CHECK_GROUPOVERRIDE,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,98,163,10
+    LTEXT           "Thumbnail seek position:",-1,15,114,137,8
+    CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,33,239,10
+    EDITTEXT        IDC_EDIT_PATTERN,15,46,256,13,ES_AUTOHSCROLL
+    COMBOBOX        IDC_COMBO_FORMAT,185,137,83,30,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
 END
 
 
@@ -108,6 +113,14 @@ BEGIN
         TOPMARGIN, 7
         BOTTOMMARGIN, 204
     END
+
+    IDD_MPV_PREFS1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 290
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 273
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -123,6 +136,11 @@ BEGIN
 END
 
 IDD_THUMBCHOOSER AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_MPV_PREFS1 AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

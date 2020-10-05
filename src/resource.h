@@ -5,6 +5,7 @@
 #define IDI_ICON1                       102
 #define IDD_THUMBCHOOSER                104
 #define IDD_MPV_PREFS                   107
+#define IDD_MPV_PREFS1                  108
 #define IDC_BUTTON_BG                   1001
 #define IDC_EDIT_POPUP                  1002
 #define IDC_CHECK_FSBG                  1003
