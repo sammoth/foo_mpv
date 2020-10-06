@@ -28,7 +28,6 @@ struct CMpvDuiWindow : public ui_element_instance,
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
-  MSG_WM_LBUTTONDBLCLK(on_double_click)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
@@ -54,8 +53,6 @@ struct CMpvDuiWindow : public ui_element_instance,
                                      WS_EX_TRANSPARENT | WS_EX_LAYERED);
     }
   }
-
-  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
   void on_size(UINT wparam, CSize size) {
     mpv_container::on_resize(size.cx, size.cy);

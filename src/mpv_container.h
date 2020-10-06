@@ -4,7 +4,7 @@
 
 #include "../helpers/atl-misc.h"
 
-void RunMpvFullscreenWindow(bool reopen_popup);
+void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor);
 
 namespace mpv {
 class mpv_container {
@@ -31,7 +31,13 @@ class mpv_container {
   virtual void on_gain_player(){};
   virtual void on_lose_player(){};
 
-  virtual void toggle_fullscreen() { RunMpvFullscreenWindow(false); };
+  virtual void toggle_fullscreen() {
+    MONITORINFO monitor;
+    monitor.cbSize = sizeof(monitor);
+    GetMonitorInfoW(MonitorFromWindow(container_wnd(), MONITOR_DEFAULTTONEAREST), &monitor);
+
+    RunMpvFullscreenWindow(false, monitor);
+  };
 
   virtual void invalidate() = 0;
 

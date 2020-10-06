@@ -124,10 +124,10 @@ local state = {
     border = true,
     maximized = false,
     osd = mp.create_osd_overlay("ass-events"),
-	start,
-	finish,
-	title,
-	volume = 0,
+    start,
+    finish,
+    title,
+    volume = 0,
 }
 
 local window_control_box_width = 80
@@ -1428,17 +1428,17 @@ function osc_init()
             return ("\238\128\130")
         end
     end
-    ne.eventresponder["mbtn_left_down"] =
-        function () mp.commandv("script-message", "foobar-pause") end
+    ne.eventresponder["mbtn_left_up"] =
+        function () mp.commandv("script-message", "foobar", "pause") end
 
     --ch_prev
     ne = new_element("ch_prev", "button")
 
     ne.enabled = true
     ne.content = "\238\132\132"
-    ne.eventresponder["mbtn_left_down"] =
+    ne.eventresponder["mbtn_left_up"] =
         function ()
-            mp.commandv("script-message", "foobar-prev")
+            mp.commandv("script-message", "foobar", "prev")
         end
 
     --ch_next
@@ -1446,9 +1446,9 @@ function osc_init()
 
     ne.enabled = true
     ne.content = "\238\132\133"
-    ne.eventresponder["mbtn_left_down"] =
+    ne.eventresponder["mbtn_left_up"] =
         function ()
-            mp.commandv("script-message", "foobar-next")
+            mp.commandv("script-message", "foobar", "next")
         end
 
     --
@@ -1466,16 +1466,20 @@ function osc_init()
         return ("\238\132\135" .. osc_styles.smallButtonsLlabel
             .. " " .. sid .. "/" .. #tracks_osc.sub)
     end
-    ne.eventresponder["mbtn_left_down"] =
+    ne.eventresponder["mbtn_left_up"] =
         function () set_track("sub", 1) end
 		
 	--tog_fs
     ne = new_element("tog_fs", "button")
     ne.content = function ()
+        if (state.fullscreen) then
            return ("\238\132\137")
+        else
+           return ("\238\132\136")
+        end
     end
-    ne.eventresponder["mbtn_left_down"] =
-        function () mp.commandv("script-message", "foobar-fullscreen") end
+    ne.eventresponder["mbtn_left_up"] =
+        function () mp.commandv("script-message", "foobar", "fullscreen") end
 
     --seekbar
     ne = new_element("seekbar", "slider")
@@ -1497,10 +1501,22 @@ function osc_init()
             return ""
         end
     end
+    ne.eventresponder["mouse_move"] = --seeking when mouse is dragged
+        function (element)
+            -- mouse move events may pile up during seeking and may still get
+            -- sent when the user is done seeking, so we need to throw away
+            -- identical seeks
+            local seekto = get_slider_value(element)
+            if (element.state.lastseek == nil) or
+                (not (element.state.lastseek == seekto)) then
+                    mp.commandv("script-message", "foobar", "seek", (state.finish - state.start) * 0.01 * seekto)
+                    element.state.lastseek = seekto
+            end
+		end
     ne.eventresponder["mbtn_left_down"] = --exact seeks on single clicks
         function (element)
 			if not ((state.start == nil) or (state.finish == nil)) then
-				mp.commandv("script-message", "foobar-seek", (state.finish - state.start) * 0.01 * get_slider_value(element))
+				mp.commandv("script-message", "foobar", "seek", (state.finish - state.start) * 0.01 * get_slider_value(element))
 			end
 		end
     ne.eventresponder["reset"] =
@@ -1593,11 +1609,11 @@ function osc_init()
     end
     ne.eventresponder["wheel_up_press"] =
         function ()
-			mp.commandv("script-message", "foobar-volup")
+			mp.commandv("script-message", "foobar", "volup")
 		end
     ne.eventresponder["wheel_down_press"] =
         function ()
-			mp.commandv("script-message", "foobar-voldown")
+			mp.commandv("script-message", "foobar", "voldown")
 		end
 
     -- load layout
@@ -2055,20 +2071,24 @@ mp.observe_property("playlist", nil, request_init)
 
 mp.register_script_message("osc-message", show_message)
 
-mp.register_script_message("osc-setstart", function(dur)
-    state.start = tonumber(dur)
-end)
-mp.register_script_message("osc-setfinish", function(dur)
-    state.finish = tonumber(dur)
-end)
-mp.register_script_message("osc-setvolume", function(vol)
-    state.volume = tonumber(vol)
-end)
-mp.register_script_message("osc-settitle", function(title)
-    state.title = title
-end)
-mp.register_script_message("osc-setenabled", function(enabled)
-    if (enabled == "1") then enable_osc(true) else enable_osc(false) end
+mp.register_script_message("foobar", function(cmd, arg1, ...)
+	if (cmd == nil) then
+		return
+	elseif (cmd == "osc-enabled-changed" and (not (arg1 == nil))) then
+		if (arg1 == "yes") then
+			enable_osc(true)
+		elseif (arg1 == "no") then
+			enable_osc(false)
+		end
+	elseif (cmd == "title-changed" and (not(arg1 == nil))) then
+		state.title = arg1
+	elseif (cmd == "volume-changed" and (not(arg1 == nil))) then
+		state.volume = tonumber(arg1)
+	elseif (cmd == "start-changed" and (not(arg1 == nil))) then
+		state.start = tonumber(arg1)
+	elseif (cmd == "finish-changed" and (not(arg1 == nil))) then
+		state.finish = tonumber(arg1)
+	end
 end)
 
 mp.observe_property("fullscreen", "bool",

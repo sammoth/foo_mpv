@@ -21,6 +21,7 @@ void get_popup_title(pfc::string8& s);
 
 class mpv_player : play_callback_impl_base,
                    ui_selection_callback_impl_base,
+                   metadb_io_callback_dynamic_impl_base,
                    public CWindowImpl<mpv_player> {
   // player instance handle
   std::unique_ptr<libmpv::mpv_handle,
@@ -32,7 +33,6 @@ class mpv_player : play_callback_impl_base,
   // start mpv within the window
   bool mpv_init();
   std::mutex init_mutex;
-  void apply_settings();
 
   // thread for dispatching libmpv events
   std::thread event_listener;
@@ -96,7 +96,6 @@ class mpv_player : play_callback_impl_base,
   std::vector<std::string> profiles;
 
   // utils
-  bool is_idle();
   const char* get_string(const char* name);
   bool get_bool(const char* name);
   double get_double(const char* name);
@@ -117,8 +116,18 @@ class mpv_player : play_callback_impl_base,
   void on_playback_time(double p_time);
   void on_volume_change(float new_vol);
 
-  // artwork
-  void on_selection_changed(metadb_handle_list_cref p_selection) override;
+  // scripting/artwork
+  void on_selection_changed(metadb_handle_list_cref) override;
+  void on_changed_sorted(metadb_handle_list_cref, bool) override;
+  metadb_handle_ptr current_selection;
+  metadb_handle_ptr current_display_item;
+  void set_display_item(metadb_handle_ptr);
+  struct titleformat_subscription {
+    pfc::string8 id;
+    titleformat_object::ptr object;
+  };
+  std::vector<titleformat_subscription> titleformat_subscriptions;
+  void publish_titleformatting_subscriptions();
 
   // windowing
   mpv_container* container;
@@ -128,18 +137,13 @@ class mpv_player : play_callback_impl_base,
   LRESULT on_create(LPCREATESTRUCT lpcreate);
   BOOL on_erase_bg(CDCHandle dc);
   void on_context_menu(CWindow wnd, CPoint point);
-  void on_double_click(UINT, CPoint);
   void on_destroy();
-  void on_mouse_move(UINT, CPoint);
-  void on_mouse_leave();
-  void on_mouse_down(UINT, CPoint);
-  void on_mouse_up(UINT, CPoint);
-  LRESULT on_mouse_wheel(UINT, UINT, CPoint);
-  bool mouse_over;
 
   void update();
-  void destroy();
   bool contained_in(mpv_container* p_container);
+
+  bool find_window();
+  void on_mouse_move(UINT, CPoint);
 
  public:
   mpv_player();
@@ -148,6 +152,8 @@ class mpv_player : play_callback_impl_base,
   static void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
   static void handle_menu_cmd(int cmd);
   static void on_new_artwork();
+  static void send_message(UINT msg, UINT wparam, UINT lparam);
+  static void get_title(pfc::string8 out);
 
   static void restart();
 
@@ -161,13 +167,8 @@ class mpv_player : play_callback_impl_base,
   MSG_WM_CREATE(on_create)
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_DESTROY(on_destroy)
-  MSG_WM_LBUTTONDBLCLK(on_double_click)
   MSG_WM_CONTEXTMENU(on_context_menu)
   MSG_WM_MOUSEMOVE(on_mouse_move)
-  MSG_WM_LBUTTONDOWN(on_mouse_down)
-  MSG_WM_LBUTTONUP(on_mouse_up)
-  MSG_WM_MOUSELEAVE(on_mouse_leave)
-  MSG_WM_MOUSEWHEEL(on_mouse_wheel)
   END_MSG_MAP()
 };
 }  // namespace mpv

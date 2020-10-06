@@ -11,6 +11,61 @@
 
 namespace mpv {
 const unsigned pref_page_header_font_size = 15;
+const char* default_mpv_conf = "# advanced config here\r\n";
+
+const char* default_input_conf =
+    "WHEEL_UP script-message foobar seek backward\r\n"
+    "WHEEL_DOWN script-message foobar seek forward\r\n"
+    "MOUSE_BTN0_DBL script-message foobar fullscreen\r\n"
+    "f script-message foobar fullscreen\r\n";
+
+class default_config_create : public initquit {
+ public:
+  void on_init() override {
+    pfc::string_formatter path;
+
+    filesystem::g_get_native_path(core_api::get_profile_path(), path);
+    path.add_filename("mpv");
+    try {
+      filesystem::g_create_directory(path, fb2k::noAbort);
+    } catch (exception_io_already_exists) {
+    } catch (...) {
+      FB2K_console_formatter()
+          << "mpv: Error creating mpv configuration directory";
+      return;
+    }
+
+    filesystem::g_get_native_path(core_api::get_profile_path(), path);
+    path.add_filename("mpv");
+    path.add_filename("mpv.conf");
+    if (!filesystem::g_exists(path.c_str(), fb2k::noAbort)) {
+      try {
+        file::ptr config;
+        filesystem::g_open(config, path, filesystem::open_mode_write_new,
+                           fb2k::noAbort);
+        config->write_string_raw(default_mpv_conf, fb2k::noAbort);
+      } catch (...) {
+        FB2K_console_formatter() << "mpv: Error creating default input.conf";
+      }
+    }
+
+    filesystem::g_get_native_path(core_api::get_profile_path(), path);
+    path.add_filename("mpv");
+    path.add_filename("input.conf");
+    if (!filesystem::g_exists(path.c_str(), fb2k::noAbort)) {
+      try {
+        file::ptr config;
+        filesystem::g_open(config, path, filesystem::open_mode_write_new,
+                           fb2k::noAbort);
+        config->write_string_raw(default_input_conf, fb2k::noAbort);
+      } catch (...) {
+        FB2K_console_formatter() << "mpv: Error creating default input.conf";
+      }
+    }
+  }
+};
+
+static initquit_factory_t<default_config_create> g_default_config_create;
 
 static const GUID guid_cfg_bg_color = {
     0xb62c3ef, 0x3c6e, 0x4620, {0xbf, 0xa2, 0x24, 0xa, 0x5e, 0xdd, 0xbc, 0x4b}};
@@ -187,6 +242,26 @@ static const GUID guid_cfg_osc_fadeduration = {
     0x9f7a,
     0x493f,
     {0x8c, 0x9, 0xdb, 0x19, 0x82, 0x19, 0x1b, 0x34}};
+static const GUID guid_cfg_hwdec = {
+    0x9eed4fd,
+    0x6366,
+    0x4bcd,
+    {0xb8, 0xa9, 0x2e, 0xaa, 0xf7, 0x58, 0x22, 0xf0}};
+static const GUID guid_cfg_deint = {
+    0x454c3cd1,
+    0x7d6f,
+    0x4069,
+    {0xb4, 0xbd, 0x1d, 0x70, 0x27, 0x22, 0xa7, 0x96}};
+static const GUID guid_cfg_latency = {
+    0x11e1fcbd,
+    0x859c,
+    0x4cab,
+    {0xb0, 0x92, 0x9f, 0x2f, 0x0, 0x2b, 0x66, 0x5f}};
+static const GUID guid_cfg_gpuhq = {
+    0x9cb1a3fe,
+    0xc926,
+    0x4c07,
+    {0x8e, 0x3b, 0x22, 0xb7, 0xbb, 0xea, 0x0, 0xfd}};
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -194,6 +269,11 @@ cfg_uint cfg_bg_color(guid_cfg_bg_color, 0);
 cfg_bool cfg_black_fullscreen(guid_cfg_black_fullscreen, true);
 cfg_bool cfg_stop_hidden(guid_cfg_stop_hidden, true);
 cfg_uint cfg_panel_metric(guid_cfg_panel_metric, 0);
+
+cfg_bool cfg_hwdec(guid_cfg_hwdec, false);
+cfg_bool cfg_deint(guid_cfg_deint, true);
+cfg_bool cfg_latency(guid_cfg_latency, false);
+cfg_bool cfg_gpuhq(guid_cfg_gpuhq, false);
 
 static const char* cfg_popup_titleformat_default =
     "%title% - %artist%[' ('%album%')']";
@@ -255,18 +335,18 @@ advconfig_checkbox_factory cfg_mpv_logfile("Enable mpv log file",
                                            guid_cfg_native_logging,
                                            guid_cfg_branch, 0, false);
 
-static titleformat_object::ptr popup_titlefomat_script;
+static titleformat_object::ptr popup_titleformat_script;
 static search_filter::ptr thumb_filter;
 
-void get_popup_title(pfc::string8& s) {
-  if (popup_titlefomat_script.is_empty()) {
+void format_player_title(pfc::string8& s, metadb_handle_ptr item) {
+  if (popup_titleformat_script.is_empty()) {
     static_api_ptr_t<titleformat_compiler>()->compile_safe(
-        popup_titlefomat_script, cfg_popup_titleformat);
+        popup_titleformat_script, cfg_popup_titleformat);
   }
 
-  playback_control::get()->playback_format_title(
-      NULL, s, popup_titlefomat_script, NULL,
-      playback_control::t_display_level::display_level_all);
+  if (item.is_valid()) {
+    item->format_title(NULL, s, popup_titleformat_script, NULL);
+  }
 }
 
 bool test_thumb_pattern(metadb_handle_ptr metadb) {
@@ -310,6 +390,10 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   COMMAND_HANDLER_EX(IDC_CHECK_ARTWORK, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_HWDEC, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_DEINT, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_LATENCY, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_GPUHQ, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_PANELMETRIC, CBN_SELCHANGE, OnEditChange);
   END_MSG_MAP()
@@ -355,6 +439,7 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
                  CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
 
   ((CStatic)GetDlgItem(IDC_STATIC_SECTION1)).SetFont(sep_font);
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION5)).SetFont(sep_font);
 
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
 
@@ -364,6 +449,10 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   CheckDlgButton(IDC_CHECK_ARTWORK, cfg_artwork);
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
+  CheckDlgButton(IDC_CHECK_DEINT, cfg_deint);
+  CheckDlgButton(IDC_CHECK_LATENCY, cfg_latency);
+  CheckDlgButton(IDC_CHECK_HWDEC, cfg_hwdec);
+  CheckDlgButton(IDC_CHECK_GPUHQ, cfg_gpuhq);
 
   CComboBox combo_panelmetric = (CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC);
   combo_panelmetric.AddString(L"Area");
@@ -421,6 +510,10 @@ void CMpvPlayerPreferences::reset() {
   CheckDlgButton(IDC_CHECK_ARTWORK, true);
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
+  CheckDlgButton(IDC_CHECK_DEINT, true);
+  CheckDlgButton(IDC_CHECK_HWDEC, false);
+  CheckDlgButton(IDC_CHECK_LATENCY, false);
+  CheckDlgButton(IDC_CHECK_GPUHQ, false);
 
   ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
 
@@ -434,18 +527,23 @@ void CMpvPlayerPreferences::apply() {
   cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
   cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
   cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
+  cfg_hwdec = IsDlgButtonChecked(IDC_CHECK_HWDEC);
+  cfg_deint = IsDlgButtonChecked(IDC_CHECK_DEINT);
+  cfg_latency = IsDlgButtonChecked(IDC_CHECK_LATENCY);
+  cfg_gpuhq = IsDlgButtonChecked(IDC_CHECK_GPUHQ);
 
   pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_POPUP);
   cfg_popup_titleformat.reset();
   cfg_popup_titleformat.set_string(format.get_ptr());
 
   static_api_ptr_t<titleformat_compiler>()->compile_safe(
-      popup_titlefomat_script, cfg_popup_titleformat);
+      popup_titleformat_script, cfg_popup_titleformat);
 
   cfg_panel_metric =
       ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
 
   mpv_container::invalidate_all_containers();
+  mpv_player::restart();
   dirty = false;
   OnChanged();
   reload_artwork();
@@ -858,6 +956,312 @@ void CMpvOscPreferences::OnChanged() {
   set_controls_enabled();
 }
 
+class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
+                            public preferences_page_instance {
+ public:
+  CMpvConfPreferences(preferences_page_callback::ptr callback)
+      : m_callback(callback) {}
+  ~CMpvConfPreferences() {
+    if (edit_font != NULL) DeleteObject(edit_font);
+    if (sep_font != NULL) DeleteObject(sep_font);
+  }
+
+  enum { IDD = IDD_MPV_PREFS3 };
+
+  t_uint32 get_state();
+  void apply();
+  void reset();
+
+  BEGIN_MSG_MAP_EX(CMpvConfPreferences)
+  MSG_WM_INITDIALOG(OnInitDialog);
+  COMMAND_HANDLER_EX(IDC_EDIT1, EN_CHANGE, OnEditChange);
+  END_MSG_MAP()
+
+ private:
+  BOOL OnInitDialog(CWindow, LPARAM);
+  void OnEditChange(UINT, int, CWindow);
+  bool HasChanged();
+  void OnChanged();
+  bool dirty = false;
+
+  const preferences_page_callback::ptr m_callback;
+
+  HFONT edit_font = NULL;
+  HFONT sep_font = NULL;
+};
+
+BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
+  UINT header_size = pref_page_header_font_size;
+  UINT text_size = 10;
+
+  HDC hdc = GetDC();
+  if (hdc != NULL) {
+    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    text_size = (text_size * dpi) / 72;
+    header_size = (header_size * dpi) / 72;
+  }
+
+  edit_font =
+      CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
+  CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT1));
+  edit.SetFont(edit_font);
+
+  sep_font =
+      CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION10)).SetFont(sep_font);
+
+  pfc::string_formatter path;
+  filesystem::g_get_native_path(core_api::get_profile_path(), path);
+  path.add_filename("mpv");
+  path.add_filename("mpv.conf");
+  file::ptr config;
+  pfc::string8 contents;
+  try {
+    filesystem::g_open(config, path, filesystem::open_mode_read, fb2k::noAbort);
+    config->read_string_raw(contents, fb2k::noAbort);
+  } catch (...) {
+    contents = "";
+  }
+
+  edit.SetLimitText(0);
+  uSetWindowText(edit, contents.c_str());
+
+  dirty = false;
+
+  return FALSE;
+}
+
+void CMpvConfPreferences::OnEditChange(UINT, int, CWindow) {
+  dirty = true;
+  OnChanged();
+}
+
+t_uint32 CMpvConfPreferences::get_state() {
+  t_uint32 state = preferences_state::resettable;
+  if (HasChanged()) state |= preferences_state::changed;
+  return state;
+}
+
+void CMpvConfPreferences::reset() {
+  dirty = true;
+  OnChanged();
+}
+
+void CMpvConfPreferences::apply() {
+  pfc::string content = uGetWindowText(GetDlgItem(IDC_EDIT1));
+
+  pfc::string_formatter path;
+  filesystem::g_get_native_path(core_api::get_profile_path(), path);
+  path.add_filename("mpv");
+  try {
+    filesystem::g_create_directory(path, fb2k::noAbort);
+  } catch (exception_io_already_exists) {
+  } catch (...) {
+    popup_message::g_complain("Error creating mpv configuration directory");
+    return;
+  }
+
+  path.add_filename("mpv.conf");
+
+  file::ptr config;
+  try {
+    filesystem::g_open(config, path, filesystem::open_mode_write_new,
+                       fb2k::noAbort);
+    config->write_string_raw(content.c_str(), fb2k::noAbort);
+  } catch (...) {
+    popup_message::g_complain("Error writing mpv.conf");
+    return;
+  }
+
+  mpv_player::restart();
+
+  dirty = false;
+  OnChanged();
+}
+
+bool CMpvConfPreferences::HasChanged() { return dirty; }
+
+void CMpvConfPreferences::OnChanged() { m_callback->on_state_changed(); }
+
+class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
+                             public preferences_page_instance {
+ public:
+  CMpvInputPreferences(preferences_page_callback::ptr callback)
+      : m_callback(callback) {}
+  ~CMpvInputPreferences() {
+    if (edit_font != NULL) DeleteObject(edit_font);
+    if (sep_font != NULL) DeleteObject(sep_font);
+  }
+
+  enum { IDD = IDD_MPV_PREFS4 };
+
+  t_uint32 get_state();
+  void apply();
+  void reset();
+
+  BEGIN_MSG_MAP_EX(CMpvInputPreferences)
+  MSG_WM_INITDIALOG(OnInitDialog);
+  COMMAND_HANDLER_EX(IDC_EDIT2, EN_CHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_BUTTON_INPUTHELP, BN_CLICKED, OnHelp);
+  END_MSG_MAP()
+
+ private:
+  BOOL OnInitDialog(CWindow, LPARAM);
+  void OnEditChange(UINT, int, CWindow);
+  void OnHelp(UINT, int, CWindow);
+  bool HasChanged();
+  void OnChanged();
+  bool dirty = false;
+
+  const preferences_page_callback::ptr m_callback;
+
+  HFONT edit_font = NULL;
+  HFONT sep_font = NULL;
+};
+
+void CMpvInputPreferences::OnHelp(UINT, int, CWindow) {
+  popup_message::g_show(
+      R"ABC(mpv receives mouse input, except for right clicks, and keyboard input when in popup or fullscreen mode.
+
+The following commands are provided as script-messages with a 'foobar' word prefix for controling playback, and should be used instead of the corresponding mpv commands.
+
+Example usage for binding the f key:
+f script-message foobar fullscreen
+
+pause
+
+prev
+
+next
+
+seek backward
+
+seek forward
+
+seek <time>
+
+stop
+
+volup
+
+voldown
+
+fullscreen
+
+context <command>
+(runs context menu command on the current playing video or displayed track)
+
+menu <command>
+(runs main menu command)
+
+register-titleformat <uid> <title formatting string>
+(subscribes to title formatting updates for the playing or displayed track to be received as script-messages)
+
+)ABC",
+      "input.conf help");
+}
+
+BOOL CMpvInputPreferences::OnInitDialog(CWindow, LPARAM) {
+  UINT header_size = pref_page_header_font_size;
+  UINT text_size = 10;
+
+  HDC hdc = GetDC();
+  if (hdc != NULL) {
+    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    text_size = (text_size * dpi) / 72;
+    header_size = (header_size * dpi) / 72;
+  }
+
+  edit_font =
+      CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
+  CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT2));
+  edit.SetFont(edit_font);
+
+  sep_font =
+      CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION11)).SetFont(sep_font);
+
+  pfc::string_formatter path;
+  filesystem::g_get_native_path(core_api::get_profile_path(), path);
+  path.add_filename("mpv");
+  path.add_filename("input.conf");
+  file::ptr config;
+  pfc::string8 contents;
+  try {
+    filesystem::g_open(config, path, filesystem::open_mode_read, fb2k::noAbort);
+    config->read_string_raw(contents, fb2k::noAbort);
+  } catch (...) {
+    contents = "";
+  }
+
+  edit.SetLimitText(0);
+  uSetWindowText(edit, contents.c_str());
+
+  dirty = false;
+
+  return FALSE;
+}
+
+void CMpvInputPreferences::OnEditChange(UINT, int, CWindow) {
+  dirty = true;
+  OnChanged();
+}
+
+t_uint32 CMpvInputPreferences::get_state() {
+  t_uint32 state = preferences_state::resettable;
+  if (HasChanged()) state |= preferences_state::changed;
+  return state;
+}
+
+void CMpvInputPreferences::reset() {
+  dirty = true;
+  OnChanged();
+}
+
+void CMpvInputPreferences::apply() {
+  pfc::string content = uGetWindowText(GetDlgItem(IDC_EDIT2));
+
+  pfc::string_formatter path;
+  filesystem::g_get_native_path(core_api::get_profile_path(), path);
+  path.add_filename("mpv");
+  try {
+    filesystem::g_create_directory(path, fb2k::noAbort);
+  } catch (exception_io_already_exists) {
+  } catch (...) {
+    popup_message::g_complain("Error creating mpv configuration directory");
+    return;
+  }
+
+  path.add_filename("input.conf");
+
+  file::ptr config;
+  try {
+    filesystem::g_open(config, path, filesystem::open_mode_write_new,
+                       fb2k::noAbort);
+    config->write_string_raw(content.c_str(), fb2k::noAbort);
+  } catch (...) {
+    popup_message::g_complain("Error writing mpv.conf");
+    return;
+  }
+
+  mpv_player::restart();
+
+  dirty = false;
+  OnChanged();
+}
+
+bool CMpvInputPreferences::HasChanged() { return dirty; }
+
+void CMpvInputPreferences::OnChanged() { m_callback->on_state_changed(); }
+
 static const GUID guid_mpv_branch = {
     0xe73c725e,
     0xd85b,
@@ -866,6 +1270,14 @@ static const GUID guid_mpv_branch = {
 static preferences_branch_factory mpv_branch(guid_mpv_branch,
                                              preferences_page::guid_tools,
                                              "mpv");
+static const GUID guid_mpv_advanced = {
+    0x5d238b4b,
+    0xb556,
+    0x4a48,
+    {0x89, 0xf9, 0xa6, 0x52, 0x87, 0xde, 0xc2, 0x59}};
+static preferences_branch_factory mpv_advanced_branch(guid_mpv_advanced,
+                                                      guid_mpv_branch,
+                                                      "Advanced", 99);
 
 class preferences_page_mpv_player_impl
     : public preferences_page_impl<CMpvPlayerPreferences> {
@@ -923,4 +1335,42 @@ class preferences_page_mpv_osc_impl
 
 static preferences_page_factory_t<preferences_page_mpv_osc_impl>
     g_preferences_page_mpv_osc_impl_factory;
+
+class preferences_page_mpv_conf_impl
+    : public preferences_page_impl<CMpvConfPreferences> {
+ public:
+  double get_sort_priority() override { return 10; }
+  const char* get_name() override { return "mpv.conf"; }
+  GUID get_guid() override {
+    static const GUID guid = {0xbfd12c90,
+                              0x129a,
+                              0x4350,
+                              {0x8b, 0x22, 0xb7, 0x5e, 0x30, 0x1e, 0x75, 0x6b}};
+
+    return guid;
+  }
+  GUID get_parent_guid() override { return guid_mpv_advanced; }
+};
+
+static preferences_page_factory_t<preferences_page_mpv_conf_impl>
+    g_preferences_page_mpv_conf_impl_factory;
+
+class preferences_page_mpv_input_impl
+    : public preferences_page_impl<CMpvInputPreferences> {
+ public:
+  double get_sort_priority() override { return 11; }
+  const char* get_name() override { return "input.conf"; }
+  GUID get_guid() override {
+    static const GUID guid = {0x802b847d,
+                              0xd0cb,
+                              0x46a9,
+                              {0x85, 0xd, 0xb7, 0x0, 0x65, 0x2f, 0x9, 0xd4}};
+
+    return guid;
+  }
+  GUID get_parent_guid() override { return guid_mpv_advanced; }
+};
+
+static preferences_page_factory_t<preferences_page_mpv_input_impl>
+    g_preferences_page_mpv_input_impl_factory;
 }  // namespace mpv

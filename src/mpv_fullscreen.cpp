@@ -6,6 +6,7 @@
 #include <sstream>
 
 #include "mpv_container.h"
+#include "mpv_player.h"
 #include "preferences.h"
 #include "resource.h"
 
@@ -22,7 +23,8 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   DECLARE_WND_CLASS_EX(TEXT("{1559A84E-8A42-4C06-A515-E8D61CEBB92A}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
 
-  CMpvFullscreenWindow(bool p_reopen_popup) : reopen_popup(p_reopen_popup) {}
+  CMpvFullscreenWindow(bool p_reopen_popup, MONITORINFO p_monitor)
+      : reopen_popup(p_reopen_popup), monitor_info(p_monitor) {}
 
   BEGIN_MSG_MAP(CMpvFullscreenWindow)
   MSG_WM_CREATE(on_create)
@@ -30,7 +32,9 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
   MSG_WM_KEYDOWN(on_keydown)
-  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_KEYUP(on_keyup)
+  MSG_WM_SYSKEYDOWN(on_syskeydown)
+  MSG_WM_SYSKEYUP(on_syskeyup)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
@@ -50,7 +54,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
 
   void update_title() {
     pfc::string8 title;
-    mpv::get_popup_title(title);
+    mpv::mpv_player::get_title(title);
     uSetWindowText(m_hWnd, title);
   }
 
@@ -68,10 +72,6 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
     // with some window managers under wine, the window doesn't
     // properly go fullscreen unless it is resized while visible
     ShowWindow(SW_SHOW);
-    MONITORINFO monitor_info;
-    monitor_info.cbSize = sizeof(monitor_info);
-    GetMonitorInfoW(MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST),
-                    &monitor_info);
     SetWindowPos(NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
                  monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
                  monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
@@ -90,7 +90,9 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
     g_open_mpv_fullscreen = NULL;
   }
 
-  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) {
+    mpv_container::on_resize(size.cx, size.cy);
+  }
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {}
 
@@ -98,20 +100,31 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
 
   HWND get_wnd() { return m_hWnd; }
 
-  void on_keydown(UINT key, WPARAM, LPARAM) {
-    switch (key) {
+  void on_keydown(UINT wp, UINT l, UINT h) {
+    switch (wp) {
       case VK_ESCAPE:
         DestroyWindow();
       default:
+        mpv::mpv_player::send_message(WM_KEYDOWN, wp, MAKELPARAM(l, h));
         break;
     }
+  }
+
+  void on_keyup(UINT wp, UINT l, UINT h) {
+    mpv::mpv_player::send_message(WM_KEYUP, wp, MAKELPARAM(l, h));
+  }
+
+  void on_syskeydown(UINT wp, UINT l, UINT h) {
+    mpv::mpv_player::send_message(WM_SYSKEYDOWN, wp, MAKELPARAM(l, h));
+  }
+
+  void on_syskeyup(UINT wp, UINT l, UINT h) {
+    mpv::mpv_player::send_message(WM_SYSKEYUP, wp, MAKELPARAM(l, h));
   }
 
   bool is_fullscreen() override { return true; }
 
   void toggle_fullscreen() override { DestroyWindow(); }
-
-  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
@@ -120,6 +133,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
 
  private:
   bool reopen_popup;
+  MONITORINFO monitor_info;
 
  protected:
 };
@@ -136,15 +150,15 @@ class close_popup_handler : public initquit {
 static initquit_factory_t<close_popup_handler> popup_closer;
 }  // namespace
 
-void RunMpvFullscreenWindow(bool reopen_popup) {
+void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor) {
   if (g_open_mpv_fullscreen != NULL) {
     g_open_mpv_fullscreen->BringWindowToTop();
     return;
   }
 
   try {
-    g_open_mpv_fullscreen =
-        new CWindowAutoLifetime<CMpvFullscreenWindow>(NULL, reopen_popup);
+    g_open_mpv_fullscreen = new CWindowAutoLifetime<CMpvFullscreenWindow>(
+        NULL, reopen_popup, monitor);
   } catch (std::exception const& e) {
     popup_message::g_complain("Fullscreen window creation failure", e);
   }

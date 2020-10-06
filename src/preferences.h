@@ -3,6 +3,6 @@
 // PCH ^
 
 namespace mpv {
-void get_popup_title(pfc::string8& s);
+void format_player_title(pfc::string8& s, metadb_handle_ptr metadb);
 bool test_thumb_pattern(metadb_handle_ptr metadb);
 }  // namespace mpv

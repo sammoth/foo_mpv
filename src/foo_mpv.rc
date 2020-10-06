@@ -38,18 +38,28 @@ IDD_MPV_PREFS DIALOGEX 0, 0, 446, 420
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x0
 BEGIN
-    LTEXT           "Custom background color:",IDC_STATIC,7,86,94,12
-    EDITTEXT        IDC_EDIT_POPUP,7,45,259,13,ES_AUTOHSCROLL
-    LTEXT           "Window and OSC title format:",IDC_STATIC,7,31,144,8
-    CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,105,150,10
+    LTEXT           "Custom background color:",IDC_STATIC,7,83,94,12
+    EDITTEXT        IDC_EDIT_POPUP,7,42,259,13,ES_AUTOHSCROLL
+    LTEXT           "Window and OSC title format:",IDC_STATIC,7,28,144,8
+    CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,102,150,10
     CONTROL         "Stop video playback when not visible",IDC_CHECK_STOP,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,65,152,10
-    CONTROL         "",IDC_BUTTON_BG,"Button",BS_OWNERDRAW | BS_BITMAP | BS_FLAT | WS_TABSTOP,117,84,38,15,WS_EX_STATICEDGE
-    LTEXT           "Move video to greatest panel:",IDC_STATIC,164,72,126,8
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,62,152,10
+    CONTROL         "",IDC_BUTTON_BG,"Button",BS_OWNERDRAW | BS_BITMAP | BS_FLAT | WS_TABSTOP,117,81,38,15,WS_EX_STATICEDGE
+    LTEXT           "Move video to greatest panel:",IDC_STATIC,179,69,126,8
     CONTROL         "Display artwork in video window",IDC_CHECK_ARTWORK,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,120,150,10
-    COMBOBOX        IDC_COMBO_PANELMETRIC,164,84,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Video window",IDC_STATIC_SECTION1,7,8,283,16
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,117,150,10
+    COMBOBOX        IDC_COMBO_PANELMETRIC,179,82,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Video window",IDC_STATIC_SECTION1,7,8,313,16
+    CONTROL         "High quality GPU renderer (gpu-hq)",IDC_CHECK_GPUHQ,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,182,169,10
+    CONTROL         "Hardware decoding",IDC_CHECK_HWDEC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,194,165,10
+    CONTROL         "Low-latency profile",IDC_CHECK_LATENCY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,180,170,116,10
+    LTEXT           "May help mpv synchronize faster on playback start, but can cause playback problems",IDC_STATIC,180,181,133,33
+    CONTROL         "Automatic deinterlacing (ffmpeg bwdif)",IDC_CHECK_DEINT,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,170,163,10
+    LTEXT           "Player",IDC_STATIC_SECTION5,7,135,313,15
+    LISTBOX         IDC_LIST_VERSIONS,7,223,313,50,LBS_SORT | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Settings in mpv.conf take precedence over options configured here.",IDC_STATIC,7,155,313,8
 END
 
 IDD_THUMBCHOOSER DIALOGEX 0, 0, 371, 211
@@ -85,37 +95,56 @@ BEGIN
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,112,163,10
     LTEXT           "Thumbnail seek position:",-1,151,134,137,8
     CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,45,172,10
-    EDITTEXT        IDC_EDIT_PATTERN,7,58,256,13,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_PATTERN,7,58,313,13,ES_AUTOHSCROLL
     COMBOBOX        IDC_COMBO_FORMAT,7,240,106,13,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Thumbnailer",IDC_STATIC_SECTION4,7,8,283,16
-    LTEXT           "Cache",IDC_STATIC_SECTION3,7,174,283,17
+    LTEXT           "Thumbnailer",IDC_STATIC_SECTION4,7,8,313,16
+    LTEXT           "Cache",IDC_STATIC_SECTION3,7,174,313,17
 END
 
 IDD_MPV_PREFS2 DIALOGEX 0, 0, 446, 420
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x0
 BEGIN
-    CONTROL         "Enable",IDC_CHECK_OSC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,30,110,10
-    LTEXT           "On-screen control",IDC_STATIC_SECTION2,7,8,283,16
-    LTEXT           "Layout:",IDC_STATIC,7,47,26,8
-    COMBOBOX        IDC_COMBO_OSC_LAYOUT,7,59,110,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Seekbar style:",IDC_STATIC,144,47,47,8
-    COMBOBOX        IDC_COMBO_OSC_SEEKBARSTYLE,144,59,110,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Deadzone:",IDC_STATIC,7,180,36,8
-    LTEXT           "Window/panel scale %:",IDC_STATIC,7,104,76,8
-    CONTROL         "",IDC_SLIDER_OSC_SCALE_WINDOW,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,7,117,100,15
-    LTEXT           "Fullscreen scale %:",IDC_STATIC,144,104,63,8
-    CONTROL         "",IDC_SLIDER_OSC_SCALE_FULLSCREEN,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,144,118,100,15
-    CONTROL         "",IDC_SLIDER_OSC_DEADZONE,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,7,192,100,15
-    LTEXT           "Fade duration (ms):",IDC_STATIC,7,143,64,8
-    CONTROL         "",IDC_SLIDER_OSC_FADE,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,7,156,100,15
-    LTEXT           "Timeout (ms):",IDC_STATIC,7,217,45,8
-    CONTROL         "",IDC_SLIDER_OSC_TIMEOUT,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,7,231,100,15
-    CONTROL         "Scale with video",IDC_CHECK_OSC_SCALEWITHVIDEO,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,83,67,10
-    LTEXT           "Transparency:",IDC_STATIC,144,143,48,8
-    CONTROL         "",IDC_SLIDER_OSC_TRANSPARENCY,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,144,156,100,15
-    LTEXT           "Size of the deadzone as percent of window height not used by the OSC. Movement there won't make the OSC show up and it will hide immediately if the mouse enters it.",IDC_STATIC,120,183,170,40
-    LTEXT           "Duration in ms until the OSC hides if no mouse movement.",IDC_STATIC,120,230,170,21
+    CONTROL         "Enable",IDC_CHECK_OSC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,28,110,10
+    LTEXT           "On-screen control",IDC_STATIC_SECTION2,7,8,313,16
+    LTEXT           "Layout:",IDC_STATIC,7,45,26,8
+    COMBOBOX        IDC_COMBO_OSC_LAYOUT,7,57,110,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Seekbar style:",IDC_STATIC,144,45,47,8
+    COMBOBOX        IDC_COMBO_OSC_SEEKBARSTYLE,144,57,110,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Deadzone:",IDC_STATIC,7,179,36,8
+    LTEXT           "Window/panel scale %:",IDC_STATIC,7,102,76,8
+    CONTROL         "",IDC_SLIDER_OSC_SCALE_WINDOW,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,87,99,167,15
+    LTEXT           "Fullscreen scale %:",IDC_STATIC,7,121,63,8
+    CONTROL         "",IDC_SLIDER_OSC_SCALE_FULLSCREEN,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,87,118,167,15
+    CONTROL         "",IDC_SLIDER_OSC_DEADZONE,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,87,176,167,15
+    LTEXT           "Fade duration (ms):",IDC_STATIC,7,140,64,8
+    CONTROL         "",IDC_SLIDER_OSC_FADE,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,87,137,167,15
+    LTEXT           "Timeout (ms):",IDC_STATIC,7,226,45,8
+    CONTROL         "",IDC_SLIDER_OSC_TIMEOUT,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,87,223,167,15
+    CONTROL         "Scale with video",IDC_CHECK_OSC_SCALEWITHVIDEO,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,81,67,10
+    LTEXT           "Transparency:",IDC_STATIC,7,159,48,8
+    CONTROL         "",IDC_SLIDER_OSC_TRANSPARENCY,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,87,156,167,15
+    LTEXT           "Size of the deadzone as percent of window height not used by the OSC. Movement there won't make the OSC show up and it will hide immediately if the mouse enters it.",IDC_STATIC,7,196,313,20
+    LTEXT           "Duration in ms until the OSC hides if no mouse movement.",IDC_STATIC,7,244,313,13
+END
+
+IDD_MPV_PREFS3 DIALOGEX 0, 0, 446, 420
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x0
+BEGIN
+    LTEXT           "mpv.conf",IDC_STATIC_SECTION10,7,8,313,16
+    EDITTEXT        IDC_EDIT1,7,45,313,228,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+    LTEXT           "Note: setting any of the following options will result in broken behaviour: ""audio"", ""video-sync"", ""idle"", ""keep-open"", ""keep-open-pause"", ""cache-pause""",IDC_STATIC,7,23,313,21
+    PUSHBUTTON      "?",IDC_BUTTON_CONFHELP,305,7,15,14
+END
+
+IDD_MPV_PREFS4 DIALOGEX 0, 0, 446, 420
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x0
+BEGIN
+    LTEXT           "input.conf",IDC_STATIC_SECTION11,7,8,248,16
+    EDITTEXT        IDC_EDIT2,7,26,313,247,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+    PUSHBUTTON      "?",IDC_BUTTON_INPUTHELP,305,7,15,14
 END
 
 
@@ -130,7 +159,7 @@ BEGIN
     IDD_MPV_PREFS, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 290
+        RIGHTMARGIN, 320
         TOPMARGIN, 7
         BOTTOMMARGIN, 273
         HORZGUIDE, 7
@@ -148,7 +177,7 @@ BEGIN
     IDD_MPV_PREFS1, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 290
+        RIGHTMARGIN, 320
         TOPMARGIN, 7
         BOTTOMMARGIN, 273
     END
@@ -156,9 +185,30 @@ BEGIN
     IDD_MPV_PREFS2, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 290
+        RIGHTMARGIN, 320
+        VERTGUIDE, 254
         TOPMARGIN, 7
         BOTTOMMARGIN, 273
+    END
+
+    IDD_MPV_PREFS3, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 320
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 273
+        HORZGUIDE, 7
+        HORZGUIDE, 26
+    END
+
+    IDD_MPV_PREFS4, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 320
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 273
+        HORZGUIDE, 7
+        HORZGUIDE, 26
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -185,6 +235,16 @@ BEGIN
 END
 
 IDD_MPV_PREFS2 AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_MPV_PREFS3 AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_MPV_PREFS4 AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

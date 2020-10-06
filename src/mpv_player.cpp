@@ -39,15 +39,20 @@ void mpv_player::restart() {
   }
 }
 
+void mpv_player::get_title(pfc::string8 out) {
+  if (g_player && g_player->current_display_item != NULL) {
+    format_player_title(out, g_player->current_display_item);
+  }
+}
+
 static const int time_pos_userdata = 28903278;
 static const int seeking_userdata = 982628764;
 static const int path_userdata = 982628764;
 static const int idle_active_userdata = 12792384;
 
-static metadb_handle_ptr current_selection;
-
 extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
-    cfg_artwork, cfg_osc, cfg_osc_scalewithvideo;
+    cfg_artwork, cfg_osc, cfg_osc_scalewithvideo, cfg_hwdec, cfg_latency,
+    cfg_deint, cfg_gpuhq;
 extern cfg_uint cfg_bg_color, cfg_artwork_type, cfg_osc_layout,
     cfg_osc_seekbarstyle, cfg_osc_transparency, cfg_osc_fadeduration,
     cfg_osc_deadzone, cfg_osc_scalewindowed, cfg_osc_scalefullscreen,
@@ -58,7 +63,6 @@ extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
 
 mpv_player::mpv_player()
     : enabled(false),
-      mouse_over(false),
       mpv_handle(nullptr, nullptr),
       mpv_window_hwnd(NULL),
       task_queue(),
@@ -67,10 +71,16 @@ mpv_player::mpv_player()
       last_hard_sync(-99),
       last_sync_time(0),
       running_ffs(false),
+      current_selection(NULL),
+      current_display_item(NULL),
       mpv_timepos(0),
       mpv_state(state::Unloaded),
       container(mpv_container::get_main_container()),
       time_base(0) {
+  metadb_handle_list selection;
+  ui_selection_manager::get()->get_selection(selection);
+  on_selection_changed(selection);
+
   control_thread = std::thread([this]() {
     while (true) {
       std::unique_lock<std::mutex> lock(mutex);
@@ -119,6 +129,8 @@ mpv_player::~mpv_player() {
 
   if (control_thread.joinable()) control_thread.join();
   if (event_listener.joinable()) event_listener.join();
+  g_player = NULL;
+  current_selection.reset();
 }
 
 bool mpv_player::check_queue_any() { return !task_queue.empty(); }
@@ -257,19 +269,19 @@ void mpv_player::handle_menu_cmd(int cmd) {
         break;
       case ID_ART_FRONT:
         cfg_artwork_type = 0;
-        request_artwork(current_selection);
+        request_artwork(g_player->current_selection);
         break;
       case ID_ART_BACK:
         cfg_artwork_type = 1;
-        request_artwork(current_selection);
+        request_artwork(g_player->current_selection);
         break;
       case ID_ART_DISC:
         cfg_artwork_type = 2;
-        request_artwork(current_selection);
+        request_artwork(g_player->current_selection);
         break;
       case ID_ART_ARTIST:
         cfg_artwork_type = 3;
-        request_artwork(current_selection);
+        request_artwork(g_player->current_selection);
         break;
       default:
         int profile_id = cmd - ID_PROFILES;
@@ -286,17 +298,17 @@ void mpv_player::handle_menu_cmd(int cmd) {
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
+  const char* old_value = "1000";
+  if (mpv_handle) {
+    old_value =
+        libmpv::get()->get_property_string(mpv_handle.get(), "cursor-autohide");
+  }
+  set_property_string("cursor-autohide", "no");
   container->on_context_menu(wnd, point);
+  set_property_string("cursor-autohide", old_value);
 }
 
-void mpv_player::on_double_click(UINT, CPoint) {
-  container->toggle_fullscreen();
-}
-
-void mpv_player::on_destroy() {
-  command_string("quit");
-  g_player = NULL;
-}
+void mpv_player::on_destroy() { command_string("quit"); }
 
 LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
   SetClassLong(
@@ -306,144 +318,67 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
   return 0;
 }
 
-void mpv_player::on_mouse_leave() {
-  mouse_over = false;
-
-  if (!mpv_handle) return;
-  struct libmpv::mpv_node cmd[3] = {};
-
-  const char* cmdname = "mouse";
-  cmd[0].format = libmpv::MPV_FORMAT_STRING;
-  cmd[1].format = libmpv::MPV_FORMAT_INT64;
-  cmd[2].format = libmpv::MPV_FORMAT_INT64;
-  cmd[0].u.string = (char*)cmdname;
-  cmd[1].u.int64 = 1;
-  cmd[2].u.int64 = 1;
-  libmpv::mpv_node_list list;
-  list.num = 3;
-  list.values = cmd;
-
-  libmpv::mpv_node args;
-  args.format = libmpv::MPV_FORMAT_NODE_ARRAY;
-  args.u.list = &list;
-  libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
-}
-
 void mpv_player::on_mouse_move(UINT, CPoint point) {
   if (!mpv_handle) return;
+  find_window();
+}
 
-  if (!mouse_over) {
-    mouse_over = true;
-    TRACKMOUSEEVENT tme = {sizeof(tme)};
-    tme.dwFlags = TME_LEAVE;
-    tme.hwndTrack = m_hWnd;
-    TrackMouseEvent(&tme);
+void mpv_player::send_message(UINT msg, UINT wp, UINT lp) {
+  if (g_player && g_player->find_window()) {
+    SendMessage(g_player->mpv_window_hwnd, msg, wp, lp);
   }
-
-  struct libmpv::mpv_node cmd[3] = {};
-
-  const char* cmdname = "mouse";
-  cmd[0].format = libmpv::MPV_FORMAT_STRING;
-  cmd[1].format = libmpv::MPV_FORMAT_INT64;
-  cmd[2].format = libmpv::MPV_FORMAT_INT64;
-  cmd[0].u.string = (char*)cmdname;
-  cmd[1].u.int64 = point.x;
-  cmd[2].u.int64 = point.y;
-  libmpv::mpv_node_list list;
-  list.num = 3;
-  list.values = cmd;
-
-  libmpv::mpv_node args;
-  args.format = libmpv::MPV_FORMAT_NODE_ARRAY;
-  args.u.list = &list;
-  libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
 }
 
-LRESULT mpv_player::on_mouse_wheel(UINT l, UINT h, CPoint point) {
-  if (!mpv_handle) return 0;
-
-  auto zDelta = GET_WHEEL_DELTA_WPARAM(MAKELPARAM(l, h));
-
-  POINT point_struct = {point.x, point.y};
-
-  ::MapWindowPoints(NULL, m_hWnd, &point_struct, 1);
-
-  struct libmpv::mpv_node cmd[4] = {};
-
-  const char* cmdname = "mouse";
-  cmd[0].format = libmpv::MPV_FORMAT_STRING;
-  cmd[1].format = libmpv::MPV_FORMAT_INT64;
-  cmd[2].format = libmpv::MPV_FORMAT_INT64;
-  cmd[3].format = libmpv::MPV_FORMAT_STRING;
-  cmd[0].u.string = (char*)cmdname;
-  cmd[1].u.int64 = point_struct.x;
-  cmd[2].u.int64 = point_struct.y;
-  cmd[3].u.string = zDelta >= 0 ? (char*)"3" : (char*)"4";
-  libmpv::mpv_node_list list;
-  list.num = 4;
-  list.values = cmd;
-
-  libmpv::mpv_node args;
-  args.format = libmpv::MPV_FORMAT_NODE_ARRAY;
-  args.u.list = &list;
-  libmpv::get()->command_node(mpv_handle.get(), &args, NULL);
-
-  return 0;
-}
-
-void mpv_player::on_mouse_down(UINT wp, CPoint point) {
+bool mpv_player::find_window() {
   if (!mpv_window_hwnd) {
     mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
-    if (!mpv_window_hwnd) return;
+    if (mpv_window_hwnd) {
+      ::EnableWindow(mpv_window_hwnd, 1);
+    }
   }
 
-  ::SendMessage(mpv_window_hwnd, WM_LBUTTONDOWN, wp,
-                MAKELPARAM(point.x, point.y));
-}
-
-void mpv_player::on_mouse_up(UINT wp, CPoint point) {
-  if (!mpv_window_hwnd) {
-    mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
-    if (!mpv_window_hwnd) return;
-  }
-
-  ::SendMessage(mpv_window_hwnd, WM_LBUTTONUP, wp,
-                MAKELPARAM(point.x, point.y));
+  return mpv_window_hwnd;
 }
 
 void mpv_player::update() {
   mpv_container* new_container = mpv_container::get_main_container();
-  if (new_container == NULL) {
-    mpv_container* old_container = container;
-    container = new_container;
-    if (old_container != NULL) {
+  mpv_container* old_container = container;
+  container = new_container;
+
+  if (container == NULL) {
+    // destroy player window first in case
+    // the container destroys itself
+    DestroyWindow();
+
+    if (old_container != new_container && old_container) {
       old_container->on_lose_player();
     }
-    DestroyWindow();
+
     return;
+  } else {
+    // wine is less buggy if we resize before changing parent
+    ResizeClient(container->cx, container->cy);
+
+    if (GetParent() != container->container_wnd()) {
+      SetParent(container->container_wnd());
+      mpv_container::invalidate_all_containers();
+    }
   }
 
-  if (container != new_container) {
-    mpv_container* old_container = container;
-    container = new_container;
+  if (old_container != new_container && old_container) {
     old_container->on_lose_player();
+  }
+
+  if (old_container != new_container && new_container) {
     new_container->on_gain_player();
   }
 
-  const char* osc_cmd_1[] = {"script-message", "osc-setenabled",
-                             cfg_osc && container->is_osc_enabled() ? "1" : "0",
+  const char* osc_cmd_1[] = {"script-message", "foobar", "osc-enabled-changed",
+                             cfg_osc && container->is_osc_enabled() ? "yes" : "no",
                              NULL};
   command(osc_cmd_1);
 
   set_property_string("fullscreen", container->is_fullscreen() ? "yes" : "no");
-
-  ResizeClient(container->cx,
-               container->cy);  // wine is less buggy if we resize first
-
-  if (GetParent() != container->container_wnd()) {
-    SetParent(container->container_wnd());
-    mpv_container::invalidate_all_containers();
-  }
 
   bool vis = container->is_visible();
   if (cfg_video_enabled && (container->is_fullscreen() ||
@@ -482,9 +417,9 @@ bool mpv_player::contained_in(mpv_container* p_container) {
 
 void mpv_player::update_title() {
   pfc::string8 title;
-  mpv::get_popup_title(title);
+  format_player_title(title, current_display_item);
 
-  const char* osc_cmd_1[] = {"script-message", "osc-settitle", title.c_str(),
+  const char* osc_cmd_1[] = {"script-message", "foobar", "title-changed", title.c_str(),
                              NULL};
   command(osc_cmd_1);
   uSetWindowText(m_hWnd, title);
@@ -513,9 +448,8 @@ bool mpv_player::mpv_init() {
 
   if (!mpv_handle && m_hWnd != NULL) {
     pfc::string_formatter path;
-    path.add_filename(core_api::get_profile_path());
+    filesystem::g_get_native_path(core_api::get_profile_path(), path);
     path.add_filename("mpv");
-    path.replace_string("\\file://", "");
     mpv_handle = {libmpv::get()->create(), libmpv::get()->terminate_destroy};
 
     int64_t l_wid = (intptr_t)(m_hWnd);
@@ -547,7 +481,10 @@ bool mpv_player::mpv_init() {
     // seek fast
     set_option_string("hr-seek-framedrop", "yes");
     set_option_string("hr-seek-demuxer-offset", "0");
-    set_option_string("no-initial-audio-sync", "yes");
+    set_option_string("initial-audio-sync", "no");
+
+    // input
+    set_option_string("window-dragging", "no");
 
     // foobar plays the audio
     set_option_string("audio", "no");
@@ -562,6 +499,16 @@ bool mpv_player::mpv_init() {
     set_option_string("keep-open-pause", "no");
     set_option_string("cache-pause", "no");
 
+    // user settings
+    if (cfg_deint) {
+      set_option_string("vf-append", "@foompvdeint:bwdif:deint=1");
+    }
+
+    if (cfg_hwdec) {
+      set_option_string("hwdec", "auto-safe");
+    }
+
+    // load the OSC
     pfc::string_formatter osc_path = core_api::get_my_full_path();
     osc_path.truncate(osc_path.scan_filename());
     osc_path << "mpv\\osc.lua";
@@ -642,51 +589,88 @@ bool mpv_player::mpv_init() {
             if (event->event_id == libmpv::MPV_EVENT_CLIENT_MESSAGE) {
               libmpv::mpv_event_client_message* event_message =
                   (libmpv::mpv_event_client_message*)event->data;
-              if (event_message->num_args > 0) {
-                if (strcmp(event_message->args[0], "foobar-seek") == 0) {
-                  if (event_message->num_args > 1) {
-                    const char* time_str = event_message->args[1];
-                    double time = std::stod(time_str);
-                    fb2k::inMainThread([time]() {
-                      playback_control::get()->playback_seek(time);
+              if (event_message->num_args > 1 &&
+                  strcmp(event_message->args[0], "foobar") == 0) {
+                // process 'foobar' script-message
+
+                if (event_message->num_args > 2 &&
+                    strcmp(event_message->args[1], "seek") == 0) {
+                  const char* time_str = event_message->args[2];
+                  if (strcmp(time_str, "backward") == 0) {
+                    fb2k::inMainThread([]() {
+                      playback_control::get()->playback_seek_delta(
+                          0.0 - cfg_seek_seconds);
                     });
+                  } else if (strcmp(time_str, "forward") == 0) {
+                    fb2k::inMainThread([]() {
+                      playback_control::get()->playback_seek_delta(
+                          cfg_seek_seconds);
+                    });
+                  } else {
+                    try {
+                      double time = std::stod(time_str);
+                      fb2k::inMainThread([time]() {
+                        playback_control::get()->playback_seek(time);
+                      });
+                    } catch (...) {
+                      FB2K_console_formatter()
+                          << "mpv: Could not process seek script-message: "
+                             "invalid argument "
+                          << time_str << ", ignoring";
+                    }
                   }
-                } else if (strcmp(event_message->args[0], "foobar-pause") ==
-                           0) {
+                } else if (strcmp(event_message->args[1], "pause") == 0) {
                   fb2k::inMainThread(
                       []() { playback_control::get()->toggle_pause(); });
-                } else if (strcmp(event_message->args[0], "foobar-prev") == 0) {
+                } else if (strcmp(event_message->args[1], "prev") == 0) {
                   fb2k::inMainThread(
                       []() { playback_control::get()->previous(); });
-                } else if (strcmp(event_message->args[0], "foobar-next") == 0) {
+                } else if (strcmp(event_message->args[1], "stop") == 0) {
+                  fb2k::inMainThread([]() { playback_control::get()->stop(); });
+                } else if (strcmp(event_message->args[1], "next") == 0) {
                   fb2k::inMainThread([]() { playback_control::get()->next(); });
-                } else if (strcmp(event_message->args[0], "foobar-volup") ==
-                           0) {
+                } else if (strcmp(event_message->args[1], "volup") == 0) {
                   fb2k::inMainThread(
                       []() { playback_control::get()->volume_up(); });
-                } else if (strcmp(event_message->args[0], "foobar-voldown") ==
-                           0) {
+                } else if (strcmp(event_message->args[1], "voldown") == 0) {
                   fb2k::inMainThread(
                       []() { playback_control::get()->volume_down(); });
-                } else if (strcmp(event_message->args[0],
-                                  "foobar-fullscreen") == 0) {
+                } else if (strcmp(event_message->args[1], "fullscreen") == 0) {
                   fb2k::inMainThread([this]() {
                     if (container) container->toggle_fullscreen();
                   });
-                } else if (strcmp(event_message->args[0], "foobar-seekback") ==
-                               0 &&
-                           cfg_seek_seconds > 0) {
-                  fb2k::inMainThread([]() {
-                    playback_control::get()->playback_seek_delta(
-                        0.0 - cfg_seek_seconds);
+                } else if (event_message->num_args > 2 &&
+                           strcmp(event_message->args[1], "context") == 0) {
+                  const char* menu_cmd = event_message->args[2];
+                  fb2k::inMainThread([this, menu_cmd]() {
+                    GUID cmd;
+                    if (menu_helpers::find_command_by_name(menu_cmd, cmd)) {
+                      metadb_handle_list list;
+                      list.add_item(current_display_item);
+                      menu_helpers::run_command_context(cmd, pfc::guid_null,
+                                                        list);
+                    }
                   });
-                } else if (strcmp(event_message->args[0],
-                                  "foobar-seekforward") == 0 &&
-                           cfg_seek_seconds > 0) {
-                  fb2k::inMainThread([]() {
-                    playback_control::get()->playback_seek_delta(
-                        cfg_seek_seconds);
+                } else if (event_message->num_args > 2 &&
+                           strcmp(event_message->args[1], "menu") == 0) {
+                  const char* menu_cmd = event_message->args[2];
+                  fb2k::inMainThread([this, menu_cmd]() {
+                    GUID cmd;
+                    if (mainmenu_commands::g_find_by_name(menu_cmd, cmd)) {
+                      standard_commands::run_main(cmd);
+                    }
                   });
+                } else if (event_message->num_args > 3 &&
+                           strcmp(event_message->args[1],
+                                  "register-titleformat") == 0) {
+                  pfc::string8 id(event_message->args[2]);
+                  static titleformat_object::ptr script;
+                  if (titleformat_compiler::get()->compile(
+                          script, event_message->args[3])) {
+                    titleformat_subscription sub = {id, script};
+                    titleformat_subscriptions.push_back(sub);
+                    publish_titleformatting_subscriptions();
+                  }
                 }
               }
             } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
@@ -720,6 +704,7 @@ bool mpv_player::mpv_init() {
                 if (mpv_state != new_state) {
                   if (new_state == state::Idle && mpv_state != state::Artwork) {
                     request_artwork(current_selection);
+                    set_display_item(current_selection);
                   }
 
                   set_state(new_state);
@@ -732,6 +717,20 @@ bool mpv_player::mpv_init() {
           event_cv.notify_all();
         }
       });
+
+      if (cfg_gpuhq) {
+        const char* cmd_profile[] = {"apply-profile", "gpu-hq", NULL};
+        if (command(cmd_profile) < 0 && cfg_logging) {
+          FB2K_console_formatter() << "mpv: Error applying gpu-hq profile";
+        }
+      }
+
+      if (cfg_latency) {
+        const char* cmd_profile[] = {"apply-profile", "low-latency", NULL};
+        if (command(cmd_profile) < 0 && cfg_logging) {
+          FB2K_console_formatter() << "mpv: Error applying low-latency profile";
+        }
+      }
 
       // load profiles list
       char* profiles_str =
@@ -758,6 +757,35 @@ bool mpv_player::mpv_init() {
   return mpv_handle != NULL;
 }
 
+void mpv_player::publish_titleformatting_subscriptions() {
+  for (const auto& sub : titleformat_subscriptions) {
+    pfc::string8 format;
+    if (current_display_item.is_valid()) {
+      current_display_item->format_title(NULL, format, sub.object, NULL);
+    }
+
+    const char* cmd[] = {"script-message", "foobar",       "titleformat",
+                         sub.id.c_str(),   format.c_str(), NULL};
+    command(cmd);
+  }
+}
+
+void mpv_player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
+  if (metadb_handle_list_helper::bsearch_by_pointer(
+          changed, current_display_item) < UINT_MAX) {
+    publish_titleformatting_subscriptions();
+
+    if (mpv_state == state::Artwork) {
+      request_artwork(current_display_item);
+    }
+  }
+}
+
+void mpv_player::set_display_item(metadb_handle_ptr item) {
+  current_display_item = item;
+  publish_titleformatting_subscriptions();
+}
+
 void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
   metadb_handle_ptr new_item;
   if (p_selection.get_count() > 0) new_item = p_selection[0];
@@ -772,15 +800,17 @@ void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
       task t;
       t.type = task_type::Stop;
       queue_task(t);
+      set_display_item(NULL);
     } else {
       request_artwork(current_selection);
+      set_display_item(current_selection);
     }
   }
 }
 
 void mpv_player::on_volume_change(float new_vol) {
   std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
-  const char* cmd[] = {"script-message", "osc-setvolume", vol.c_str(), NULL};
+  const char* cmd[] = {"script-message", "foobar", "volume-changed", vol.c_str(), NULL};
   command(cmd);
 }
 
@@ -853,6 +883,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   if (!enabled) {
     mpv_state = state::Idle;
     request_artwork(current_selection);
+    set_display_item(current_selection);
     return;
   }
 
@@ -899,27 +930,37 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     if (command(cmd_profile) < 0 && cfg_logging) {
       FB2K_console_formatter() << "mpv: Error loading video profile";
     }
+
+    if (cfg_deint) {
+      const char* cmd_deint[] = {"vf", "add", "@foompvdeint:bwdif:deint=1",
+                                 NULL};
+      if (command(cmd_deint) < 0 && cfg_logging) {
+        FB2K_console_formatter() << "mpv: Error enabling deinterlacing";
+      }
+    }
+
     set_state(state::Loading);
     const char* cmd[] = {"loadfile", filename.c_str(), NULL};
     if (command(cmd) < 0 && cfg_logging) {
       FB2K_console_formatter()
           << "mpv: Error loading item '" << filename << "'";
     }
+    set_display_item(metadb);
 
     std::string start = std::to_string(time_base);
-    const char* osc_cmd_1[] = {"script-message", "osc-setstart", start.c_str(),
+    const char* osc_cmd_1[] = {"script-message", "foobar", "start-changed", start.c_str(),
                                NULL};
     command(osc_cmd_1);
 
     std::string finish = std::to_string(time_base + metadb->get_length());
-    const char* osc_cmd_2[] = {"script-message", "osc-setfinish",
+    const char* osc_cmd_2[] = {"script-message", "foobar", "finish-changed",
                                finish.c_str(), NULL};
     command(osc_cmd_2);
 
     fb2k::inMainThread([this]() {
       std::string vol = std::to_string(
           VolumeMap::DBToSlider(playback_control::get()->get_volume()));
-      const char* osc_cmd_3[] = {"script-message", "osc-setvolume", vol.c_str(),
+      const char* osc_cmd_3[] = {"script-message", "foobar", "volume-changed", vol.c_str(),
                                  NULL};
       command(osc_cmd_3);
     });
@@ -1128,6 +1169,10 @@ void mpv_player::load_artwork() {
       if (command(cmd_profile) < 0 && cfg_logging) {
         FB2K_console_formatter() << "mpv: Error loading albumart profile";
       }
+
+      const char* cmd_deint[] = {"vf", "remove", "@foompvdeint", NULL};
+      command(cmd_deint);
+
       const char* cmd[] = {"loadfile", "artwork://", NULL};
       if (command(cmd) < 0) {
         FB2K_console_formatter() << "mpv: Error loading artwork";
@@ -1157,9 +1202,9 @@ void mpv_player::initial_sync() {
   int paused_check = 0;
   get_property("pause", libmpv::MPV_FORMAT_FLAG, &paused_check);
   if (paused_check == 1) {
-    FB2K_console_formatter()
-        << "mpv: Abort initial sync - player was paused when starting initial "
-           "sync";
+    FB2K_console_formatter() << "mpv: Abort initial sync - player was paused "
+                                "when starting initial "
+                                "sync";
     return;
   }
 

@@ -7,6 +7,8 @@
 #define IDD_MPV_PREFS                   107
 #define IDD_MPV_PREFS1                  108
 #define IDD_MPV_PREFS2                  109
+#define IDD_MPV_PREFS3                  110
+#define IDD_MPV_PREFS4                  111
 #define IDC_BUTTON_BG                   1001
 #define IDC_EDIT_POPUP                  1002
 #define IDC_CHECK_FSBG                  1003
@@ -34,6 +36,7 @@
 #define IDC_CHECK_ARTWORK               1057
 #define IDC_CHECK1                      1058
 #define IDC_CHECK_OSC                   1058
+#define IDC_CHECK_GPUHQ                 1058
 #define IDC_STATIC_SECTION1             1060
 #define IDC_STATIC_SECTION2             1061
 #define IDC_STATIC_SECTION3             1062
@@ -47,6 +50,18 @@
 #define IDC_SLIDER_OSC_TIMEOUT          1071
 #define IDC_SLIDER_OSC_TRANSPARENCY     1072
 #define IDC_SLIDER_OSC_FADE             1073
+#define IDC_EDIT1                       1077
+#define IDC_STATIC_SECTION10            1078
+#define IDC_STATIC_SECTION11            1079
+#define IDC_EDIT2                       1080
+#define IDC_CHECK_HWDEC                 1081
+#define IDC_CHECK_LATENCY               1082
+#define IDC_CHECK_DEINT                 1083
+#define IDC_STATIC_SECTION5             1084
+#define IDC_LIST_VERSIONS               1085
+#define IDC_BUTTON1                     1086
+#define IDC_BUTTON_INPUTHELP            1086
+#define IDC_BUTTON_CONFHELP             1087
 
 // Next default values for new objects
 // 
@@ -54,7 +69,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        106
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1077
+#define _APS_NEXT_CONTROL_VALUE         1088
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

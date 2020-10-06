@@ -32,7 +32,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   MSG_WM_CREATE(on_create)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
-  MSG_WM_LBUTTONDBLCLK(on_double_click)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
@@ -59,8 +58,6 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   void on_size(UINT wparam, CSize size) {
     mpv_container::on_resize(size.cx, size.cy);
   }
-
-  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
 
   HWND container_wnd() override { return m_hWnd; }
 

@@ -6,11 +6,12 @@
 #include <sstream>
 
 #include "mpv_container.h"
+#include "mpv_player.h"
 #include "preferences.h"
 #include "resource.h"
 
 void RunMpvPopupWindow();
-void RunMpvFullscreenWindow(bool reopen_popup);
+void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor);
 
 namespace {
 struct CMpvPopupWindow;
@@ -46,7 +47,10 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_SIZE(on_size)
   MSG_WM_DESTROY(on_destroy)
-  MSG_WM_LBUTTONDBLCLK(on_double_click)
+  MSG_WM_KEYDOWN(on_keydown)
+  MSG_WM_KEYUP(on_keyup)
+  MSG_WM_SYSKEYDOWN(on_syskeydown)
+  MSG_WM_SYSKEYUP(on_syskeyup)
   MSG_WM_CONTEXTMENU(on_context_menu)
   END_MSG_MAP()
 
@@ -74,13 +78,42 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   void update_title() {
     pfc::string8 title;
-    mpv::get_popup_title(title);
+    mpv::mpv_player::get_title(title);
     uSetWindowText(m_hWnd, title);
+  }
+
+  void on_keydown(UINT wp, UINT l, UINT h) {
+    switch (wp) {
+      case VK_ESCAPE:
+        DestroyWindow();
+      default:
+        mpv::mpv_player::send_message(WM_KEYDOWN, wp, MAKELPARAM(l, h));
+        break;
+    }
+  }
+
+  void on_keyup(UINT wp, UINT l, UINT h) {
+    mpv::mpv_player::send_message(WM_KEYUP, wp, MAKELPARAM(l, h));
+  }
+
+  void on_syskeydown(UINT wp, UINT l, UINT h) {
+    mpv::mpv_player::send_message(WM_SYSKEYDOWN, wp, MAKELPARAM(l, h));
+  }
+
+  void on_syskeyup(UINT wp, UINT l, UINT h) {
+    mpv::mpv_player::send_message(WM_SYSKEYUP, wp, MAKELPARAM(l, h));
   }
 
   void on_playback_event() override { update_title(); }
 
-  void toggle_fullscreen() override { RunMpvFullscreenWindow(true); };
+  void toggle_fullscreen() override {
+    MONITORINFO monitor;
+    monitor.cbSize = sizeof(monitor);
+    GetMonitorInfoW(
+        MonitorFromWindow(container_wnd(), MONITOR_DEFAULTTONEAREST), &monitor);
+
+    RunMpvFullscreenWindow(true, monitor);
+  };
 
   void on_lose_player() override { DestroyWindow(); }
 
@@ -131,14 +164,16 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     g_open_mpv_popup = NULL;
   }
 
-  void on_size(UINT wparam, CSize size) { mpv_container::on_resize(size.cx, size.cy); }
+  void on_size(UINT wparam, CSize size) {
+    mpv_container::on_resize(size.cx, size.cy);
+  }
 
   enum {
     ID_UNPIN = 1003,
     ID_SETCOLOUR = 1004,
     ID_SEPARATE = 1005,
     ID_ONTOP = 1006,
-    ID_SEP=9999,
+    ID_SEP = 9999,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
@@ -175,15 +210,12 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
   HWND get_wnd() { return m_hWnd; }
 
-  void on_double_click(UINT, CPoint) { toggle_fullscreen(); }
-
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }
   bool is_popup() override { return true; }
   void invalidate() override { Invalidate(); }
 
  private:
-
  protected:
 };
 
