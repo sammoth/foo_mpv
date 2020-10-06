@@ -3,11 +3,15 @@
 
 #include "../helpers/atl-misc.h"
 #include "artwork_protocol.h"
+#include "foobar2000-sdk/libPPUI/Controls.h"
 #include "mpv_container.h"
+#include "mpv_player.h"
 #include "preferences.h"
 #include "resource.h"
 
 namespace mpv {
+const unsigned pref_page_header_font_size = 15;
+
 static const GUID guid_cfg_bg_color = {
     0xb62c3ef, 0x3c6e, 0x4620, {0xbf, 0xa2, 0x24, 0xa, 0x5e, 0xdd, 0xbc, 0x4b}};
 static const GUID guid_cfg_popup_titleformat = {
@@ -55,11 +59,11 @@ static const GUID guid_cfg_native_logging = {
     0x239,
     0x441d,
     {0x8a, 0x8e, 0x99, 0x83, 0x2a, 0xda, 0xe7, 0xd0}};
-static const GUID guid_cfg_seek_seconds
-    = {0xa9f41576,
-       0xaf69,
-       0x4579,
-       {0xa7, 0x45, 0x93, 0x35, 0xe7, 0xcc, 0x76, 0xd1}};
+static const GUID guid_cfg_seek_seconds = {
+    0xa9f41576,
+    0xaf69,
+    0x4579,
+    {0xa7, 0x45, 0x93, 0x35, 0xe7, 0xcc, 0x76, 0xd1}};
 static const GUID guid_cfg_video_enabled = {
     0xe3a285f2,
     0x6804,
@@ -138,6 +142,51 @@ static const GUID guid_cfg_osc = {
     0x5ceb,
     0x480b,
     {0x9d, 0xd6, 0x87, 0x89, 0x45, 0xc0, 0x98, 0x48}};
+static const GUID guid_cfg_osc_layout = {
+    0x168414ff,
+    0xf235,
+    0x48b1,
+    {0x9d, 0x4f, 0x37, 0x7b, 0xe9, 0xbd, 0x81, 0xc5}};
+static const GUID guid_cfg_osc_seekbarstyle = {
+    0x89a630d5,
+    0x4d5f,
+    0x49da,
+    {0x85, 0x96, 0x8f, 0xba, 0xba, 0x70, 0x28, 0xf3}};
+static const GUID guid_cfg_osc_transparency = {
+    0xed8f6b2f,
+    0xd632,
+    0x4ebb,
+    {0x95, 0xe0, 0xd9, 0x28, 0xb3, 0xec, 0x28, 0xcf}};
+static const GUID guid_cfg_osc_deadzone = {
+    0x17a83aea,
+    0x63eb,
+    0x44ef,
+    {0x89, 0xf7, 0xe6, 0x3e, 0xb3, 0x1f, 0x27, 0x6}};
+static const GUID guid_cfg_osc_timeout = {
+    0x72956f83,
+    0x98b0,
+    0x4893,
+    {0x94, 0x7c, 0x9c, 0xb6, 0xc3, 0xb4, 0x8c, 0xd0}};
+static const GUID guid_cfg_osc_scalewindowed = {
+    0x9d193141,
+    0xc712,
+    0x4a7b,
+    {0x97, 0x16, 0x7d, 0xa1, 0x9c, 0x66, 0x0, 0xe3}};
+static const GUID guid_cfg_osc_scalefullscreen = {
+    0x42e27062,
+    0x5b5d,
+    0x4212,
+    {0xb3, 0x28, 0x4c, 0x12, 0xbe, 0xca, 0x50, 0xed}};
+static const GUID guid_cfg_osc_scalewithvideo = {
+    0x59c014a8,
+    0x5d1,
+    0x4498,
+    {0xb1, 0x1d, 0x56, 0x9d, 0xf8, 0x20, 0xfb, 0x78}};
+static const GUID guid_cfg_osc_fadeduration = {
+    0x8ba53c19,
+    0x9f7a,
+    0x493f,
+    {0x8c, 0x9, 0xdb, 0x19, 0x82, 0x19, 0x1b, 0x34}};
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -145,7 +194,6 @@ cfg_uint cfg_bg_color(guid_cfg_bg_color, 0);
 cfg_bool cfg_black_fullscreen(guid_cfg_black_fullscreen, true);
 cfg_bool cfg_stop_hidden(guid_cfg_stop_hidden, true);
 cfg_uint cfg_panel_metric(guid_cfg_panel_metric, 0);
-cfg_bool cfg_osc(guid_cfg_osc, true);
 
 static const char* cfg_popup_titleformat_default =
     "%title% - %artist%[' ('%album%')']";
@@ -165,6 +213,17 @@ cfg_bool cfg_thumb_filter(guid_cfg_filter, false);
 
 cfg_bool cfg_artwork(guid_cfg_artwork, true);
 cfg_uint cfg_artwork_type(guid_cfg_artwork_type, 0);
+
+cfg_bool cfg_osc(guid_cfg_osc, true);
+cfg_bool cfg_osc_scalewithvideo(guid_cfg_osc_scalewithvideo, true);
+cfg_uint cfg_osc_layout(guid_cfg_osc_layout, 0);
+cfg_uint cfg_osc_seekbarstyle(guid_cfg_osc_seekbarstyle, 0);
+cfg_uint cfg_osc_scalewindowed(guid_cfg_osc_scalewindowed, 100);
+cfg_uint cfg_osc_scalefullscreen(guid_cfg_osc_scalefullscreen, 100);
+cfg_uint cfg_osc_transparency(guid_cfg_osc_transparency, 30);
+cfg_uint cfg_osc_fadeduration(guid_cfg_osc_fadeduration, 200);
+cfg_uint cfg_osc_timeout(guid_cfg_osc_timeout, 500);
+cfg_uint cfg_osc_deadzone(guid_cfg_osc_deadzone, 50);
 
 static const char* cfg_thumb_pattern_default =
     "\"$ext(%filename_ext%)\" IS mkv";
@@ -233,6 +292,9 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
  public:
   CMpvPlayerPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback), button_brush(CreateSolidBrush(cfg_bg_color)) {}
+  ~CMpvPlayerPreferences() {
+    if (sep_font != NULL) DeleteObject(sep_font);
+  }
 
   enum { IDD = IDD_MPV_PREFS };
 
@@ -246,7 +308,6 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   MSG_WM_HSCROLL(OnScroll);
   COMMAND_HANDLER_EX(IDC_BUTTON_BG, BN_CLICKED, OnBgClick);
   COMMAND_HANDLER_EX(IDC_CHECK_ARTWORK, BN_CLICKED, OnEditChange);
-  COMMAND_HANDLER_EX(IDC_CHECK_OSC, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
@@ -269,6 +330,8 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   const preferences_page_callback::ptr m_callback;
 
   COLORREF bg_col = 0;
+
+  HFONT sep_font = NULL;
 };
 
 HBRUSH CMpvPlayerPreferences::on_color_button(HDC wp, HWND lp) {
@@ -279,13 +342,26 @@ HBRUSH CMpvPlayerPreferences::on_color_button(HDC wp, HWND lp) {
 }
 
 BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
+  UINT header_size = pref_page_header_font_size;
+
+  HDC hdc = GetDC();
+  if (hdc != NULL) {
+    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    header_size = (header_size * dpi) / 72;
+  }
+  sep_font =
+      CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
+
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION1)).SetFont(sep_font);
+
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
 
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
 
   CheckDlgButton(IDC_CHECK_ARTWORK, cfg_artwork);
-  CheckDlgButton(IDC_CHECK_OSC, cfg_osc);
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
 
@@ -343,12 +419,12 @@ void CMpvPlayerPreferences::reset() {
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
 
   CheckDlgButton(IDC_CHECK_ARTWORK, true);
-  CheckDlgButton(IDC_CHECK_OSC, true);
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
 
   ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).SetCurSel(0);
 
+  dirty = true;
   OnChanged();
 }
 
@@ -356,7 +432,6 @@ void CMpvPlayerPreferences::apply() {
   cfg_bg_color = bg_col;
 
   cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
-  cfg_osc = IsDlgButtonChecked(IDC_CHECK_OSC);
   cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
   cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
 
@@ -390,6 +465,9 @@ class CMpvThumbnailPreferences : public CDialogImpl<CMpvThumbnailPreferences>,
  public:
   CMpvThumbnailPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback) {}
+  ~CMpvThumbnailPreferences() {
+    if (sep_font != NULL) DeleteObject(sep_font);
+  }
 
   enum { IDD = IDD_MPV_PREFS1 };
 
@@ -424,9 +502,26 @@ class CMpvThumbnailPreferences : public CDialogImpl<CMpvThumbnailPreferences>,
   void set_controls_enabled();
 
   const preferences_page_callback::ptr m_callback;
+
+  HFONT sep_font = NULL;
 };
 
 BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
+  UINT header_size = pref_page_header_font_size;
+
+  HDC hdc = GetDC();
+  if (hdc != NULL) {
+    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    header_size = (header_size * dpi) / 72;
+  }
+  sep_font =
+      CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
+
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION4)).SetFont(sep_font);
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION3)).SetFont(sep_font);
+
   uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern);
 
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
@@ -510,6 +605,7 @@ void CMpvThumbnailPreferences::reset() {
 
   ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).SetPos(30);
 
+  dirty = true;
   OnChanged();
 }
 
@@ -552,6 +648,7 @@ bool CMpvThumbnailPreferences::HasChanged() { return dirty; }
 void CMpvThumbnailPreferences::set_controls_enabled() {
   bool thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);
   bool pattern = IsDlgButtonChecked(IDC_CHECK_FILTER);
+  bool automatic = IsDlgButtonChecked(IDC_CHECK_HISTOGRAM);
 
   ((CComboBox)uGetDlgItem(IDC_EDIT_PATTERN)).EnableWindow(thumbs && pattern);
   ((CComboBox)uGetDlgItem(IDC_CHECK_FILTER)).EnableWindow(thumbs);
@@ -563,10 +660,200 @@ void CMpvThumbnailPreferences::set_controls_enabled() {
   ((CComboBox)uGetDlgItem(IDC_CHECK_HISTOGRAM)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_CHECK_GROUPOVERRIDE)).EnableWindow(thumbs);
   ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).EnableWindow(thumbs);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_SEEK)).EnableWindow(thumbs && !automatic);
 }
 
 void CMpvThumbnailPreferences::OnChanged() {
+  m_callback->on_state_changed();
+  set_controls_enabled();
+}
+
+class CMpvOscPreferences : public CDialogImpl<CMpvOscPreferences>,
+                           public preferences_page_instance {
+ public:
+  CMpvOscPreferences(preferences_page_callback::ptr callback)
+      : m_callback(callback) {}
+  ~CMpvOscPreferences() {
+    if (sep_font != NULL) DeleteObject(sep_font);
+  }
+
+  enum { IDD = IDD_MPV_PREFS2 };
+
+  t_uint32 get_state();
+  void apply();
+  void reset();
+
+  BEGIN_MSG_MAP_EX(CMpvOscPreferences)
+  MSG_WM_INITDIALOG(OnInitDialog);
+  MSG_WM_HSCROLL(OnScroll);
+  COMMAND_HANDLER_EX(IDC_CHECK_OSC, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_OSC_SCALEWITHVIDEO, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_OSC_LAYOUT, CBN_SELCHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_COMBO_OSC_SEEKBARSTYLE, CBN_SELCHANGE, OnEditChange);
+  END_MSG_MAP()
+
+ private:
+  BOOL OnInitDialog(CWindow, LPARAM);
+  void OnEditChange(UINT, int, CWindow);
+  void OnScroll(UINT, int, CWindow);
+  bool HasChanged();
+  void OnChanged();
+  bool dirty = false;
+
+  void set_controls_enabled();
+
+  const preferences_page_callback::ptr m_callback;
+
+  HFONT sep_font = NULL;
+};
+
+BOOL CMpvOscPreferences::OnInitDialog(CWindow, LPARAM) {
+  UINT header_size = pref_page_header_font_size;
+
+  HDC hdc = GetDC();
+  if (hdc != NULL) {
+    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
+    header_size = (header_size * dpi) / 72;
+  }
+  sep_font =
+      CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+                 CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
+
+  ((CStatic)GetDlgItem(IDC_STATIC_SECTION2)).SetFont(sep_font);
+
+  CheckDlgButton(IDC_CHECK_OSC, cfg_osc);
+  CheckDlgButton(IDC_CHECK_OSC_SCALEWITHVIDEO, cfg_osc_scalewithvideo);
+
+  CComboBox combo = (CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT);
+  combo.AddString(L"Bottom bar");
+  combo.AddString(L"Top bar");
+  combo.AddString(L"Box");
+  combo.AddString(L"Slim box");
+  combo.SetCurSel(cfg_osc_layout);
+
+  combo = (CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE);
+  combo.AddString(L"Bar");
+  combo.AddString(L"Diamond");
+  combo.AddString(L"Knob");
+  combo.SetCurSel(cfg_osc_seekbarstyle);
+
+  CTrackBarCtrl slider =
+      (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY);
+  slider.SetRangeMin(0);
+  slider.SetRangeMax(100);
+  slider.SetPos(cfg_osc_transparency);
+
+  slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_WINDOW);
+  slider.SetRangeMin(0);
+  slider.SetRangeMax(300);
+  slider.SetPos(cfg_osc_scalewindowed);
+
+  slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_FULLSCREEN);
+  slider.SetRangeMin(0);
+  slider.SetRangeMax(300);
+  slider.SetPos(cfg_osc_scalefullscreen);
+
+  slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT);
+  slider.SetRangeMin(0);
+  slider.SetRangeMax(5000);
+  slider.SetPos(cfg_osc_timeout);
+
+  slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_FADE);
+  slider.SetRangeMin(0);
+  slider.SetRangeMax(1000);
+  slider.SetPos(cfg_osc_fadeduration);
+
+  slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_DEADZONE);
+  slider.SetRangeMin(0);
+  slider.SetRangeMax(100);
+  slider.SetPos(cfg_osc_deadzone);
+
+  set_controls_enabled();
+
+  dirty = false;
+
+  return FALSE;
+}
+
+void CMpvOscPreferences::OnEditChange(UINT, int, CWindow) {
+  dirty = true;
+  OnChanged();
+}
+
+void CMpvOscPreferences::OnScroll(UINT, int, CWindow) {
+  dirty = true;
+  m_callback->on_state_changed();
+}
+
+t_uint32 CMpvOscPreferences::get_state() {
+  t_uint32 state = preferences_state::resettable;
+  if (HasChanged()) state |= preferences_state::changed;
+  return state;
+}
+
+void CMpvOscPreferences::reset() {
+  CheckDlgButton(IDC_CHECK_OSC, true);
+  CheckDlgButton(IDC_CHECK_OSC_SCALEWITHVIDEO, true);
+
+  ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT)).SetCurSel(0);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE)).SetCurSel(0);
+
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_DEADZONE)).SetPos(50);
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_FADE)).SetPos(200);
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT)).SetPos(500);
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_WINDOW)).SetPos(100);
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_FULLSCREEN)).SetPos(100);
+  ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY)).SetPos(30);
+
+  dirty = true;
+  OnChanged();
+}
+
+void CMpvOscPreferences::apply() {
+  cfg_osc = IsDlgButtonChecked(IDC_CHECK_OSC);
+
+  cfg_osc_scalewithvideo = IsDlgButtonChecked(IDC_CHECK_OSC_SCALEWITHVIDEO);
+
+  cfg_osc_seekbarstyle =
+      ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE)).GetCurSel();
+  cfg_osc_layout = ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT)).GetCurSel();
+
+  cfg_osc_transparency =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY)).GetPos();
+  cfg_osc_fadeduration =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_FADE)).GetPos();
+  cfg_osc_deadzone =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_DEADZONE)).GetPos();
+  cfg_osc_scalefullscreen =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_FULLSCREEN)).GetPos();
+  cfg_osc_scalewindowed =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_WINDOW)).GetPos();
+  cfg_osc_timeout =
+      ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT)).GetPos();
+
+  mpv_player::restart();
+  dirty = false;
+  OnChanged();
+}
+
+bool CMpvOscPreferences::HasChanged() { return dirty; }
+
+void CMpvOscPreferences::set_controls_enabled() {
+  bool osc = IsDlgButtonChecked(IDC_CHECK_OSC);
+
+  ((CComboBox)uGetDlgItem(IDC_CHECK_OSC_SCALEWITHVIDEO)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_DEADZONE)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_SCALE_WINDOW)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_SCALE_FULLSCREEN)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_FADE)).EnableWindow(osc);
+  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY)).EnableWindow(osc);
+}
+
+void CMpvOscPreferences::OnChanged() {
   m_callback->on_state_changed();
   set_controls_enabled();
 }
@@ -583,8 +870,9 @@ static preferences_branch_factory mpv_branch(guid_mpv_branch,
 class preferences_page_mpv_player_impl
     : public preferences_page_impl<CMpvPlayerPreferences> {
  public:
-  const char* get_name() { return "Player"; }
-  GUID get_guid() {
+  double get_sort_priority() override { return 1; }
+  const char* get_name() override { return "Player"; }
+  GUID get_guid() override {
     static const GUID guid = {0x11c90957,
                               0xf691,
                               0x4c23,
@@ -592,7 +880,7 @@ class preferences_page_mpv_player_impl
 
     return guid;
   }
-  GUID get_parent_guid() { return guid_mpv_branch; }
+  GUID get_parent_guid() override { return guid_mpv_branch; }
 };
 
 static preferences_page_factory_t<preferences_page_mpv_player_impl>
@@ -601,8 +889,9 @@ static preferences_page_factory_t<preferences_page_mpv_player_impl>
 class preferences_page_mpv_thumbnails_impl
     : public preferences_page_impl<CMpvThumbnailPreferences> {
  public:
-  const char* get_name() { return "Thumbnails"; }
-  GUID get_guid() {
+  double get_sort_priority() override { return 3; }
+  const char* get_name() override { return "Thumbnails"; }
+  GUID get_guid() override {
     static const GUID guid = {0xa99227a2,
                               0x7fe8,
                               0x4ed0,
@@ -610,9 +899,28 @@ class preferences_page_mpv_thumbnails_impl
 
     return guid;
   }
-  GUID get_parent_guid() { return guid_mpv_branch; }
+  GUID get_parent_guid() override { return guid_mpv_branch; }
 };
 
 static preferences_page_factory_t<preferences_page_mpv_thumbnails_impl>
     g_preferences_page_mpv_thumbnails_impl_factory;
+
+class preferences_page_mpv_osc_impl
+    : public preferences_page_impl<CMpvOscPreferences> {
+ public:
+  double get_sort_priority() override { return 2; }
+  const char* get_name() override { return "On-screen control"; }
+  GUID get_guid() override {
+    static const GUID guid = {0x4607e664,
+                              0x1aa9,
+                              0x48b1,
+                              {0xa7, 0x64, 0x2e, 0xaa, 0xab, 0xe1, 0xfb, 0x86}};
+
+    return guid;
+  }
+  GUID get_parent_guid() override { return guid_mpv_branch; }
+};
+
+static preferences_page_factory_t<preferences_page_mpv_osc_impl>
+    g_preferences_page_mpv_osc_impl_factory;
 }  // namespace mpv

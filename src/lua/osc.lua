@@ -44,16 +44,9 @@ local user_opts = {
     deadzonesize = 0.5,         -- size of deadzone
     minmousemove = 0,           -- minimum amount of pixels the mouse has to
                                 -- move between ticks to make the OSC show up
-    iamaprogrammer = false,     -- use native mpv values and disable OSC
-                                -- internal track list management (and some
-                                -- functions that depend on it)
     layout = "bottombar",
     seekbarstyle = "diamond",       -- bar, diamond or knob
     seekbarhandlesize = 0.6,    -- size ratio of the diamond and knob handle
-    seekrangestyle = "inverted",-- bar, line, slider, inverted or none
-    seekrangeseparate = true,   -- wether the seekranges overlay on the bar-style seekbar
-    seekrangealpha = 200,       -- transparency of seekranges
-    seekbarkeyframes = true,    -- use keyframes when dragging the seekbar
     tooltipborder = 1,          -- border of tooltip in bottom/topbar
     timetotal = false,          -- display total time instead of remaining time?
     timems = false,             -- display timecodes with milliseconds?
@@ -645,8 +638,6 @@ function render_elements(master_ass)
             local pos = element.slider.posF()
             local foV = slider_lo.border + slider_lo.gap
             local innerH = elem_geo.h - (2 * foV)
-            local seekRanges = element.slider.seekRangesF()
-            local seekRangeLineHeight = innerH / 5
 
             if slider_lo.stype ~= "bar" then
                 foH = elem_geo.h / 2
@@ -664,25 +655,7 @@ function render_elements(master_ass)
                                      r, slider_lo.stype == "diamond")
                 else
                     local h = 0
-                    if seekRanges and user_opts.seekrangeseparate and slider_lo.rtype ~= "inverted" then
-                        h = seekRangeLineHeight
-                    end
                     elem_ass:rect_cw(foH, foV, xp, elem_geo.h - foV - h)
-
-                    if seekRanges and not user_opts.seekrangeseparate and slider_lo.rtype ~= "inverted" then
-                        -- Punch holes for the seekRanges to be drawn later
-                        for _,range in pairs(seekRanges) do
-                            if range["start"] < pos then
-                                local pstart = get_slider_ele_pos_for(element, range["start"])
-                                local pend = xp
-
-                                if pos > range["end"] then
-                                    pend = get_slider_ele_pos_for(element, range["end"])
-                                end
-                                elem_ass:rect_ccw(pstart, elem_geo.h - foV - seekRangeLineHeight, pend, elem_geo.h - foV)
-                            end
-                        end
-                    end
                 end
 
                 if slider_lo.rtype == "slider" then
@@ -692,59 +665,6 @@ function render_elements(master_ass)
                     ass_draw_rr_h_cw(elem_ass, xp, foH - innerH / 15,
                                      elem_geo.w - foH + innerH / 15, foH + innerH / 15,
                                      0, slider_lo.stype == "diamond", innerH / 15)
-                    for _,range in pairs(seekRanges or {}) do
-                        local pstart = get_slider_ele_pos_for(element, range["start"])
-                        local pend = get_slider_ele_pos_for(element, range["end"])
-                        ass_draw_rr_h_ccw(elem_ass, pstart, foH - innerH / 21,
-                                          pend, foH + innerH / 21,
-                                          innerH / 21, slider_lo.stype == "diamond")
-                    end
-                end
-            end
-
-            if seekRanges then
-                if slider_lo.rtype ~= "inverted" then
-                    elem_ass:draw_stop()
-                    elem_ass:merge(element.style_ass)
-                    ass_append_alpha(elem_ass, element.layout.alpha, user_opts.seekrangealpha)
-                    elem_ass:merge(element.static_ass)
-                end
-
-                for _,range in pairs(seekRanges) do
-                    local pstart = get_slider_ele_pos_for(element, range["start"])
-                    local pend = get_slider_ele_pos_for(element, range["end"])
-
-                    if slider_lo.rtype == "slider" then
-                        ass_draw_rr_h_cw(elem_ass, pstart, foH - innerH / 21,
-                                         pend, foH + innerH / 21,
-                                         innerH / 21, slider_lo.stype == "diamond")
-                    elseif slider_lo.rtype == "line" then
-                        if slider_lo.stype == "bar" then
-                            elem_ass:rect_cw(pstart, elem_geo.h - foV - seekRangeLineHeight, pend, elem_geo.h - foV)
-                        else
-                            ass_draw_rr_h_cw(elem_ass, pstart - innerH / 8, foH - innerH / 8,
-                                             pend + innerH / 8, foH + innerH / 8,
-                                             innerH / 8, slider_lo.stype == "diamond")
-                        end
-                    elseif slider_lo.rtype == "bar" then
-                        if slider_lo.stype ~= "bar" then
-                            ass_draw_rr_h_cw(elem_ass, pstart - innerH / 2, foV,
-                                             pend + innerH / 2, foV + innerH,
-                                             innerH / 2, slider_lo.stype == "diamond")
-                        elseif range["end"] >= (pos or 0) then
-                            elem_ass:rect_cw(pstart, foV, pend, elem_geo.h - foV)
-                        else
-                            elem_ass:rect_cw(pstart, elem_geo.h - foV - seekRangeLineHeight, pend, elem_geo.h - foV)
-                        end
-                    elseif slider_lo.rtype == "inverted" then
-                        if slider_lo.stype ~= "bar" then
-                            ass_draw_rr_h_ccw(elem_ass, pstart, (elem_geo.h / 2) - 1, pend,
-                                              (elem_geo.h / 2) + 1,
-                                              1, slider_lo.stype == "diamond")
-                        else
-                            elem_ass:rect_ccw(pstart, (elem_geo.h / 2) - 1, pend, (elem_geo.h / 2) + 1)
-                        end
-                    end
                 end
             end
 
@@ -1101,7 +1021,6 @@ layouts["box"] = function ()
     lo.style = osc_styles.timecodes
     lo.slider.tooltip_style = osc_styles.vidtitle
     lo.slider.stype = user_opts["seekbarstyle"]
-    lo.slider.rtype = user_opts["seekrangestyle"]
 
     --
     -- Timecodes + Cache
@@ -1202,7 +1121,6 @@ layouts["slimbox"] = function ()
     lo.slider.gap = 1.5
     lo.slider.tooltip_style = styles.tooltip
     lo.slider.stype = user_opts["seekbarstyle"]
-    lo.slider.rtype = user_opts["seekrangestyle"]
     lo.slider.adjust_tooltip = false
 
     --
@@ -1402,7 +1320,6 @@ function bar_layout(direction)
     lo.slider.tooltip_style = osc_styles.timePosBar
     lo.slider.tooltip_an = 5
     lo.slider.stype = user_opts["seekbarstyle"]
-    lo.slider.rtype = user_opts["seekrangestyle"]
 
     if direction < 0 then
         osc_param.video_margins.b = osc_geo.h / osc_param.playresy
@@ -1432,22 +1349,6 @@ function validate_user_opts()
         msg.warn("Invalid setting \"" .. user_opts.seekbarstyle
             .. "\" for seekbarstyle")
         user_opts.seekbarstyle = "bar"
-    end
-
-    if user_opts.seekrangestyle ~= "bar" and
-       user_opts.seekrangestyle ~= "line" and
-       user_opts.seekrangestyle ~= "slider" and
-       user_opts.seekrangestyle ~= "inverted" and
-       user_opts.seekrangestyle ~= "none" then
-        msg.warn("Invalid setting \"" .. user_opts.seekrangestyle
-            .. "\" for seekrangestyle")
-        user_opts.seekrangestyle = "inverted"
-    end
-
-    if user_opts.seekrangestyle == "slider" and
-       user_opts.seekbarstyle == "bar" then
-        msg.warn("Using \"slider\" seekrangestyle together with \"bar\" seekbarstyle is not supported")
-        user_opts.seekrangestyle = "inverted"
     end
 
 end
@@ -1595,9 +1496,6 @@ function osc_init()
         else
             return ""
         end
-    end
-    ne.slider.seekRangesF = function()
-        return nil
     end
     ne.eventresponder["mbtn_left_down"] = --exact seeks on single clicks
         function (element)
@@ -2106,10 +2004,7 @@ function tick()
     if (not state.enabled) then return end
 
     if (state.idle or mp.get_property("path") == "artwork://") then
-set_osd(osc_param.playresy, osc_param.playresy, "")
-
-
-
+		set_osd(osc_param.playresy, osc_param.playresy, "")
     elseif (state.fullscreen and user_opts.showfullscreen)
         or (not state.fullscreen and user_opts.showwindowed) then
 
@@ -2166,14 +2061,14 @@ end)
 mp.register_script_message("osc-setfinish", function(dur)
     state.finish = tonumber(dur)
 end)
-mp.register_script_message("osc-setvolume", function(dur)
-    state.volume = tonumber(dur)
+mp.register_script_message("osc-setvolume", function(vol)
+    state.volume = tonumber(vol)
 end)
-mp.register_script_message("osc-settitle", function(dur)
-    state.title = dur
+mp.register_script_message("osc-settitle", function(title)
+    state.title = title
 end)
-mp.register_script_message("osc-setenabled", function(dur)
-    if (dur == "1") then enable_osc(true) else enable_osc(false) end
+mp.register_script_message("osc-setenabled", function(enabled)
+    if (enabled == "1") then enable_osc(true) else enable_osc(false) end
 end)
 
 mp.observe_property("fullscreen", "bool",

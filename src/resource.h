@@ -6,6 +6,7 @@
 #define IDD_THUMBCHOOSER                104
 #define IDD_MPV_PREFS                   107
 #define IDD_MPV_PREFS1                  108
+#define IDD_MPV_PREFS2                  109
 #define IDC_BUTTON_BG                   1001
 #define IDC_EDIT_POPUP                  1002
 #define IDC_CHECK_FSBG                  1003
@@ -33,6 +34,19 @@
 #define IDC_CHECK_ARTWORK               1057
 #define IDC_CHECK1                      1058
 #define IDC_CHECK_OSC                   1058
+#define IDC_STATIC_SECTION1             1060
+#define IDC_STATIC_SECTION2             1061
+#define IDC_STATIC_SECTION3             1062
+#define IDC_STATIC_SECTION4             1063
+#define IDC_COMBO_OSC_LAYOUT            1065
+#define IDC_COMBO_OSC_SEEKBARSTYLE      1066
+#define IDC_SLIDER_OSC_DEADZONE         1067
+#define IDC_CHECK_OSC_SCALEWITHVIDEO    1068
+#define IDC_SLIDER_OSC_SCALE_WINDOW     1069
+#define IDC_SLIDER_OSC_SCALE_FULLSCREEN 1070
+#define IDC_SLIDER_OSC_TIMEOUT          1071
+#define IDC_SLIDER_OSC_TRANSPARENCY     1072
+#define IDC_SLIDER_OSC_FADE             1073
 
 // Next default values for new objects
 // 
@@ -40,7 +54,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        106
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1060
+#define _APS_NEXT_CONTROL_VALUE         1077
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

@@ -30,6 +30,15 @@ void mpv_player::on_containers_change() {
   if (g_player) g_player->update();
 }
 
+void mpv_player::restart() {
+  if (g_player) {
+    auto main = mpv_container::get_main_container();
+    g_player->DestroyWindow();
+    g_player = new CWindowAutoLifetime<mpv_player>(main->container_wnd());
+    main->on_gain_player();
+  }
+}
+
 static const int time_pos_userdata = 28903278;
 static const int seeking_userdata = 982628764;
 static const int path_userdata = 982628764;
@@ -38,8 +47,11 @@ static const int idle_active_userdata = 12792384;
 static metadb_handle_ptr current_selection;
 
 extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
-    cfg_artwork, cfg_osc;
-extern cfg_uint cfg_bg_color, cfg_artwork_type;
+    cfg_artwork, cfg_osc, cfg_osc_scalewithvideo;
+extern cfg_uint cfg_bg_color, cfg_artwork_type, cfg_osc_layout,
+    cfg_osc_seekbarstyle, cfg_osc_transparency, cfg_osc_fadeduration,
+    cfg_osc_deadzone, cfg_osc_scalewindowed, cfg_osc_scalefullscreen,
+    cfg_osc_timeout;
 extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile;
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
     cfg_hard_sync_interval, cfg_seek_seconds;
@@ -423,6 +435,8 @@ void mpv_player::update() {
                              NULL};
   command(osc_cmd_1);
 
+  set_property_string("fullscreen", container->is_fullscreen() ? "yes" : "no");
+
   ResizeClient(container->cx,
                container->cy);  // wine is less buggy if we resize first
 
@@ -554,6 +568,48 @@ bool mpv_player::mpv_init() {
     osc_path.replace_char('\\', '/', 0);
     set_option_string("scripts", osc_path.c_str());
 
+    // apply OSC settings
+    std::stringstream opts;
+    opts << "osc-layout=";
+    switch (cfg_osc_layout) {
+      case 0:
+        opts << "bottombar";
+        break;
+      case 1:
+        opts << "topbar";
+        break;
+      case 2:
+        opts << "box";
+        break;
+      case 3:
+        opts << "slimbox";
+        break;
+    }
+
+    opts << ",osc-seekbarstyle=";
+    switch (cfg_osc_seekbarstyle) {
+      case 0:
+        opts << "bar";
+        break;
+      case 1:
+        opts << "diamond";
+        break;
+      case 2:
+        opts << "knob";
+        break;
+    }
+
+    opts << ",osc-boxalpha=" << ((255 * cfg_osc_transparency) / 100);
+    opts << ",osc-hidetimeout=" << cfg_osc_timeout;
+    opts << ",osc-fadeduration=" << cfg_osc_fadeduration;
+    opts << ",osc-deadzonesize=" << (0.01 * cfg_osc_deadzone);
+    opts << ",osc-scalewindowed=" << (0.01 * cfg_osc_scalewindowed);
+    opts << ",osc-scalefullscreen=" << (0.01 * cfg_osc_scalefullscreen);
+    opts << ",osc-vidscale=" << (cfg_osc_scalewithvideo ? "yes" : "no");
+
+    std::string opts_str = opts.str();
+    set_option_string("script-opts", opts_str.c_str());
+
     libmpv::get()->stream_cb_add_ro(mpv_handle.get(), "artwork", this,
                                     artwork_protocol_open);
     set_option_string("image-display-duration", "inf");
@@ -677,6 +733,7 @@ bool mpv_player::mpv_init() {
         }
       });
 
+      // load profiles list
       char* profiles_str =
           libmpv::get()->get_property_string(mpv_handle.get(), "profile-list");
 

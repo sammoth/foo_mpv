@@ -22,7 +22,7 @@ void get_popup_title(pfc::string8& s);
 class mpv_player : play_callback_impl_base,
                    ui_selection_callback_impl_base,
                    public CWindowImpl<mpv_player> {
-  // player
+  // player instance handle
   std::unique_ptr<libmpv::mpv_handle,
                   decltype(libmpv::get()->terminate_destroy)>
       mpv_handle;
@@ -32,6 +32,7 @@ class mpv_player : play_callback_impl_base,
   // start mpv within the window
   bool mpv_init();
   std::mutex init_mutex;
+  void apply_settings();
 
   // thread for dispatching libmpv events
   std::thread event_listener;
@@ -147,6 +148,8 @@ class mpv_player : play_callback_impl_base,
   static void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
   static void handle_menu_cmd(int cmd);
   static void on_new_artwork();
+
+  static void restart();
 
   // window
   DECLARE_WND_CLASS_EX(TEXT("{67AAC9BC-4C35-481D-A3EB-2E2DB9727E0B}"),

@@ -3,6 +3,7 @@
 
 #include <thread>
 
+#include "mpv_player.h"
 #include "thumbnailer.h"
 
 void RunMpvPopupWindow();
@@ -16,6 +17,12 @@ static const GUID guid_mpv_popup = {
     0xeb77,
     0x42b5,
     {0x93, 0x85, 0x2c, 0x95, 0xd3, 0xe6, 0x71, 0xba}};
+static const GUID guid_mpv_restart = {
+    0xf81f68d8,
+    0xdbcf,
+    0x4a52,
+    {0x9a, 0x7b, 0xae, 0x5e, 0x87, 0x26, 0x77, 0x3a}};
+
 static const GUID guid_thumbs_clear = {
     0xcdcb9b1c,
     0xb2b7,
@@ -37,12 +44,14 @@ static mainmenu_group_popup_factory g_mainmenu_group(
     mainmenu_commands::sort_priority_base, "Video thumbnails");
 
 class mainmenu_mpv : public mainmenu_commands {
-  enum { cmd_popup = 0, cmd_total };
+  enum { cmd_popup = 0, cmd_restart = 1, cmd_total };
   t_uint32 get_command_count() override { return cmd_total; }
   GUID get_command(t_uint32 p_index) override {
     switch (p_index) {
       case cmd_popup:
         return guid_mpv_popup;
+      case cmd_restart:
+        return guid_mpv_restart;
       default:
         uBugCheck();  // should never happen unless somebody called us with
                       // invalid parameters - bail
@@ -52,6 +61,9 @@ class mainmenu_mpv : public mainmenu_commands {
     switch (p_index) {
       case cmd_popup:
         p_out = "mpv";
+        break;
+      case cmd_restart:
+        p_out = "Restart mpv";
         break;
       default:
         uBugCheck();  // should never happen unless somebody called us with
@@ -63,9 +75,29 @@ class mainmenu_mpv : public mainmenu_commands {
       case cmd_popup:
         p_out = "Open popup video window";
         return true;
+      case cmd_restart:
+        p_out =
+            "Restarts any running mpv player instance and reloads all "
+            "configuration";
+        return true;
       default:
         return false;
     }
+  }
+  bool get_display(t_uint32 p_index, pfc::string_base& p_text,
+                   t_uint32& p_flags) override {
+    switch (p_index) {
+      case cmd_popup:
+        p_flags = 0;
+        break;
+      case cmd_restart:
+        p_flags = flag_defaulthidden;
+        break;
+      default:
+        return false;
+    }
+    get_name(p_index, p_text);
+    return true;
   }
   GUID get_parent() override { return mainmenu_groups::view; }
   void execute(t_uint32 p_index,
@@ -73,6 +105,9 @@ class mainmenu_mpv : public mainmenu_commands {
     switch (p_index) {
       case cmd_popup:
         RunMpvPopupWindow();
+        break;
+      case cmd_restart:
+        mpv::mpv_player::restart();
         break;
       default:
         uBugCheck();  // should never happen unless somebody called us with
