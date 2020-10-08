@@ -70,6 +70,7 @@
       <ConformanceMode>true</ConformanceMode>
       <AdditionalOptions>/d2notypeopt %(AdditionalOptions)</AdditionalOptions>
       <PreprocessorDefinitions>_WINDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DisableSpecificWarnings>26110</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -127,6 +128,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="artwork_protocol.cpp" />
+    <ClCompile Include="menu_utils.cpp" />
     <ClCompile Include="mpv_fullscreen.cpp" />
     <ClCompile Include="thumbnail_chooser.cpp" />
     <ClCompile Include="thumbnailer.cpp" />
@@ -176,6 +178,7 @@
   <ItemGroup>
     <ClInclude Include="artwork_protocol.h" />
     <ClInclude Include="json.hpp" />
+    <ClInclude Include="menu_utils.h" />
     <ClInclude Include="thumbnailer.h" />
     <ClInclude Include="preferences.h" />
     <ClInclude Include="libmpv.h" />

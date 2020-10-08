@@ -18,6 +18,7 @@ static long request = 0;
 
 extern cfg_uint cfg_artwork_type;
 extern cfg_bool cfg_artwork;
+extern advconfig_checkbox_factory cfg_logging;
 
 abort_callback_impl abort_loading;
 
@@ -141,7 +142,13 @@ static initquit_factory_t<artwork_register> g_np_register;
 
 static int64_t artworkreader_size(void* cookie) {
   std::lock_guard<std::mutex> lock(mutex);
-  if ((long)cookie != request || art_data.is_empty()) {
+  if ((long)cookie != request) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Stale artwork reference";
+    }
+    return libmpv::MPV_ERROR_GENERIC;
+  }
+  if (art_data.is_empty()) {
     return libmpv::MPV_ERROR_GENERIC;
   }
   return art_data->get_size();
@@ -149,8 +156,14 @@ static int64_t artworkreader_size(void* cookie) {
 
 static int64_t artworkreader_read(void* cookie, char* buf, uint64_t nbytes) {
   std::lock_guard<std::mutex> lock(mutex);
-  if ((long)cookie != request || art_data.is_empty()) {
-    return -1;
+  if ((long)cookie != request) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Stale artwork reference";
+    }
+    return libmpv::MPV_ERROR_GENERIC;
+  }
+  if (art_data.is_empty()) {
+    return libmpv::MPV_ERROR_GENERIC;
   }
   t_size to_read =
       (t_size)min((uint64_t)art_data->get_size() - (uint64_t)cursor, nbytes);
@@ -161,7 +174,13 @@ static int64_t artworkreader_read(void* cookie, char* buf, uint64_t nbytes) {
 
 static int64_t artworkreader_seek(void* cookie, int64_t offset) {
   std::lock_guard<std::mutex> lock(mutex);
-  if ((long)cookie != request || art_data.is_empty()) {
+  if ((long)cookie != request) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Stale artwork reference";
+    }
+    return libmpv::MPV_ERROR_GENERIC;
+  }
+  if (art_data.is_empty()) {
     return libmpv::MPV_ERROR_GENERIC;
   }
   if (offset < 0 || offset > art_data->get_size()) {
@@ -178,6 +197,9 @@ int artwork_protocol_open(void* user_data, char* uri,
   {
     std::lock_guard<std::mutex> lock(mutex);
     if (art_data.is_empty()) {
+      if (cfg_logging) {
+        FB2K_console_formatter() << "mpv: Can't open artwork - missing";
+      }
       return libmpv::MPV_ERROR_NOTHING_TO_PLAY;
     }
     info->cookie = (void*)request;

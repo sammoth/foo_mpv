@@ -14,8 +14,8 @@ static std::vector<mpv_container*> g_containers;
 static mpv_container* pinned_container;
 
 void mpv_container::invalidate_all_containers() {
-  for (auto it = g_containers.begin(); it != g_containers.end(); ++it) {
-    (**it).invalidate();
+  for (auto& c : g_containers) {
+    c->invalidate();
   }
 }
 
@@ -24,7 +24,6 @@ bool mpv_container::owns_player() {
 }
 
 static bool container_compare(mpv_container* a, mpv_container* b) {
-  // true if a goes before b
   if (a->is_fullscreen()) return true;
   if (b->is_fullscreen()) return false;
   if (a->is_pinned()) return true;

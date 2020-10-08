@@ -78,9 +78,9 @@ STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x0
 BEGIN
     CONTROL         "Enable thumbnails",IDC_CHECK_THUMBNAILS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,30,155,10
-    LTEXT           "Maximum cache size:",-1,7,196,137,8
-    LTEXT           "Thumbnail size:",-1,188,78,78,8
-    LTEXT           "Thumbnail format:",-1,7,229,136,10
+    LTEXT           "Maximum cache size:",IDC_STATIC,7,196,137,8
+    LTEXT           "Thumbnail size:",IDC_STATIC,188,78,78,8
+    LTEXT           "Thumbnail format:",IDC_STATIC,7,229,136,10
     COMBOBOX        IDC_COMBO_THUMBSIZE,188,90,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     COMBOBOX        IDC_COMBO_CACHESIZE,7,207,106,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Use first item in group",IDC_RADIO_FIRSTINGROUP,"Button",BS_AUTORADIOBUTTON | WS_GROUP,7,81,165,11
@@ -89,16 +89,17 @@ BEGIN
     CONTROL         "Attempt to choose interesting video frame (slow)",IDC_CHECK_HISTOGRAM,
                     "Button",BS_AUTOCHECKBOX | BS_TOP | BS_MULTILINE | WS_TABSTOP,7,134,131,20
     CONTROL         "",IDC_SLIDER_SEEK,"msctls_trackbar32",TBS_BOTH | TBS_NOTICKS | TBS_TOOLTIPS | WS_TABSTOP,151,148,139,15
-    LTEXT           "Cover type to provide:",-1,188,23,86,8
+    LTEXT           "Cover type to provide:",IDC_STATIC,188,23,86,8
     COMBOBOX        IDC_COMBO_COVERTYPE,188,35,102,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Use any custom thumbnail from group",IDC_CHECK_GROUPOVERRIDE,
                     "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,112,163,10
-    LTEXT           "Thumbnail seek position:",-1,151,134,137,8
+    LTEXT           "Thumbnail seek position:",IDC_STATIC,151,134,137,8
     CONTROL         "Only process files matching:",IDC_CHECK_FILTER,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,45,172,10
     EDITTEXT        IDC_EDIT_PATTERN,7,58,313,13,ES_AUTOHSCROLL
     COMBOBOX        IDC_COMBO_FORMAT,7,240,106,13,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Thumbnailer",IDC_STATIC_SECTION4,7,8,313,16
     LTEXT           "Cache",IDC_STATIC_SECTION3,7,174,313,17
+    LTEXT           "Thumbnails are cached in the file thumbcache.db in the foobar2000 profile directory.",IDC_STATIC,141,198,135,30
 END
 
 IDD_MPV_PREFS2 DIALOGEX 0, 0, 446, 420
@@ -143,8 +144,9 @@ STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x0
 BEGIN
     LTEXT           "input.conf",IDC_STATIC_SECTION11,7,8,248,16
-    EDITTEXT        IDC_EDIT2,7,26,313,247,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+    EDITTEXT        IDC_EDIT2,7,43,313,230,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
     PUSHBUTTON      "?",IDC_BUTTON_INPUTHELP,305,7,15,14
+    PUSHBUTTON      "Insert command",IDC_BUTTON_INSERT,255,26,65,14
 END
 
 

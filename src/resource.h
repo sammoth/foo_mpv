@@ -59,9 +59,10 @@
 #define IDC_CHECK_DEINT                 1083
 #define IDC_STATIC_SECTION5             1084
 #define IDC_LIST_VERSIONS               1085
-#define IDC_BUTTON1                     1086
 #define IDC_BUTTON_INPUTHELP            1086
 #define IDC_BUTTON_CONFHELP             1087
+#define IDC_BUTTON1                     1088
+#define IDC_BUTTON_INSERT               1088
 
 // Next default values for new objects
 // 
@@ -69,7 +70,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        106
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1088
+#define _APS_NEXT_CONTROL_VALUE         1089
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

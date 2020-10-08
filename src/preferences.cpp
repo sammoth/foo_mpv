@@ -1,9 +1,12 @@
 #include "stdafx.h"
 // PCH ^
 
+#include <list>
+
 #include "../helpers/atl-misc.h"
 #include "artwork_protocol.h"
 #include "foobar2000-sdk/libPPUI/Controls.h"
+#include "menu_utils.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
 #include "preferences.h"
@@ -798,8 +801,6 @@ class CMpvOscPreferences : public CDialogImpl<CMpvOscPreferences>,
   void OnChanged();
   bool dirty = false;
 
-  void set_controls_enabled();
-
   const preferences_page_callback::ptr m_callback;
 
   HFONT sep_font = NULL;
@@ -866,8 +867,6 @@ BOOL CMpvOscPreferences::OnInitDialog(CWindow, LPARAM) {
   slider.SetRangeMin(0);
   slider.SetRangeMax(100);
   slider.SetPos(cfg_osc_deadzone);
-
-  set_controls_enabled();
 
   dirty = false;
 
@@ -937,24 +936,7 @@ void CMpvOscPreferences::apply() {
 
 bool CMpvOscPreferences::HasChanged() { return dirty; }
 
-void CMpvOscPreferences::set_controls_enabled() {
-  bool osc = IsDlgButtonChecked(IDC_CHECK_OSC);
-
-  ((CComboBox)uGetDlgItem(IDC_CHECK_OSC_SCALEWITHVIDEO)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_DEADZONE)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_SCALE_WINDOW)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_SCALE_FULLSCREEN)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_FADE)).EnableWindow(osc);
-  ((CComboBox)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY)).EnableWindow(osc);
-}
-
-void CMpvOscPreferences::OnChanged() {
-  m_callback->on_state_changed();
-  set_controls_enabled();
-}
+void CMpvOscPreferences::OnChanged() { m_callback->on_state_changed(); }
 
 class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
                             public preferences_page_instance {
@@ -992,7 +974,7 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
 
 BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
-  UINT text_size = 10;
+  UINT text_size = 11;
 
   HDC hdc = GetDC();
   if (hdc != NULL) {
@@ -1107,21 +1089,38 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   MSG_WM_INITDIALOG(OnInitDialog);
   COMMAND_HANDLER_EX(IDC_EDIT2, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_BUTTON_INPUTHELP, BN_CLICKED, OnHelp);
+  COMMAND_HANDLER_EX(IDC_BUTTON_INSERT, BN_CLICKED, OnInsert);
   END_MSG_MAP()
 
  private:
   BOOL OnInitDialog(CWindow, LPARAM);
   void OnEditChange(UINT, int, CWindow);
   void OnHelp(UINT, int, CWindow);
+  void OnInsert(UINT, int, CWindow);
   bool HasChanged();
   void OnChanged();
   bool dirty = false;
+
+  std::list<pfc::string8> context_commands;
 
   const preferences_page_callback::ptr m_callback;
 
   HFONT edit_font = NULL;
   HFONT sep_font = NULL;
 };
+
+void CMpvInputPreferences::OnInsert(UINT, int, CWindow) {
+  pfc::string8 text;
+
+  for (auto& item : menu_utils::get_contextmenu_items()) {
+    text << item.name << "\n";
+  }
+  for (auto& item : menu_utils::get_mainmenu_items()) {
+    text << item.name << "\n";
+  }
+
+  popup_message::g_show(text, "commands");
+}
 
 void CMpvInputPreferences::OnHelp(UINT, int, CWindow) {
   popup_message::g_show(
@@ -1158,7 +1157,7 @@ context <command>
 menu <command>
 (runs main menu command)
 
-register-titleformat <uid> <title formatting string>
+register-titleformat <unique id> <title formatting string>
 (subscribes to title formatting updates for the playing or displayed track to be received as script-messages)
 
 )ABC",
@@ -1167,7 +1166,7 @@ register-titleformat <uid> <title formatting string>
 
 BOOL CMpvInputPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
-  UINT text_size = 10;
+  UINT text_size = 11;
 
   HDC hdc = GetDC();
   if (hdc != NULL) {

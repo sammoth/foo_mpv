@@ -11,6 +11,7 @@
 #include "../helpers/win32_misc.h"
 #include "artwork_protocol.h"
 #include "json.hpp"
+#include "menu_utils.h"
 #include "mpv_player.h"
 #include "preferences.h"
 #include "resource.h"
@@ -223,14 +224,14 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
       }
 
       menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+    }
 
-      if (g_player->profiles.size() > 0) {
-        for (int i = 0; i < g_player->profiles.size(); i++) {
-          uAppendMenu(menu->m_hMenu, MF_DEFAULT, ID_PROFILES + i,
-                      g_player->profiles[i].c_str());
-        }
-        menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+    if (g_player->profiles.size() > 0) {
+      for (int i = 0; i < g_player->profiles.size(); i++) {
+        uAppendMenu(menu->m_hMenu, MF_DEFAULT, ID_PROFILES + i,
+                    g_player->profiles[i].c_str());
       }
+      menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
     }
   }
 
@@ -373,9 +374,9 @@ void mpv_player::update() {
     new_container->on_gain_player();
   }
 
-  const char* osc_cmd_1[] = {"script-message", "foobar", "osc-enabled-changed",
-                             cfg_osc && container->is_osc_enabled() ? "yes" : "no",
-                             NULL};
+  const char* osc_cmd_1[] = {
+      "script-message", "foobar", "osc-enabled-changed",
+      cfg_osc && container->is_osc_enabled() ? "yes" : "no", NULL};
   command(osc_cmd_1);
 
   set_property_string("fullscreen", container->is_fullscreen() ? "yes" : "no");
@@ -419,8 +420,8 @@ void mpv_player::update_title() {
   pfc::string8 title;
   format_player_title(title, current_display_item);
 
-  const char* osc_cmd_1[] = {"script-message", "foobar", "title-changed", title.c_str(),
-                             NULL};
+  const char* osc_cmd_1[] = {"script-message", "foobar", "title-changed",
+                             title.c_str(), NULL};
   command(osc_cmd_1);
   uSetWindowText(m_hWnd, title);
 }
@@ -592,7 +593,6 @@ bool mpv_player::mpv_init() {
               if (event_message->num_args > 1 &&
                   strcmp(event_message->args[0], "foobar") == 0) {
                 // process 'foobar' script-message
-
                 if (event_message->num_args > 2 &&
                     strcmp(event_message->args[1], "seek") == 0) {
                   const char* time_str = event_message->args[2];
@@ -641,23 +641,54 @@ bool mpv_player::mpv_init() {
                   });
                 } else if (event_message->num_args > 2 &&
                            strcmp(event_message->args[1], "context") == 0) {
-                  const char* menu_cmd = event_message->args[2];
+                  pfc::string8 menu_cmd(event_message->args[2]);
+                  for (unsigned i = 3; i < event_message->num_args; i++) {
+                    menu_cmd << " " << event_message->args[i];
+                  }
                   fb2k::inMainThread([this, menu_cmd]() {
-                    GUID cmd;
-                    if (menu_helpers::find_command_by_name(menu_cmd, cmd)) {
+                    menu_utils::menu_entry entry =
+                        menu_utils::get_contextmenu_item(menu_cmd);
+                    if (entry.guid != pfc::guid_null) {
                       metadb_handle_list list;
                       list.add_item(current_display_item);
-                      menu_helpers::run_command_context(cmd, pfc::guid_null,
-                                                        list);
+                      if (!menu_helpers::run_command_context(
+                              entry.guid, entry.subcommand, list)) {
+                        FB2K_console_formatter()
+                            << "mpv: Error running context command "
+                            << menu_cmd;
+                      }
+                    } else {
+                      FB2K_console_formatter()
+                          << "mpv: Unknown context command " << menu_cmd;
                     }
                   });
                 } else if (event_message->num_args > 2 &&
                            strcmp(event_message->args[1], "menu") == 0) {
-                  const char* menu_cmd = event_message->args[2];
+                  pfc::string8 menu_cmd(event_message->args[2]);
+                  for (unsigned i = 3; i < event_message->num_args; i++) {
+                    menu_cmd << " " << event_message->args[i];
+                  }
                   fb2k::inMainThread([this, menu_cmd]() {
-                    GUID cmd;
-                    if (mainmenu_commands::g_find_by_name(menu_cmd, cmd)) {
-                      standard_commands::run_main(cmd);
+                    menu_utils::menu_entry entry =
+                        menu_utils::get_mainmenu_item(menu_cmd);
+                    if (entry.guid != pfc::guid_null) {
+                      if (entry.subcommand != pfc::guid_null) {
+                        if (!mainmenu_commands::g_execute_dynamic(
+                                entry.guid, entry.subcommand)) {
+                          FB2K_console_formatter()
+                              << "mpv: Error running main menu command "
+                              << menu_cmd;
+                        }
+                      } else {
+                        if (!mainmenu_commands::g_execute(entry.guid)) {
+                          FB2K_console_formatter()
+                              << "mpv: Error running main menu command "
+                              << menu_cmd;
+                        }
+                      }
+                    } else {
+                      FB2K_console_formatter()
+                          << "mpv: Unknown menu command " << menu_cmd;
                     }
                   });
                 } else if (event_message->num_args > 3 &&
@@ -810,7 +841,8 @@ void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
 
 void mpv_player::on_volume_change(float new_vol) {
   std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
-  const char* cmd[] = {"script-message", "foobar", "volume-changed", vol.c_str(), NULL};
+  const char* cmd[] = {"script-message", "foobar", "volume-changed",
+                       vol.c_str(), NULL};
   command(cmd);
 }
 
@@ -948,8 +980,8 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     set_display_item(metadb);
 
     std::string start = std::to_string(time_base);
-    const char* osc_cmd_1[] = {"script-message", "foobar", "start-changed", start.c_str(),
-                               NULL};
+    const char* osc_cmd_1[] = {"script-message", "foobar", "start-changed",
+                               start.c_str(), NULL};
     command(osc_cmd_1);
 
     std::string finish = std::to_string(time_base + metadb->get_length());
@@ -960,8 +992,8 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     fb2k::inMainThread([this]() {
       std::string vol = std::to_string(
           VolumeMap::DBToSlider(playback_control::get()->get_volume()));
-      const char* osc_cmd_3[] = {"script-message", "foobar", "volume-changed", vol.c_str(),
-                                 NULL};
+      const char* osc_cmd_3[] = {"script-message", "foobar", "volume-changed",
+                                 vol.c_str(), NULL};
       command(osc_cmd_3);
     });
 
