@@ -1,0 +1,47 @@
+name: build
+on:
+  push:
+    branches:
+    - master
+
+jobs:
+  Windows:
+    name: build-windows
+    runs-on: windows-latest
+
+    steps:
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Checkout
+      uses: actions/checkout@v1
+      with:
+          submodules: recursive
+
+    - name: Restore from cache and run vcpkg
+      uses: lukka/run-vcpkg@v4
+      with:
+          vcpkgArguments: '@${{ github.workspace }}/vcpkg.txt'
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+          appendedCacheKey: ${{ hashFiles(env.vcpkgResponseFile) }}
+
+    - name: Build Solution (windows)
+      run: |
+          .\vcpkg\vcpkg.exe integrate install
+          $Revision = (git rev-list --count HEAD)
+          (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "99.99.99 alpha ' + $Revision + '"') | Out-File .\src\main.cpp
+          MSBuild.exe /t:Build /p:Configuration=Release .\src\foo_mpv.sln
+          mkdir .\out
+          mkdir .\out\mpv
+          mv .\src\Release\foo_mpv\foo_mpv.dll .\out\foo_mpv.dll
+          mv .\src\Release\foo_mpv\foo_mpv.pdb .\out\foo_mpv.pdb
+          mv .\src\lua\osc.lua .\out\mpv\osc.lua
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: build
+        path: |
+          out/foo_mpv.dll
+          out/foo_mpv.pdb
+          out/mpv/osc.lua
+
