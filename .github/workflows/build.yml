@@ -1,4 +1,4 @@
-name: build
+name: build-ci
 on:
   push:
     branches:
@@ -39,9 +39,18 @@ jobs:
 
     - uses: actions/upload-artifact@v2
       with:
-        name: build
+        name: foo_mpv.dll
         path: |
           out/foo_mpv.dll
-          out/foo_mpv.pdb
-          out/mpv/osc.lua
 
+    - uses: actions/upload-artifact@v2
+      with:
+        name: foo_mpv.pdb
+        path: |
+          out/foo_mpv.pdb
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: osc.lua
+        path: |
+          out/mpv/osc.lua

@@ -1,0 +1,103 @@
+name: release
+on:
+  push:
+    tags:
+    - 'v*'
+
+jobs:
+  create_release:
+    name: build-windows
+    runs-on: windows-latest
+
+    steps:
+    - name: Add msbuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Checkout
+      uses: actions/checkout@v1
+      with:
+          submodules: recursive
+
+    - name: Restore from cache and run vcpkg
+      uses: lukka/run-vcpkg@v4
+      with:
+          vcpkgArguments: '@${{ github.workspace }}/vcpkg.txt'
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+          appendedCacheKey: ${{ hashFiles(env.vcpkgResponseFile) }}
+
+    - name: Build Solution (windows)
+      run: |
+          .\vcpkg\vcpkg.exe integrate install
+          mkdir .\out
+          mkdir .\out\mpv
+          $rss = Invoke-WebRequest -UseBasicParsing -Uri 'https://sourceforge.net/projects/mpv-player-windows/rss?path=/libmpv'
+          $rss -match '<link>[^<]*mpv-dev-i686[^<]*\/download<\/link>'
+          $Matches[0] -replace '</?link>',''
+          $UserAgent = 'Wget/1.0'
+          Invoke-WebRequest -Uri ($Matches[0] -replace '</?link>','') -Outfile .\mpv.7z -UserAgent $UserAgent
+          dir
+          Install-Module 7Zip4PowerShell -Force -Verbose
+          Expand-7Zip -ArchiveFileName .\mpv.7z -TargetPath .\libmpv
+          mv .\libmpv\mpv-1.dll .\out\mpv\mpv-1.dll
+          $Version = '${{ github.ref }}'
+          (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "' + ($Version -replace '-', ' ') + '"') | Out-File .\src\main.cpp
+          MSBuild.exe /t:Build /p:Configuration=Release .\src\foo_mpv.sln
+          mv .\src\Release\foo_mpv\foo_mpv.dll .\out\foo_mpv.dll
+          mv .\src\Release\foo_mpv\foo_mpv.pdb .\out\foo_mpv.pdb
+          mv .\src\lua\osc.lua .\out\mpv\osc.lua
+          Compress-Archive -Path '.\out\mpv','.\out\foo_mpv.dll' -DestinationPath .\release.zip
+          mv .\release.zip .\foo_mpv.fb2k-component
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@latest
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ github.ref }}
+        body: |
+          Automated release
+        draft: false
+        prerelease: true
+
+    - name: Upload Release Asset Component
+      id: upload-release-asset-component
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./foo_mpv.fb2k-component
+        asset_name: foo_mpv.fb2k-component
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset PDB
+      id: upload-release-asset-pdb
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./out/foo_mpv.pdb
+        asset_name: foo_mpv-${{ github.ref }}.pdb
+        asset_content_type: application/octet-stream
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: foo_mpv.dll
+        path: |
+          out/foo_mpv.dll
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: foo_mpv.pdb
+        path: |
+          out/foo_mpv.pdb
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: osc.lua
+        path: |
+          out/mpv/osc.lua
+
