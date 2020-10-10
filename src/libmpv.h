@@ -18,6 +18,7 @@
  */
 
 namespace libmpv {
+pfc::string8 get_version();
 typedef unsigned long(__cdecl* mpv_client_api_version)();
 typedef struct mpv_handle mpv_handle;
 typedef enum mpv_error {

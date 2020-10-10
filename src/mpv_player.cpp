@@ -222,12 +222,12 @@ void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
         text << "Hardware decoding: " << g_player->get_string("hwdec-current");
         menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
       }
-
-      menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
     }
 
+    menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+
     if (g_player->profiles.size() > 0) {
-      for (int i = 0; i < g_player->profiles.size(); i++) {
+      for (unsigned i = 0; i < g_player->profiles.size(); i++) {
         uAppendMenu(menu->m_hMenu, MF_DEFAULT, ID_PROFILES + i,
                     g_player->profiles[i].c_str());
       }
@@ -285,7 +285,7 @@ void mpv_player::handle_menu_cmd(int cmd) {
         request_artwork(g_player->current_selection);
         break;
       default:
-        int profile_id = cmd - ID_PROFILES;
+        unsigned profile_id = cmd - ID_PROFILES;
         if (profile_id > -1 && profile_id < g_player->profiles.size()) {
           const char* cmd_profile[] = {
               "apply-profile", g_player->profiles[profile_id].c_str(), NULL};
@@ -312,9 +312,6 @@ void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
 void mpv_player::on_destroy() { command_string("quit"); }
 
 LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
-  SetClassLong(
-      m_hWnd, GCL_HICON,
-      (LONG)LoadIcon(core_api::get_my_instance(), MAKEINTRESOURCE(IDI_ICON1)));
   update();
   return 0;
 }
@@ -604,7 +601,7 @@ bool mpv_player::mpv_init() {
                   } else if (strcmp(time_str, "forward") == 0) {
                     fb2k::inMainThread([]() {
                       playback_control::get()->playback_seek_delta(
-                          cfg_seek_seconds);
+                          (double)cfg_seek_seconds);
                     });
                   } else {
                     try {
@@ -642,7 +639,7 @@ bool mpv_player::mpv_init() {
                 } else if (event_message->num_args > 2 &&
                            strcmp(event_message->args[1], "context") == 0) {
                   pfc::string8 menu_cmd(event_message->args[2]);
-                  for (unsigned i = 3; i < event_message->num_args; i++) {
+                  for (int i = 3; i < event_message->num_args; i++) {
                     menu_cmd << " " << event_message->args[i];
                   }
                   fb2k::inMainThread([this, menu_cmd]() {
@@ -665,7 +662,7 @@ bool mpv_player::mpv_init() {
                 } else if (event_message->num_args > 2 &&
                            strcmp(event_message->args[1], "menu") == 0) {
                   pfc::string8 menu_cmd(event_message->args[2]);
-                  for (unsigned i = 3; i < event_message->num_args; i++) {
+                  for (int i = 3; i < event_message->num_args; i++) {
                     menu_cmd << " " << event_message->args[i];
                   }
                   fb2k::inMainThread([this, menu_cmd]() {

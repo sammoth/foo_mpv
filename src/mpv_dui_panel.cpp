@@ -133,7 +133,9 @@ struct CMpvDuiWindow : public ui_element_instance,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+    if (menu->GetMenuItemCount() > 0) {
+      menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+    }
     if (cfg_osc) {
       menu->AppendMenu(is_osc_enabled() ? MF_CHECKED : MF_UNCHECKED, ID_OSC,
                        _T("Controls"));

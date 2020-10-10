@@ -21,16 +21,6 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// Icon
-//
-
-// Icon with lowest ID value placed first to ensure application icon
-// remains consistent on all systems.
-IDI_ICON1               ICON                    "icon.ico"
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
 // Dialog
 //
 
@@ -51,15 +41,15 @@ BEGIN
     COMBOBOX        IDC_COMBO_PANELMETRIC,179,82,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Video window",IDC_STATIC_SECTION1,7,8,313,16
     CONTROL         "High quality GPU renderer (gpu-hq)",IDC_CHECK_GPUHQ,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,182,169,10
-    CONTROL         "Hardware decoding",IDC_CHECK_HWDEC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,194,165,10
-    CONTROL         "Low-latency profile",IDC_CHECK_LATENCY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,180,170,116,10
-    LTEXT           "May help mpv synchronize faster on playback start, but can cause playback problems",IDC_STATIC,180,181,133,33
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,182,262,10
+    CONTROL         "Hardware decoding",IDC_CHECK_HWDEC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,194,141,10
+    CONTROL         "Low-latency profile",IDC_CHECK_LATENCY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,214,116,10
+    LTEXT           "May help mpv synchronize faster on playback start, but can cause playback problems",IDC_STATIC,7,225,133,33
     CONTROL         "Automatic deinterlacing (ffmpeg bwdif)",IDC_CHECK_DEINT,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,170,163,10
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,170,262,10
     LTEXT           "Player",IDC_STATIC_SECTION5,7,135,313,15
-    LISTBOX         IDC_LIST_VERSIONS,7,223,313,50,LBS_SORT | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_TABSTOP
     LTEXT           "Settings in mpv.conf take precedence over options configured here.",IDC_STATIC,7,155,313,8
+    CONTROL         "",IDC_LIST1,"SysListView32",LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,151,194,169,79
 END
 
 IDD_THUMBCHOOSER DIALOGEX 0, 0, 371, 211
@@ -146,7 +136,18 @@ BEGIN
     LTEXT           "input.conf",IDC_STATIC_SECTION11,7,8,248,16
     EDITTEXT        IDC_EDIT2,7,43,313,230,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
     PUSHBUTTON      "?",IDC_BUTTON_INPUTHELP,305,7,15,14
-    PUSHBUTTON      "Insert command",IDC_BUTTON_INSERT,255,26,65,14
+    PUSHBUTTON      "Insert context command",IDC_BUTTON_INSERT_CONTEXT,228,26,92,14
+    PUSHBUTTON      "Insert menu command",IDC_BUTTON_INSERT_MENU,133,26,85,14
+END
+
+IDD_DIALOG_MENUCMD DIALOGEX 0, 0, 333, 226
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Dialog"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,217,205,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,276,205,50,14
+    CONTROL         "",IDC_LIST_MENUCMDS,"SysListView32",LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,7,7,319,195
 END
 
 
@@ -212,6 +213,14 @@ BEGIN
         HORZGUIDE, 7
         HORZGUIDE, 26
     END
+
+    IDD_DIALOG_MENUCMD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 326
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 219
+    END
 END
 #endif    // APSTUDIO_INVOKED
 
@@ -250,6 +259,21 @@ IDD_MPV_PREFS4 AFX_DIALOG_LAYOUT
 BEGIN
     0
 END
+
+IDD_DIALOG_MENUCMD AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_SCROLL               ICON                    "IDI_SCROLL.ico"
 
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////

@@ -129,7 +129,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="icon.ico">
+    <Image Include="IDI_SCROLL.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

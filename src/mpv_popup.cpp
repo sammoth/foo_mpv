@@ -127,8 +127,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     }
 
     SetClassLong(get_wnd(), GCL_HICON,
-                 (LONG)LoadIcon(core_api::get_my_instance(),
-                                MAKEINTRESOURCE(IDI_ICON1)));
+                 (LONG)ui_control::get()->get_main_icon());
 
     update_title();
 
@@ -177,7 +176,9 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
   };
 
   void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+    if (menu->GetMenuItemCount() > 0) {
+      menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+    }
     menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
                      ID_ONTOP, _T("Always on-top"));
     menudesc->Set(ID_ONTOP, "Keep the video window above other windows");

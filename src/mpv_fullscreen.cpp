@@ -63,9 +63,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   bool is_osc_enabled() override { return true; }
 
   LRESULT on_create(LPCREATESTRUCT st) {
-    SetClassLong(get_wnd(), GCL_HICON,
-                 (LONG)LoadIcon(core_api::get_my_instance(),
-                                MAKEINTRESOURCE(IDI_ICON1)));
+    SetClassLong(get_wnd(), GCL_HICON, (LONG)ui_control::get()->get_main_icon());
 
     update_title();
 

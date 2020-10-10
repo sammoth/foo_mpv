@@ -3,14 +3,22 @@
 
 #include <list>
 
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
+#include "resource.h"
+// resource.h first
+#include "../foobar2000-sdk/libPPUI/CListControlSimple.h"
 #include "../helpers/atl-misc.h"
 #include "artwork_protocol.h"
-#include "foobar2000-sdk/libPPUI/Controls.h"
+#include "include/libavcodec/version.h"
+#include "include/libavformat/version.h"
+#include "include/libavfilter/version.h"
+#include "include/libavutil/version.h"
 #include "menu_utils.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
 #include "preferences.h"
-#include "resource.h"
 
 namespace mpv {
 const unsigned pref_page_header_font_size = 15;
@@ -415,9 +423,8 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   void set_controls_enabled();
 
   const preferences_page_callback::ptr m_callback;
-
+  CListControlSimple m_list;
   COLORREF bg_col = 0;
-
   HFONT sep_font = NULL;
 };
 
@@ -462,6 +469,22 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_panelmetric.AddString(L"Width");
   combo_panelmetric.AddString(L"Height");
   combo_panelmetric.SetCurSel(cfg_panel_metric);
+
+  m_list.CreateInDialog(*this, IDC_LIST1);
+  auto DPI = m_list.GetDPI();
+  m_list.AddColumn("Library", MulDiv(100, DPI.cx, 96));
+  m_list.AddColumn("Version", MulDiv(150, DPI.cx, 96));
+  m_list.SetItemCount(5);
+  m_list.SetItemText(0, 0, "libmpv (DLL)");
+  m_list.SetItemText(0, 1, libmpv::get_version());
+  m_list.SetItemText(1, 0, "avcodec (internal)");
+  m_list.SetItemText(1, 1, TOSTRING(LIBAVCODEC_VERSION));
+  m_list.SetItemText(2, 0, "avformat (internal)");
+  m_list.SetItemText(2, 1, TOSTRING(LIBAVFORMAT_VERSION));
+  m_list.SetItemText(3, 0, "avfilter (internal)");
+  m_list.SetItemText(3, 1, TOSTRING(LIBAVFILTER_VERSION));
+  m_list.SetItemText(4, 0, "avutil (internal)");
+  m_list.SetItemText(4, 1, TOSTRING(LIBAVUTIL_VERSION));
 
   set_controls_enabled();
 
@@ -1118,6 +1141,7 @@ void CMpvInputPreferences::OnInsert(UINT, int, CWindow) {
   for (auto& item : menu_utils::get_mainmenu_items()) {
     text << item.name << "\n";
   }
+
 
   popup_message::g_show(text, "commands");
 }

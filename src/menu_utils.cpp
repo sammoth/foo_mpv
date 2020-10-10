@@ -181,6 +181,7 @@ std::vector<menu_entry> get_mainmenu_items() {
   return ret;
 }
 
+// todo: replace with something more efficient
 menu_entry get_mainmenu_item(pfc::string8 name) {
   for (auto& item : get_mainmenu_items()) {
     if (item.name && item.name.equals(name)) {
@@ -189,7 +190,6 @@ menu_entry get_mainmenu_item(pfc::string8 name) {
   }
   return {pfc::guid_null, pfc::guid_null, pfc::string8()};
 }
-
 menu_entry get_contextmenu_item(pfc::string8 name) {
   for (auto& item : get_contextmenu_items()) {
     if (item.name && item.name.equals(name)) {

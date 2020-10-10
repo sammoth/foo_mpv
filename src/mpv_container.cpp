@@ -82,7 +82,9 @@ void mpv_container::on_context_menu(CWindow wnd, CPoint point) {
       CMenu menu;
       WIN32_OP(menu.CreatePopupMenu());
 
-      mpv_player::add_menu_items(&menu, &menudesc);
+      if (owns_player()) {
+        mpv_player::add_menu_items(&menu, &menudesc);
+      }
 
       add_menu_items(&menu, &menudesc);
 
