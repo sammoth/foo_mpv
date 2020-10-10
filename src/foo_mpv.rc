@@ -140,14 +140,14 @@ BEGIN
     PUSHBUTTON      "Insert menu command",IDC_BUTTON_INSERT_MENU,133,26,85,14
 END
 
-IDD_DIALOG_MENUCMD DIALOGEX 0, 0, 333, 226
+IDD_DIALOG_MENUCHOOSER DIALOGEX 0, 0, 309, 176
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Dialog"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,217,205,50,14
-    PUSHBUTTON      "Cancel",IDCANCEL,276,205,50,14
-    CONTROL         "",IDC_LIST_MENUCMDS,"SysListView32",LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,7,7,319,195
+    DEFPUSHBUTTON   "OK",IDOK,198,155,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,252,155,50,14
+    CONTROL         "",IDC_LIST_MENU,"SysListView32",LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,7,7,295,144
 END
 
 
@@ -214,12 +214,12 @@ BEGIN
         HORZGUIDE, 26
     END
 
-    IDD_DIALOG_MENUCMD, DIALOG
+    IDD_DIALOG_MENUCHOOSER, DIALOG
     BEGIN
         LEFTMARGIN, 7
-        RIGHTMARGIN, 326
+        RIGHTMARGIN, 302
         TOPMARGIN, 7
-        BOTTOMMARGIN, 219
+        BOTTOMMARGIN, 169
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -260,7 +260,7 @@ BEGIN
     0
 END
 
-IDD_DIALOG_MENUCMD AFX_DIALOG_LAYOUT
+IDD_DIALOG_MENUCHOOSER AFX_DIALOG_LAYOUT
 BEGIN
     0
 END
@@ -273,7 +273,7 @@ END
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_SCROLL               ICON                    "IDI_SCROLL.ico"
+IDI_SCROLL              ICON                    "IDI_SCROLL.ico"
 
 #endif    // English (United States) resources
 /////////////////////////////////////////////////////////////////////////////

@@ -10,10 +10,11 @@
 // resource.h first
 #include "../foobar2000-sdk/libPPUI/CListControlSimple.h"
 #include "../helpers/atl-misc.h"
+#include "../helpers/win32_dialog.h"
 #include "artwork_protocol.h"
 #include "include/libavcodec/version.h"
-#include "include/libavformat/version.h"
 #include "include/libavfilter/version.h"
+#include "include/libavformat/version.h"
 #include "include/libavutil/version.h"
 #include "menu_utils.h"
 #include "mpv_container.h"
@@ -979,12 +980,14 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
 
   BEGIN_MSG_MAP_EX(CMpvConfPreferences)
   MSG_WM_INITDIALOG(OnInitDialog);
+  COMMAND_HANDLER_EX(IDC_BUTTON_CONFHELP, BN_CLICKED, OnHelp);
   COMMAND_HANDLER_EX(IDC_EDIT1, EN_CHANGE, OnEditChange);
   END_MSG_MAP()
 
  private:
   BOOL OnInitDialog(CWindow, LPARAM);
   void OnEditChange(UINT, int, CWindow);
+  void OnHelp(UINT, int, CWindow);
   bool HasChanged();
   void OnChanged();
   bool dirty = false;
@@ -1092,6 +1095,45 @@ bool CMpvConfPreferences::HasChanged() { return dirty; }
 
 void CMpvConfPreferences::OnChanged() { m_callback->on_state_changed(); }
 
+class CMpvMenuChooser : public CDialogImpl<CMpvMenuChooser> {
+ public:
+  enum { IDD = IDD_DIALOG_MENUCHOOSER };
+
+  CMpvMenuChooser(std::vector<menu_utils::menu_entry>& p_items)
+      : items(p_items) {}
+
+  BEGIN_MSG_MAP_EX(CMpvInputPreferences)
+  MSG_WM_INITDIALOG(OnInitDialog);
+  COMMAND_HANDLER_EX(IDOK, BN_CLICKED, OnAccept);
+  COMMAND_HANDLER_EX(IDCANCEL, BN_CLICKED, OnCancel);
+  END_MSG_MAP()
+ private:
+  std::vector<menu_utils::menu_entry>& items;
+  CListControlSimple m_list;
+
+  BOOL OnInitDialog(CWindow, LPARAM) {
+    m_list.CreateInDialog(*this, IDC_LIST_MENU);
+    auto DPI = m_list.GetDPI();
+    m_list.SetItemCount(items.size());
+    m_list.SetSelectionModeSingle();
+
+    for (int i = 0; i < items.size(); i++) {
+      m_list.SetItemText(i, 0, items[i].name);
+    }
+
+    return FALSE;
+  }
+
+  void OnAccept(UINT, int, CWindow) {
+    if (m_list.GetSelectedCount() > 0) {
+      EndDialog(m_list.GetFirstSelected());
+    } else {
+      EndDialog(-1);
+    }
+  }
+  void OnCancel(UINT, int, CWindow) { EndDialog(-1); }
+};
+
 class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
                              public preferences_page_instance {
  public:
@@ -1112,14 +1154,16 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   MSG_WM_INITDIALOG(OnInitDialog);
   COMMAND_HANDLER_EX(IDC_EDIT2, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_BUTTON_INPUTHELP, BN_CLICKED, OnHelp);
-  COMMAND_HANDLER_EX(IDC_BUTTON_INSERT, BN_CLICKED, OnInsert);
+  COMMAND_HANDLER_EX(IDC_BUTTON_INSERT_CONTEXT, BN_CLICKED, OnContextCmds);
+  COMMAND_HANDLER_EX(IDC_BUTTON_INSERT_MENU, BN_CLICKED, OnMenuCmds);
   END_MSG_MAP()
 
  private:
   BOOL OnInitDialog(CWindow, LPARAM);
   void OnEditChange(UINT, int, CWindow);
   void OnHelp(UINT, int, CWindow);
-  void OnInsert(UINT, int, CWindow);
+  void OnContextCmds(UINT, int, CWindow);
+  void OnMenuCmds(UINT, int, CWindow);
   bool HasChanged();
   void OnChanged();
   bool dirty = false;
@@ -1132,18 +1176,67 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   HFONT sep_font = NULL;
 };
 
-void CMpvInputPreferences::OnInsert(UINT, int, CWindow) {
-  pfc::string8 text;
+void CMpvConfPreferences::OnHelp(UINT, int, CWindow) {
+  popup_message::g_show(
+      R"ABC(Any profile defined here will be available to apply at runtime via the video context menu.
 
-  for (auto& item : menu_utils::get_contextmenu_items()) {
-    text << item.name << "\n";
+Two special profiles [video] and [albumart] are applied automatically when video/album art is loaded.
+)ABC",
+      "input.conf help");
+}
+
+void CMpvInputPreferences::OnContextCmds(UINT, int, CWindow) {
+  if (!ModalDialogPrologue()) return;
+  modal_dialog_scope scope(m_hWnd);
+
+  pfc::string8 out;
+
+  auto items = menu_utils::get_contextmenu_items();
+  std::sort(items.begin(), items.end(),
+            [](menu_utils::menu_entry a, menu_utils::menu_entry b) {
+              return a.name < b.name;
+            });
+  CMpvMenuChooser chooser(items);
+  INT_PTR idx = chooser.DoModal(m_hWnd, 0);
+
+  if (idx > -1) {
+    pfc::string8 new_row("\r\n");
+    new_row << "<key> send-message foobar context " << items[idx].name;
+    HWND editbox = uGetDlgItem(IDC_EDIT2);
+    int left, right;
+    int len = ::GetWindowTextLength(editbox);
+    SendMessage(editbox, EM_GETSEL, (WPARAM)&left, (LPARAM)&right);
+    SendMessage(editbox, EM_SETSEL, len, len);
+    uSendMessageText(editbox, EM_REPLACESEL, 0, new_row.c_str());
+    SendMessage(editbox, EM_SETSEL, left, right);
   }
-  for (auto& item : menu_utils::get_mainmenu_items()) {
-    text << item.name << "\n";
+}
+
+void CMpvInputPreferences::OnMenuCmds(UINT, int, CWindow) {
+  if (!ModalDialogPrologue()) return;
+  modal_dialog_scope scope(m_hWnd);
+
+  pfc::string8 out;
+
+  auto items = menu_utils::get_mainmenu_items();
+  std::sort(items.begin(), items.end(),
+            [](menu_utils::menu_entry a, menu_utils::menu_entry b) {
+              return a.name < b.name;
+            });
+  CMpvMenuChooser chooser(items);
+  INT_PTR idx = chooser.DoModal(m_hWnd, 0);
+
+  if (idx > -1) {
+    pfc::string8 new_row("\r\n");
+    new_row << "<key> send-message foobar menu " << items[idx].name;
+    HWND editbox = uGetDlgItem(IDC_EDIT2);
+    int left, right;
+    int len = ::GetWindowTextLength(editbox);
+    SendMessage(editbox, EM_GETSEL, (WPARAM)&left, (LPARAM)&right);
+    SendMessage(editbox, EM_SETSEL, len, len);
+    uSendMessageText(editbox, EM_REPLACESEL, 0, new_row.c_str());
+    SendMessage(editbox, EM_SETSEL, left, right);
   }
-
-
-  popup_message::g_show(text, "commands");
 }
 
 void CMpvInputPreferences::OnHelp(UINT, int, CWindow) {
@@ -1155,35 +1248,27 @@ The following commands are provided as script-messages with a 'foobar' word pref
 Example usage for binding the f key:
 f script-message foobar fullscreen
 
+Commands:
+
 pause
-
 prev
-
 next
-
 seek backward
-
 seek forward
-
 seek <time>
-
 stop
-
 volup
-
 voldown
-
 fullscreen
 
 context <command>
-(runs context menu command on the current playing video or displayed track)
+      (context menu command on the current playing video or displayed track)
 
 menu <command>
-(runs main menu command)
+      (main menu command)
 
 register-titleformat <unique id> <title formatting string>
-(subscribes to title formatting updates for the playing or displayed track to be received as script-messages)
-
+      (subscribes to title formatting updates for the playing or displayed track to be received as script-messages)
 )ABC",
       "input.conf help");
 }
