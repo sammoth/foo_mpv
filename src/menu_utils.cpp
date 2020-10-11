@@ -4,6 +4,19 @@
 #include "menu_utils.h"
 
 namespace menu_utils {
+static class string8Hasher {
+ public:
+  std::size_t operator()(const pfc::string8& key) const {
+    t_uint64 hash = hasher_md5::get()
+                        ->process_single(key.get_ptr(), key.get_length())
+                        .xorHalve();
+    size_t ret = hash >> 8*(sizeof(t_uint64)-sizeof(size_t));
+    return ret;
+  }
+};
+std::unordered_map<pfc::string8, menu_entry, string8Hasher> context_memo;
+std::unordered_map<pfc::string8, menu_entry, string8Hasher> menu_memo;
+
 static bool get_context_items_r(GUID guid, std::vector<menu_entry>& things,
                                 std::list<pfc::string8> name_parts,
                                 contextmenu_item_node* p_node, bool b_root) {
@@ -181,18 +194,29 @@ std::vector<menu_entry> get_mainmenu_items() {
   return ret;
 }
 
-// todo: replace with something more efficient
 menu_entry get_mainmenu_item(pfc::string8 name) {
+  auto stored = menu_memo.find(name);
+  if (stored != menu_memo.end()) {
+    return stored->second;
+  }
+
   for (auto& item : get_mainmenu_items()) {
     if (item.name && item.name.equals(name)) {
+      menu_memo[name] = item;
       return item;
     }
   }
   return {pfc::guid_null, pfc::guid_null, pfc::string8()};
 }
 menu_entry get_contextmenu_item(pfc::string8 name) {
+  auto stored = context_memo.find(name);
+  if (stored != context_memo.end()) {
+    return stored->second;
+  }
+
   for (auto& item : get_contextmenu_items()) {
     if (item.name && item.name.equals(name)) {
+      context_memo[name] = item;
       return item;
     }
   }
