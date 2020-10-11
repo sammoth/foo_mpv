@@ -1,1 +1,3 @@
-ffmpeg:x86-windows-static
+ffmpeg[avcodec,avfilter,avformat,zlib,vpx,swscale]:x86-mpv
+nlohmann-json:x86-mpv
+sqlitecpp:x86-mpv

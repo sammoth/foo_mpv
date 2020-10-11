@@ -4,7 +4,7 @@
 #include "menu_utils.h"
 
 namespace menu_utils {
-static class string8Hasher {
+class string8Hasher {
  public:
   std::size_t operator()(const pfc::string8& key) const {
     t_uint64 hash = hasher_md5::get()

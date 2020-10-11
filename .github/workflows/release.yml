@@ -21,7 +21,7 @@ jobs:
     - name: Restore from cache and run vcpkg
       uses: lukka/run-vcpkg@v4
       with:
-          vcpkgArguments: '@${{ github.workspace }}/vcpkg.txt'
+          vcpkgArguments: '@${{ github.workspace }}/vcpkg.txt --overlay-triplets=${{ github.workspace }}/triplet'
           vcpkgDirectory: '${{ github.workspace }}/vcpkg'
           appendedCacheKey: ${{ hashFiles(env.vcpkgResponseFile) }}
 

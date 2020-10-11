@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <set>
 #include <thread>
 
@@ -10,7 +11,6 @@
 #include "../helpers/atl-misc.h"
 #include "../helpers/win32_misc.h"
 #include "artwork_protocol.h"
-#include "json.hpp"
 #include "menu_utils.h"
 #include "mpv_player.h"
 #include "preferences.h"

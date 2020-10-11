@@ -6,16 +6,17 @@
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
+#include <libavcodec/version.h>
+#include <libavfilter/version.h>
+#include <libavformat/version.h>
+#include <libavutil/version.h>
+
 #include "resource.h"
 // resource.h first
 #include "../foobar2000-sdk/libPPUI/CListControlSimple.h"
 #include "../helpers/atl-misc.h"
 #include "../helpers/win32_dialog.h"
 #include "artwork_protocol.h"
-#include "include/libavcodec/version.h"
-#include "include/libavfilter/version.h"
-#include "include/libavformat/version.h"
-#include "include/libavutil/version.h"
 #include "menu_utils.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
@@ -1117,7 +1118,7 @@ class CMpvMenuChooser : public CDialogImpl<CMpvMenuChooser> {
     m_list.SetItemCount(items.size());
     m_list.SetSelectionModeSingle();
 
-    for (int i = 0; i < items.size(); i++) {
+    for (unsigned i = 0; i < items.size(); i++) {
       m_list.SetItemText(i, 0, items[i].name);
     }
 

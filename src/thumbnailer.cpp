@@ -2,24 +2,24 @@
 #include "stdafx.h"
 // PCH ^
 
+#include <SQLiteCpp/SQLiteCpp.h>
+#include <sqlite3.h>
+
 #include <atomic>
 #include <mutex>
 #include <sstream>
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/frame.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
+}
+
 #include "../SDK/foobar2000.h"
 #include "preferences.h"
 #include "thumbnailer.h"
-
-extern "C" {
-#include "libavcodec/avcodec.h"
-#include "libavformat/avformat.h"
-#include "libavutil/frame.h"
-#include "libavutil/imgutils.h"
-#include "libswscale/swscale.h"
-}
-
-#include "SQLiteCpp/SQLiteCpp.h"
-#include "include/sqlite3.h"
 
 namespace mpv {
 
