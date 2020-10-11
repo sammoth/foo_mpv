@@ -29,6 +29,7 @@ jobs:
       run: |
           .\vcpkg\vcpkg.exe integrate install
           $Revision = (git rev-list --count HEAD)
+          $Revision
           (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "99.99.99 alpha ' + $Revision + '"') | Out-File .\src\main.cpp
           MSBuild.exe /t:Build /p:Configuration=Release .\src\foo_mpv.sln
           mkdir .\out
@@ -39,18 +40,9 @@ jobs:
 
     - uses: actions/upload-artifact@v2
       with:
-        name: foo_mpv.dll
+        name: build
         path: |
           out/foo_mpv.dll
-
-    - uses: actions/upload-artifact@v2
-      with:
-        name: foo_mpv.pdb
-        path: |
           out/foo_mpv.pdb
-
-    - uses: actions/upload-artifact@v2
-      with:
-        name: osc.lua
-        path: |
           out/mpv/osc.lua
+
