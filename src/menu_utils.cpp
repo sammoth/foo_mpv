@@ -10,7 +10,7 @@ static class string8Hasher {
     t_uint64 hash = hasher_md5::get()
                         ->process_single(key.get_ptr(), key.get_length())
                         .xorHalve();
-    size_t ret = hash >> 8*(sizeof(t_uint64)-sizeof(size_t));
+    size_t ret = hash >> 8 * (sizeof(t_uint64) - sizeof(size_t));
     return ret;
   }
 };

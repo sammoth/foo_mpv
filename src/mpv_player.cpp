@@ -330,9 +330,9 @@ void mpv_player::send_message(UINT msg, UINT wp, UINT lp) {
 bool mpv_player::find_window() {
   if (!mpv_window_hwnd) {
     mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
-    if (mpv_window_hwnd) {
-      ::EnableWindow(mpv_window_hwnd, 1);
-    }
+  }
+  if (mpv_window_hwnd) {
+    ::EnableWindow(mpv_window_hwnd, 1);
   }
 
   return mpv_window_hwnd;
