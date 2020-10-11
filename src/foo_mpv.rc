@@ -28,28 +28,30 @@ IDD_MPV_PREFS DIALOGEX 0, 0, 446, 420
 STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
 FONT 8, "MS Shell Dlg", 400, 0, 0x0
 BEGIN
-    LTEXT           "Custom background color:",IDC_STATIC,7,83,94,12
-    EDITTEXT        IDC_EDIT_POPUP,7,42,259,13,ES_AUTOHSCROLL
-    LTEXT           "Window and OSC title format:",IDC_STATIC,7,28,144,8
-    CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,102,150,10
+    LTEXT           "Custom background color:",IDC_STATIC,7,113,94,12
+    EDITTEXT        IDC_EDIT_POPUP,7,41,313,13,ES_AUTOHSCROLL
+    LTEXT           "Window and OSC title format:",IDC_STATIC,7,28,313,8
+    CONTROL         "Use black when fullscreen",IDC_CHECK_FSBG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,131,150,10
     CONTROL         "Stop video playback when not visible",IDC_CHECK_STOP,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,62,152,10
-    CONTROL         "",IDC_BUTTON_BG,"Button",BS_OWNERDRAW | BS_BITMAP | BS_FLAT | WS_TABSTOP,117,81,38,15,WS_EX_STATICEDGE
-    LTEXT           "Move video to greatest panel:",IDC_STATIC,179,69,126,8
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,95,162,10
+    CONTROL         "",IDC_BUTTON_BG,"Button",BS_OWNERDRAW | BS_BITMAP | BS_FLAT | WS_TABSTOP,117,110,38,15,WS_EX_STATICEDGE
+    LTEXT           "Move video to greatest panel:",IDC_STATIC,179,98,126,8
     CONTROL         "Display artwork in video window",IDC_CHECK_ARTWORK,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,117,150,10
-    COMBOBOX        IDC_COMBO_PANELMETRIC,179,82,91,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Video window",IDC_STATIC_SECTION1,7,8,313,16
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,145,150,10
+    COMBOBOX        IDC_COMBO_PANELMETRIC,179,110,108,30,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Video player",IDC_STATIC_SECTION1,7,8,313,16
     CONTROL         "High quality GPU renderer (gpu-hq)",IDC_CHECK_GPUHQ,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,182,262,10
-    CONTROL         "Hardware decoding",IDC_CHECK_HWDEC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,194,141,10
-    CONTROL         "Low-latency profile",IDC_CHECK_LATENCY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,214,116,10
-    LTEXT           "May help mpv synchronize faster on playback start, but can cause playback problems",IDC_STATIC,7,225,133,33
-    CONTROL         "Automatic deinterlacing (ffmpeg bwdif)",IDC_CHECK_DEINT,
-                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,170,262,10
-    LTEXT           "Player",IDC_STATIC_SECTION5,7,135,313,15
-    LTEXT           "Settings in mpv.conf take precedence over options configured here.",IDC_STATIC,7,155,313,8
-    CONTROL         "",IDC_LIST1,"SysListView32",LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,151,194,169,79
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,201,166,10
+    CONTROL         "Hardware decoding",IDC_CHECK_HWDEC,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,215,141,10
+    CONTROL         "Low-latency profile",IDC_CHECK_LATENCY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,231,116,10
+    LTEXT           "May help mpv synchronize faster on playback start, but can cause playback problems",IDC_STATIC,7,242,133,31
+    CONTROL         "Automatic deinterlacing (bwdif)",IDC_CHECK_DEINT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,187,166,10
+    LTEXT           "Settings in mpv.conf take precedence over options configured here.",IDC_STATIC,7,169,313,8
+    CONTROL         "",IDC_LIST1,"SysListView32",LVS_ALIGNLEFT | WS_BORDER | WS_TABSTOP,181,217,139,56
+    EDITTEXT        IDC_EDIT_VIDEO_PATTERN,7,74,313,13,ES_AUTOHSCROLL
+    CONTROL         "Only play files matching pattern:",IDC_CHECK_VIDEO_FILTER,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,60,120,10
+    LTEXT           "Libraries:",IDC_STATIC,181,205,30,8
 END
 
 IDD_THUMBCHOOSER DIALOGEX 0, 0, 371, 211

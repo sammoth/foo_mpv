@@ -24,7 +24,12 @@
 
 namespace mpv {
 const unsigned pref_page_header_font_size = 15;
-const char* default_mpv_conf = "# advanced config here\r\n";
+const char* default_mpv_conf =
+    "[video]\r\n"
+    "cursor-autohide=1000\r\n"
+    "\r\n"
+    "[albumart]\r\n"
+    "cursor-autohide=no\r\n";
 
 const char* default_input_conf =
     "WHEEL_UP script-message foobar seek backward\r\n"
@@ -275,6 +280,16 @@ static const GUID guid_cfg_gpuhq = {
     0xc926,
     0x4c07,
     {0x8e, 0x3b, 0x22, 0xb7, 0xbb, 0xea, 0x0, 0xfd}};
+static const GUID guid_cfg_video_pattern = {
+    0x8d73578b,
+    0x27e1,
+    0x4372,
+    {0x92, 0xa5, 0xf8, 0xe1, 0x6c, 0xb6, 0x98, 0x0}};
+static const GUID guid_cfg_video_filter = {
+    0x9fc32805,
+    0x7d28,
+    0x4625,
+    {0xa5, 0x47, 0x4e, 0xe1, 0xda, 0x47, 0x11, 0x51}};
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -323,6 +338,11 @@ static const char* cfg_thumb_pattern_default =
 static cfg_string cfg_thumb_pattern(guid_cfg_pattern,
                                     cfg_thumb_pattern_default);
 
+cfg_bool cfg_video_filter(guid_cfg_video_filter, true);
+static const char* cfg_video_pattern_default = "\"$info(video_codec)\" PRESENT";
+static cfg_string cfg_video_pattern(guid_cfg_video_pattern,
+                                    cfg_video_pattern_default);
+
 static advconfig_branch_factory g_mpv_branch(
     "mpv", guid_cfg_branch, advconfig_branch::guid_branch_playback, 0);
 
@@ -350,6 +370,7 @@ advconfig_checkbox_factory cfg_mpv_logfile("Enable mpv log file",
 
 static titleformat_object::ptr popup_titleformat_script;
 static search_filter::ptr thumb_filter;
+static search_filter::ptr video_filter;
 
 void format_player_title(pfc::string8& s, metadb_handle_ptr item) {
   if (popup_titleformat_script.is_empty()) {
@@ -380,6 +401,24 @@ bool test_thumb_pattern(metadb_handle_ptr metadb) {
   return out;
 }
 
+bool test_video_pattern(metadb_handle_ptr metadb) {
+  if (!cfg_video_filter) return true;
+  if (video_filter.is_empty()) {
+    try {
+      video_filter =
+          static_api_ptr_t<search_filter_manager>()->create(cfg_video_pattern);
+    } catch (std::exception e) {
+      return false;
+    }
+  }
+
+  metadb_handle_list in;
+  in.add_item(metadb);
+  bool out;
+  video_filter->test_multi(in, &out);
+  return out;
+}
+
 class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
                               public preferences_page_instance {
  public:
@@ -401,6 +440,7 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   MSG_WM_HSCROLL(OnScroll);
   COMMAND_HANDLER_EX(IDC_BUTTON_BG, BN_CLICKED, OnBgClick);
   COMMAND_HANDLER_EX(IDC_CHECK_ARTWORK, BN_CLICKED, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_CHECK_VIDEO_FILTER, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_FSBG, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_STOP, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_HWDEC, BN_CLICKED, OnEditChange);
@@ -408,6 +448,7 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   COMMAND_HANDLER_EX(IDC_CHECK_LATENCY, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_CHECK_GPUHQ, BN_CLICKED, OnEditChange);
   COMMAND_HANDLER_EX(IDC_EDIT_POPUP, EN_CHANGE, OnEditChange);
+  COMMAND_HANDLER_EX(IDC_EDIT_VIDEO_PATTERN, EN_CHANGE, OnEditChange);
   COMMAND_HANDLER_EX(IDC_COMBO_PANELMETRIC, CBN_SELCHANGE, OnEditChange);
   END_MSG_MAP()
 
@@ -451,13 +492,14 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
                  CLEARTYPE_QUALITY, VARIABLE_PITCH, _T("Segoe UI"));
 
   ((CStatic)GetDlgItem(IDC_STATIC_SECTION1)).SetFont(sep_font);
-  ((CStatic)GetDlgItem(IDC_STATIC_SECTION5)).SetFont(sep_font);
 
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
+  uSetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN, cfg_video_pattern);
 
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
 
+  CheckDlgButton(IDC_CHECK_VIDEO_FILTER, cfg_video_filter);
   CheckDlgButton(IDC_CHECK_ARTWORK, cfg_artwork);
   CheckDlgButton(IDC_CHECK_FSBG, cfg_black_fullscreen);
   CheckDlgButton(IDC_CHECK_STOP, cfg_stop_hidden);
@@ -474,19 +516,24 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
 
   m_list.CreateInDialog(*this, IDC_LIST1);
   auto DPI = m_list.GetDPI();
-  m_list.AddColumn("Library", MulDiv(100, DPI.cx, 96));
-  m_list.AddColumn("Version", MulDiv(150, DPI.cx, 96));
+  // m_list.AddColumn("Library", MulDiv(100, DPI.cx, 96));
+  // m_list.AddColumn("Version", MulDiv(150, DPI.cx, 96));
   m_list.SetItemCount(5);
-  m_list.SetItemText(0, 0, "libmpv (DLL)");
-  m_list.SetItemText(0, 1, libmpv::get_version());
-  m_list.SetItemText(1, 0, "avcodec (internal)");
-  m_list.SetItemText(1, 1, TOSTRING(LIBAVCODEC_VERSION));
-  m_list.SetItemText(2, 0, "avformat (internal)");
-  m_list.SetItemText(2, 1, TOSTRING(LIBAVFORMAT_VERSION));
-  m_list.SetItemText(3, 0, "avfilter (internal)");
-  m_list.SetItemText(3, 1, TOSTRING(LIBAVFILTER_VERSION));
-  m_list.SetItemText(4, 0, "avutil (internal)");
-  m_list.SetItemText(4, 1, TOSTRING(LIBAVUTIL_VERSION));
+  pfc::string8 libmpv_ver;
+  libmpv_ver << "libmpv: " << libmpv::get_version();
+  m_list.SetItemText(0, 0, libmpv_ver);
+  pfc::string8 avc_ver;
+  avc_ver << "avcodec (internal): " << TOSTRING(LIBAVCODEC_VERSION);
+  m_list.SetItemText(1, 0, avc_ver);
+  pfc::string8 avf_ver;
+  avf_ver << "avformat (internal): " << TOSTRING(LIBAVFORMAT_VERSION);
+  m_list.SetItemText(2, 0, avf_ver);
+  pfc::string8 avfi_ver;
+  avfi_ver << "avfilter (internal): " << TOSTRING(LIBAVFILTER_VERSION);
+  m_list.SetItemText(3, 0, avfi_ver);
+  pfc::string8 avu_ver;
+  avu_ver << "avutil (internal): " << TOSTRING(LIBAVUTIL_VERSION);
+  m_list.SetItemText(4, 0, avu_ver);
 
   set_controls_enabled();
 
@@ -534,7 +581,9 @@ void CMpvPlayerPreferences::reset() {
   button_brush = CreateSolidBrush(bg_col);
 
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
+  uSetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN, cfg_video_pattern_default);
 
+  CheckDlgButton(IDC_CHECK_VIDEO_FILTER, true);
   CheckDlgButton(IDC_CHECK_ARTWORK, true);
   CheckDlgButton(IDC_CHECK_FSBG, true);
   CheckDlgButton(IDC_CHECK_STOP, true);
@@ -552,6 +601,7 @@ void CMpvPlayerPreferences::reset() {
 void CMpvPlayerPreferences::apply() {
   cfg_bg_color = bg_col;
 
+  cfg_video_filter = IsDlgButtonChecked(IDC_CHECK_VIDEO_FILTER);
   cfg_artwork = IsDlgButtonChecked(IDC_CHECK_ARTWORK);
   cfg_black_fullscreen = IsDlgButtonChecked(IDC_CHECK_FSBG);
   cfg_stop_hidden = IsDlgButtonChecked(IDC_CHECK_STOP);
@@ -566,6 +616,16 @@ void CMpvPlayerPreferences::apply() {
 
   static_api_ptr_t<titleformat_compiler>()->compile_safe(
       popup_titleformat_script, cfg_popup_titleformat);
+
+  pfc::string video_pattern = uGetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN);
+  cfg_video_pattern.reset();
+  cfg_video_pattern.set_string(video_pattern.get_ptr());
+  try {
+    video_filter =
+        static_api_ptr_t<search_filter_manager>()->create(cfg_video_pattern);
+  } catch (std::exception ex) {
+    video_filter.reset();
+  }
 
   cfg_panel_metric =
       ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
@@ -1056,6 +1116,8 @@ t_uint32 CMpvConfPreferences::get_state() {
 }
 
 void CMpvConfPreferences::reset() {
+  CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT1));
+  uSetWindowText(edit, default_mpv_conf);
   dirty = true;
   OnChanged();
 }
@@ -1331,6 +1393,8 @@ t_uint32 CMpvInputPreferences::get_state() {
 }
 
 void CMpvInputPreferences::reset() {
+  CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT2));
+  uSetWindowText(edit, default_input_conf);
   dirty = true;
   OnChanged();
 }

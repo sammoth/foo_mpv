@@ -65,6 +65,8 @@
 #define IDC_LIST1                       1089
 #define IDC_BUTTON_INSERT_MENU          1091
 #define IDC_LIST_MENU                   1092
+#define IDC_EDIT_VIDEO_PATTERN          1093
+#define IDC_CHECK_VIDEO_FILTER          1094
 
 // Next default values for new objects
 // 
@@ -72,7 +74,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        118
 #define _APS_NEXT_COMMAND_VALUE         40001
-#define _APS_NEXT_CONTROL_VALUE         1093
+#define _APS_NEXT_CONTROL_VALUE         1095
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

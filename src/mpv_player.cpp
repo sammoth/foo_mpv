@@ -201,8 +201,12 @@ enum {
 void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
   if (g_player && g_player->mpv_handle) {
     if (g_player->mpv_state == state::Idle ||
-        g_player->mpv_state == state::Artwork) {
+        g_player->mpv_state == state::Artwork ||
+        g_player->mpv_state == state::Unloaded) {
       menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
+    } else if (g_player->mpv_state == state::Loading ||
+               g_player->mpv_state == state::Preload) {
+      menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Loading..."));
     } else {
       std::wstringstream text;
       text.setf(std::ios::fixed);
@@ -461,6 +465,10 @@ bool mpv_player::mpv_init() {
     set_option_string("load-stats-overlay", "no");
     set_option_string("load-osd-console", "no");
     set_option_string("alpha", "blend");
+
+    set_option_string("access-references", "no");
+    set_option_string("ordered-chapters", "no");
+    set_option_string("network-timeout", "1");
 
     set_background();
 
@@ -909,7 +917,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   if (metadb.is_empty()) return;
   if (!mpv_handle && !mpv_init()) return;
 
-  if (!enabled) {
+  if (!enabled || !test_video_pattern(metadb)) {
     mpv_state = state::Idle;
     request_artwork(current_selection);
     set_display_item(current_selection);
@@ -1018,6 +1026,10 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   } else if (cfg_logging) {
     FB2K_console_formatter() << "mpv: Skipping loading item '" << filename
                              << "' because it is not a local file";
+    mpv_state = state::Idle;
+    request_artwork(current_selection);
+    set_display_item(current_selection);
+    return;
   }
 }
 
