@@ -64,7 +64,7 @@ extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
 
 mpv_player::mpv_player()
     : enabled(false),
-      mpv_handle(nullptr, nullptr),
+      mpv_handle(NULL),
       mpv_window_hwnd(NULL),
       task_queue(),
       sync_on_unpause(false),
@@ -130,6 +130,10 @@ mpv_player::~mpv_player() {
 
   if (control_thread.joinable()) control_thread.join();
   if (event_listener.joinable()) event_listener.join();
+  if (mpv_handle) {
+    libmpv::get()->terminate_destroy(mpv_handle);
+    mpv_handle = NULL;
+  }
   g_player = NULL;
   current_selection.reset();
 }
@@ -306,7 +310,7 @@ void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
   const char* old_value = "1000";
   if (mpv_handle) {
     old_value =
-        libmpv::get()->get_property_string(mpv_handle.get(), "cursor-autohide");
+        libmpv::get()->get_property_string(mpv_handle, "cursor-autohide");
   }
   set_property_string("cursor-autohide", "no");
   container->on_context_menu(wnd, point);
@@ -452,7 +456,7 @@ bool mpv_player::mpv_init() {
     pfc::string_formatter path;
     filesystem::g_get_native_path(core_api::get_profile_path(), path);
     path.add_filename("mpv");
-    mpv_handle = {libmpv::get()->create(), libmpv::get()->terminate_destroy};
+    mpv_handle = libmpv::get()->create();
 
     int64_t l_wid = (intptr_t)(m_hWnd);
     set_option("wid", libmpv::MPV_FORMAT_INT64, &l_wid);
@@ -563,19 +567,19 @@ bool mpv_player::mpv_init() {
     std::string opts_str = opts.str();
     set_option_string("script-opts", opts_str.c_str());
 
-    libmpv::get()->stream_cb_add_ro(mpv_handle.get(), "artwork", this,
+    libmpv::get()->stream_cb_add_ro(mpv_handle, "artwork", this,
                                     artwork_protocol_open);
     set_option_string("image-display-duration", "inf");
 
-    libmpv::get()->observe_property(mpv_handle.get(), seeking_userdata,
-                                    "seeking", libmpv::MPV_FORMAT_FLAG);
-    libmpv::get()->observe_property(mpv_handle.get(), idle_active_userdata,
+    libmpv::get()->observe_property(mpv_handle, seeking_userdata, "seeking",
+                                    libmpv::MPV_FORMAT_FLAG);
+    libmpv::get()->observe_property(mpv_handle, idle_active_userdata,
                                     "idle-active", libmpv::MPV_FORMAT_FLAG);
-    libmpv::get()->observe_property(mpv_handle.get(), path_userdata, "path",
+    libmpv::get()->observe_property(mpv_handle, path_userdata, "path",
                                     libmpv::MPV_FORMAT_STRING);
 
-    if (libmpv::get()->initialize(mpv_handle.get()) != 0) {
-      libmpv::get()->destroy(mpv_handle.get());
+    if (libmpv::get()->initialize(mpv_handle) != 0) {
+      libmpv::get()->terminate_destroy(mpv_handle);
       mpv_handle = NULL;
     } else {
       event_listener = std::thread([this]() {
@@ -586,8 +590,7 @@ bool mpv_player::mpv_init() {
         }
 
         while (true) {
-          libmpv::mpv_event* event =
-              libmpv::get()->wait_event(mpv_handle.get(), -1);
+          libmpv::mpv_event* event = libmpv::get()->wait_event(mpv_handle, -1);
 
           {
             std::lock_guard<std::mutex> lock(mutex);
@@ -770,7 +773,7 @@ bool mpv_player::mpv_init() {
 
       // load profiles list
       char* profiles_str =
-          libmpv::get()->get_property_string(mpv_handle.get(), "profile-list");
+          libmpv::get()->get_property_string(mpv_handle, "profile-list");
 
       auto profiles_json = nlohmann::json::parse(profiles_str);
       for (auto it = profiles_json.rbegin(); it != profiles_json.rend(); ++it) {
@@ -1253,8 +1256,7 @@ void mpv_player::initial_sync() {
     FB2K_console_formatter() << "mpv: Initial sync";
   }
 
-  if (libmpv::get()->observe_property(mpv_handle.get(), time_pos_userdata,
-                                      "time-pos",
+  if (libmpv::get()->observe_property(mpv_handle, time_pos_userdata, "time-pos",
                                       libmpv::MPV_FORMAT_DOUBLE) < 0) {
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Error observing time-pos";
@@ -1271,7 +1273,7 @@ void mpv_player::initial_sync() {
     });
 
     if (check_queue_any()) {
-      libmpv::get()->unobserve_property(mpv_handle.get(), time_pos_userdata);
+      libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
       if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Abort initial sync - cmd";
       }
@@ -1280,7 +1282,7 @@ void mpv_player::initial_sync() {
     }
 
     if (mpv_state == state::Idle) {
-      libmpv::get()->unobserve_property(mpv_handle.get(), time_pos_userdata);
+      libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
       if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Abort initial sync - idle";
       }
@@ -1289,7 +1291,7 @@ void mpv_player::initial_sync() {
     }
 
     if (mpv_state == state::Shutdown) {
-      libmpv::get()->unobserve_property(mpv_handle.get(), time_pos_userdata);
+      libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
       if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Abort initial sync - shutdown";
       }
@@ -1315,7 +1317,7 @@ void mpv_player::initial_sync() {
     lock.unlock();
   }
 
-  libmpv::get()->unobserve_property(mpv_handle.get(), time_pos_userdata);
+  libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
 
   // wait for fb to catch up to the first frame
   double vis_time = 0.0;
@@ -1445,39 +1447,39 @@ void mpv_player::initial_sync() {
 
 int mpv_player::set_option_string(const char* name, const char* data) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
-  return libmpv::get()->set_option_string(mpv_handle.get(), name, data);
+  return libmpv::get()->set_option_string(mpv_handle, name, data);
 }
 
 int mpv_player::set_property_string(const char* name, const char* data) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
-  return libmpv::get()->set_property_string(mpv_handle.get(), name, data);
+  return libmpv::get()->set_property_string(mpv_handle, name, data);
 }
 
 int mpv_player::command_string(const char* args) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
-  return libmpv::get()->command_string(mpv_handle.get(), args);
+  return libmpv::get()->command_string(mpv_handle, args);
 }
 
 int mpv_player::get_property(const char* name, libmpv::mpv_format format,
                              void* data) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
-  return libmpv::get()->get_property(mpv_handle.get(), name, format, data);
+  return libmpv::get()->get_property(mpv_handle, name, format, data);
 }
 
 int mpv_player::command(const char** args) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
-  return libmpv::get()->command(mpv_handle.get(), args);
+  return libmpv::get()->command(mpv_handle, args);
 }
 
 int mpv_player::set_option(const char* name, libmpv::mpv_format format,
                            void* data) {
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
-  return libmpv::get()->set_option(mpv_handle.get(), name, format, data);
+  return libmpv::get()->set_option(mpv_handle, name, format, data);
 }
 
 const char* mpv_player::get_string(const char* name) {
   if (!mpv_handle) return "";
-  const char* ret = libmpv::get()->get_property_string(mpv_handle.get(), name);
+  const char* ret = libmpv::get()->get_property_string(mpv_handle, name);
   if (ret == NULL) return "";
   return ret;
 }
@@ -1485,15 +1487,14 @@ const char* mpv_player::get_string(const char* name) {
 bool mpv_player::get_bool(const char* name) {
   if (!mpv_handle) return false;
   int flag = 0;
-  libmpv::get()->get_property(mpv_handle.get(), name, libmpv::MPV_FORMAT_FLAG,
-                              &flag);
+  libmpv::get()->get_property(mpv_handle, name, libmpv::MPV_FORMAT_FLAG, &flag);
   return flag == 1;
 }
 
 double mpv_player::get_double(const char* name) {
   if (!mpv_handle) return 0;
   double num = 0;
-  libmpv::get()->get_property(mpv_handle.get(), name, libmpv::MPV_FORMAT_DOUBLE,
+  libmpv::get()->get_property(mpv_handle, name, libmpv::MPV_FORMAT_DOUBLE,
                               &num);
   return num;
 }

@@ -24,9 +24,7 @@ class mpv_player : play_callback_impl_base,
                    metadb_io_callback_dynamic_impl_base,
                    public CWindowImpl<mpv_player> {
   // player instance handle
-  std::unique_ptr<libmpv::mpv_handle,
-                  decltype(libmpv::get()->terminate_destroy)>
-      mpv_handle;
+  libmpv::mpv_handle* mpv_handle;
   HWND mpv_window_hwnd;
   bool enabled;
 
