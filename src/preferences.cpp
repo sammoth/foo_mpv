@@ -32,10 +32,18 @@ const char* default_mpv_conf =
     "cursor-autohide=no\r\n";
 
 const char* default_input_conf =
-    "WHEEL_UP script-message foobar seek backward\r\n"
-    "WHEEL_DOWN script-message foobar seek forward\r\n"
-    "MOUSE_BTN0_DBL script-message foobar fullscreen\r\n"
-    "f script-message foobar fullscreen\r\n";
+    "MOUSE_BTN0_DBL script-message foobar menu /View/mpv Commands/Toggle "
+    "fullscreen\r\n"
+    "f script-message foobar menu /View/mpv Commands/Toggle fullscreen\r\n"
+    "WHEEL_DOWN script-message foobar menu /Playback/Seek/Ahead by 5 "
+    "seconds\r\n"
+    "WHEEL_UP script-message foobar menu /Playback/Seek/Back by 5 seconds\r\n"
+    "RIGHT script-message foobar menu /Playback/Seek/Ahead by 5 seconds\r\n"
+    "LEFT script-message foobar menu /Playback/Seek/Back by 5 seconds\r\n"
+    "DOWN script-message foobar menu /Playback/Seek/Ahead by 10 seconds\r\n"
+    "UP script-message foobar menu /Playback/Seek/Back by 10 seconds\r\n"
+    "SPACE script-message foobar menu /Playback/Play or pause\r\n"
+        ;
 
 class default_config_create : public initquit {
  public:
@@ -1112,7 +1120,6 @@ Two special profiles [video] and [albumart] are applied automatically when video
 )ABC",
       "mpv.conf help");
 }
-
 
 void CMpvConfPreferences::OnEditChange(UINT, int, CWindow) {
   dirty = true;

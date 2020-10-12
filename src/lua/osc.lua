@@ -1429,7 +1429,7 @@ function osc_init()
         end
     end
     ne.eventresponder["mbtn_left_up"] =
-        function () mp.commandv("script-message", "foobar", "pause") end
+        function () mp.commandv("script-message", "foobar", "menu", "/Playback/Play or pause") end
 
     --ch_prev
     ne = new_element("ch_prev", "button")
@@ -1438,7 +1438,7 @@ function osc_init()
     ne.content = "\238\132\132"
     ne.eventresponder["mbtn_left_up"] =
         function ()
-            mp.commandv("script-message", "foobar", "prev")
+            mp.commandv("script-message", "foobar", "menu", "/Playback/Previous")
         end
 
     --ch_next
@@ -1448,7 +1448,7 @@ function osc_init()
     ne.content = "\238\132\133"
     ne.eventresponder["mbtn_left_up"] =
         function ()
-            mp.commandv("script-message", "foobar", "next")
+            mp.commandv("script-message", "foobar", "menu", "/Playback/Next")
         end
 
     --
@@ -1479,7 +1479,7 @@ function osc_init()
         end
     end
     ne.eventresponder["mbtn_left_up"] =
-        function () mp.commandv("script-message", "foobar", "fullscreen") end
+        function () mp.commandv("script-message", "foobar", "menu", "/View/mpv Commands/Toggle fullscreen") end
 
     --seekbar
     ne = new_element("seekbar", "slider")
@@ -1609,11 +1609,11 @@ function osc_init()
     end
     ne.eventresponder["wheel_up_press"] =
         function ()
-			mp.commandv("script-message", "foobar", "volup")
+			mp.commandv("script-message", "foobar", "menu", "/Playback/Volume/Up")
 		end
     ne.eventresponder["wheel_down_press"] =
         function ()
-			mp.commandv("script-message", "foobar", "voldown")
+			mp.commandv("script-message", "foobar", "menu", "/Playback/Volume/Down")
 		end
 
     -- load layout
