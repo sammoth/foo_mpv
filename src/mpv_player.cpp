@@ -671,10 +671,13 @@ bool mpv_player::mpv_init() {
                            strcmp(event_message->args[1],
                                   "register-titleformat") == 0) {
                   pfc::string8 id(event_message->args[2]);
-                  static titleformat_object::ptr script;
-                  if (titleformat_compiler::get()->compile(
-                          script, event_message->args[3])) {
-                    titleformat_subscription sub = {id, script};
+                  pfc::string8 format(event_message->args[3]);
+                  for (int i = 4; i < event_message->num_args; i++) {
+                    format << " " << event_message->args[i];
+                  }
+                  static titleformat_object::ptr object;
+                  if (titleformat_compiler::get()->compile(object, format)) {
+                    titleformat_subscription sub = {id, object};
                     titleformat_subscriptions.push_back(sub);
                     publish_titleformatting_subscriptions();
                   }

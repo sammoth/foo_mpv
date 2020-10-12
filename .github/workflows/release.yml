@@ -58,8 +58,8 @@ jobs:
         release_name: ${{ github.ref }}
         body: |
           Automated release
-        draft: false
-        prerelease: true
+        draft: true
+        prerelease: false
 
     - name: Upload Release Asset Component
       id: upload-release-asset-component
@@ -80,7 +80,7 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./out/foo_mpv.pdb
-        asset_name: foo_mpv-${{ github.ref }}.pdb
+        asset_name: Debug symbols
         asset_content_type: application/octet-stream
 
     - uses: actions/upload-artifact@v2
