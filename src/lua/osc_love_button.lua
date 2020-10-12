@@ -77,6 +77,7 @@ local osc_styles = {
     topButtons = "{\\blur0\\bord0\\1c&HFFFFFF\\3c&HFFFFFF\\fs12\\fnmpv-osd-symbols}",
 
     elementDown = "{\\1c&H999999}",
+    loved = "{\\1c&H7752FF&}",
     timecodes = "{\\blur0\\bord0\\1c&HFFFFFF\\3c&HFFFFFF\\fs20}",
     vidtitle = "{\\blur0\\bord0\\1c&HFFFFFF\\3c&HFFFFFF\\fs12\\q2}",
     box = "{\\rDefault\\blur0\\bord1\\1c&H000000\\3c&HFFFFFF}",
@@ -128,7 +129,7 @@ local state = {
     finish,
     title,
     volume = 0,
-	loved = false,
+    loved = false,
 }
 
 local window_control_box_width = 80
@@ -465,6 +466,7 @@ function prepare_elements()
         style_ass:an(elem_geo.an)
         style_ass:append(element.layout.style)
 
+
         element.style_ass = style_ass
 
         local static_ass = assdraw.ass_new()
@@ -596,12 +598,18 @@ function render_elements(master_ass)
         style_ass:merge(element.style_ass)
         ass_append_alpha(style_ass, element.layout.alpha, 0)
 
+        if (not (element.stylefn == nil)) then
+            style_ass:append(element.stylefn())
+        end
+
         if element.eventresponder and (state.active_element == n) then
 
             -- run render event functions
             if not (element.eventresponder.render == nil) then
                 element.eventresponder.render(element)
             end
+
+
 
             if mouse_hit(element) then
                 -- mouse down styling
@@ -999,7 +1007,7 @@ layouts["box"] = function ()
     lo = add_layout("loved")
     lo.geometry =
         {x = posX - pos_offsetX, y = bigbtnrowY, an = 1, w = 70, h = 18}
-    lo.style = osc_styles.smallButtonsL
+    lo.style = osc_styles.bigButtons
 
     lo = add_layout("cy_sub")
     lo.geometry =
@@ -1285,12 +1293,12 @@ function bar_layout(direction)
     lo = add_layout("volume")
     lo.geometry = geo
     lo.style = osc_styles.smallButtonsBar
-	
-	-- Loved button
+
+    -- Loved button
     geo = { x = geo.x - geo.w - padX, y = geo.y, an = geo.an, w = geo.w, h = geo.h }
     lo = add_layout("loved")
     lo.geometry = geo
-    lo.style = osc_styles.smallButtonsBar
+    lo.style = osc_styles.bigButtons
 
     -- Track selection buttons
     geo = { x = geo.x - tsW - padX, y = geo.y, an = geo.an, w = tsW, h = geo.h }
@@ -1373,11 +1381,11 @@ function update_options(list)
 end
 
 function get_chapter_duration()
-	if ((state.start == nil) or (state.finish == nil)) then
-		return nil
-	else
-	  return state.finish - state.start
-	end
+    if ((state.start == nil) or (state.finish == nil)) then
+        return nil
+    else
+      return state.finish - state.start
+    end
 end
 
 -- OSC INIT
@@ -1422,7 +1430,7 @@ function osc_init()
 
     ne.content = function ()
         local title = state.title
-		if (state.title == nil) then title = "" end
+        if (state.title == nil) then title = "" end
         -- escape ASS, and strip newlines and trailing slashes
         title = title:gsub("\\n", " "):gsub("\\$", ""):gsub("{","\\{")
         return not (title == "") and title or "foobar2000"
@@ -1470,15 +1478,10 @@ function osc_init()
     ne = new_element("loved", "button")
 
     ne.enabled = true
-    ne.content = function ()
-		if state.loved then
-		    return ("{\\1c&H7752FF&}\226\153\165")
-		else
-		    return ("\226\153\165")
-		end
-    end
+    ne.content = function () return ("\226\153\165") end
     ne.eventresponder["mbtn_left_up"] =
         function () mp.commandv("script-message", "foobar", "context", "/Tagging/Scripts/Love") end
+    ne.stylefn = function() if (state.loved) then return osc_styles.bigButtons .. osc_styles.loved else return osc_styles.bigButtons end end
 
     --cy_sub
     ne = new_element("cy_sub", "button")
@@ -1494,8 +1497,8 @@ function osc_init()
     end
     ne.eventresponder["mbtn_left_up"] =
         function () set_track("sub", 1) end
-		
-	--tog_fs
+
+    --tog_fs
     ne = new_element("tog_fs", "button")
     ne.content = function ()
         if (state.fullscreen) then
@@ -1513,12 +1516,12 @@ function osc_init()
     ne.enabled = not (mp.get_property("percent-pos") == nil or mp.get_property("time-pos") == nil)
     ne.slider.posF =
         function ()
-		local timepos = mp.get_property_number("time-pos", nil)
-		if not ((state.start == nil) or (state.finish == nil) or (timepos == nil)) then
-			return 100 * (timepos - state.start) / (state.finish - state.start)
-		end
-		return nil
-		end
+        local timepos = mp.get_property_number("time-pos", nil)
+        if not ((state.start == nil) or (state.finish == nil) or (timepos == nil)) then
+            return 100 * (timepos - state.start) / (state.finish - state.start)
+        end
+        return nil
+        end
     ne.slider.tooltipF = function (pos)
         if not ((state.start == nil) or (state.finish == nil) or (pos == nil)) then
             possec = ((state.finish - state.start) * (pos / 100))
@@ -1538,13 +1541,13 @@ function osc_init()
                     mp.commandv("script-message", "foobar", "seek", (state.finish - state.start) * 0.01 * seekto)
                     element.state.lastseek = seekto
             end
-		end
+        end
     ne.eventresponder["mbtn_left_down"] = --exact seeks on single clicks
         function (element)
-			if not ((state.start == nil) or (state.finish == nil)) then
-				mp.commandv("script-message", "foobar", "seek", (state.finish - state.start) * 0.01 * get_slider_value(element))
-			end
-		end
+            if not ((state.start == nil) or (state.finish == nil)) then
+                mp.commandv("script-message", "foobar", "seek", (state.finish - state.start) * 0.01 * get_slider_value(element))
+            end
+        end
     ne.eventresponder["reset"] =
         function (element) element.state.lastseek = nil end
 
@@ -1553,17 +1556,17 @@ function osc_init()
     ne = new_element("tc_left", "button")
 
     ne.content = function ()
-		local ptime = mp.get_property("playback-time")
-		if (not (ptime == nil or state.start == nil)) then
-			ptime = ptime - state.start
-		else
-			ptime = 0
-		end
-		if state.tc_ms then
-			return mp.format_time(ptime) .. "." .. string.format("%03d", (ptime * 1000) % 1000)
-		else
-			return mp.format_time(ptime)
-		end
+        local ptime = mp.get_property("playback-time")
+        if (not (ptime == nil or state.start == nil)) then
+            ptime = ptime - state.start
+        else
+            ptime = 0
+        end
+        if state.tc_ms then
+            return mp.format_time(ptime) .. "." .. string.format("%03d", (ptime * 1000) % 1000)
+        else
+            return mp.format_time(ptime)
+        end
     end
     ne.eventresponder["mbtn_left_down"] = function ()
         state.tc_ms = not state.tc_ms
@@ -1575,23 +1578,23 @@ function osc_init()
 
     ne.visible = (not (state.finish == nil or state.start == nil))
     ne.content = function ()
-		local ptime = mp.get_property("playback-time")
-		if (ptime == nil) then
-		    return ""
-		end
-		
+        local ptime = mp.get_property("playback-time")
+        if (ptime == nil) then
+            return ""
+        end
+
         if (state.rightTC_trem) then
-			if state.tc_ms then
-				return "-" .. mp.format_time(state.finish - ptime) .. "." .. string.format("%03d", ((state.finish - ptime) * 1000) % 1000)
-			else
-				return "-" .. mp.format_time(state.finish - ptime)
-			end
+            if state.tc_ms then
+                return "-" .. mp.format_time(state.finish - ptime) .. "." .. string.format("%03d", ((state.finish - ptime) * 1000) % 1000)
+            else
+                return "-" .. mp.format_time(state.finish - ptime)
+            end
         else
-			if state.tc_ms then
-				return mp.format_time(state.finish - state.start) .. "." .. string.format("%03d", ((state.finish - state.start) * 1000) % 1000)
-			else
-				return mp.format_time(state.finish - state.start)
-			end
+            if state.tc_ms then
+                return mp.format_time(state.finish - state.start) .. "." .. string.format("%03d", ((state.finish - state.start) * 1000) % 1000)
+            else
+                return mp.format_time(state.finish - state.start)
+            end
         end
     end
     ne.eventresponder["mbtn_left_down"] =
@@ -1620,8 +1623,8 @@ function osc_init()
             string.format("%sm%02.0fs", min, sec) or
             string.format("%3.0fs", dmx_cache))
     end
-	
-	-- volume
+
+    -- volume
     ne = new_element("volume", "button")
 
     ne.content = function()
@@ -1635,12 +1638,12 @@ function osc_init()
     end
     ne.eventresponder["wheel_up_press"] =
         function ()
-			mp.commandv("script-message", "foobar", "menu", "/Playback/Volume/Up")
-		end
+            mp.commandv("script-message", "foobar", "menu", "/Playback/Volume/Up")
+        end
     ne.eventresponder["wheel_down_press"] =
         function ()
-			mp.commandv("script-message", "foobar", "menu", "/Playback/Volume/Down")
-		end
+            mp.commandv("script-message", "foobar", "menu", "/Playback/Volume/Down")
+        end
 
     -- load layout
     layouts[user_opts.layout]()
@@ -2046,7 +2049,7 @@ function tick()
     if (not state.enabled) then return end
 
     if (state.idle or mp.get_property("path") == "artwork://") then
-		set_osd(osc_param.playresy, osc_param.playresy, "")
+        set_osd(osc_param.playresy, osc_param.playresy, "")
     elseif (state.fullscreen and user_opts.showfullscreen)
         or (not state.fullscreen and user_opts.showwindowed) then
 
@@ -2098,27 +2101,27 @@ mp.observe_property("playlist", nil, request_init)
 mp.register_script_message("osc-message", show_message)
 
 mp.register_script_message("foobar", function(cmd, arg1, arg2, ...)
-	if (cmd == nil) then
-		return
-	elseif (cmd == "osc-enabled-changed" and (not (arg1 == nil))) then
-		if (arg1 == "yes") then
-			enable_osc(true)
-		elseif (arg1 == "no") then
-			enable_osc(false)
-		end
-	elseif (cmd == "title-changed" and (not(arg1 == nil))) then
-		state.title = arg1
-	elseif (cmd == "volume-changed" and (not(arg1 == nil))) then
-		state.volume = tonumber(arg1)
-	elseif (cmd == "start-changed" and (not(arg1 == nil))) then
-		state.start = tonumber(arg1)
-	elseif (cmd == "finish-changed" and (not(arg1 == nil))) then
-		state.finish = tonumber(arg1)
+    if (cmd == nil) then
+        return
+    elseif (cmd == "osc-enabled-changed" and (not (arg1 == nil))) then
+        if (arg1 == "yes") then
+            enable_osc(true)
+        elseif (arg1 == "no") then
+            enable_osc(false)
+        end
+    elseif (cmd == "title-changed" and (not(arg1 == nil))) then
+        state.title = arg1
+    elseif (cmd == "volume-changed" and (not(arg1 == nil))) then
+        state.volume = tonumber(arg1)
+    elseif (cmd == "start-changed" and (not(arg1 == nil))) then
+        state.start = tonumber(arg1)
+    elseif (cmd == "finish-changed" and (not(arg1 == nil))) then
+        state.finish = tonumber(arg1)
     elseif (cmd == "titleformat" and (not(arg1 == nil))) then
-		if (arg1 == "loved" and (not(arg2 == nil))) then
-			state.loved = arg2 == "yes"
-		end
-	end
+        if (arg1 == "loved" and (not(arg2 == nil))) then
+            state.loved = arg2 == "yes"
+        end
+    end
 end)
 
 mp.commandv("script-message", "foobar", "register-titleformat", "loved", "$ifequal(%loved%,1,yes,no)")
