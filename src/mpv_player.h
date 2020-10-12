@@ -150,6 +150,8 @@ class mpv_player : play_callback_impl_base,
   static void on_new_artwork();
   static void send_message(UINT msg, UINT wparam, UINT lparam);
   static void get_title(pfc::string8 out);
+  static void toggle_fullscreen();
+  static void fullscreen_on_monitor(int monitor);
 
   static void restart();
 

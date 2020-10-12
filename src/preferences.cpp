@@ -1104,6 +1104,16 @@ BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
   return FALSE;
 }
 
+void CMpvConfPreferences::OnHelp(UINT, int, CWindow) {
+  popup_message::g_show(
+      R"ABC(Any profile defined here will be available to apply at runtime via the video context menu.
+
+Two special profiles [video] and [albumart] are applied automatically when video/album art is loaded.
+)ABC",
+      "mpv.conf help");
+}
+
+
 void CMpvConfPreferences::OnEditChange(UINT, int, CWindow) {
   dirty = true;
   OnChanged();
@@ -1239,15 +1249,6 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   HFONT sep_font = NULL;
 };
 
-void CMpvConfPreferences::OnHelp(UINT, int, CWindow) {
-  popup_message::g_show(
-      R"ABC(Any profile defined here will be available to apply at runtime via the video context menu.
-
-Two special profiles [video] and [albumart] are applied automatically when video/album art is loaded.
-)ABC",
-      "input.conf help");
-}
-
 void CMpvInputPreferences::OnContextCmds(UINT, int, CWindow) {
   if (!ModalDialogPrologue()) return;
   modal_dialog_scope scope(m_hWnd);
@@ -1264,7 +1265,7 @@ void CMpvInputPreferences::OnContextCmds(UINT, int, CWindow) {
 
   if (idx > -1) {
     pfc::string8 new_row("\r\n");
-    new_row << "<key> send-message foobar context " << items[idx].name;
+    new_row << "<key> script-message foobar context " << items[idx].name;
     HWND editbox = uGetDlgItem(IDC_EDIT2);
     int left, right;
     int len = ::GetWindowTextLength(editbox);
@@ -1291,7 +1292,7 @@ void CMpvInputPreferences::OnMenuCmds(UINT, int, CWindow) {
 
   if (idx > -1) {
     pfc::string8 new_row("\r\n");
-    new_row << "<key> send-message foobar menu " << items[idx].name;
+    new_row << "<key> script-message foobar menu " << items[idx].name;
     HWND editbox = uGetDlgItem(IDC_EDIT2);
     int left, right;
     int len = ::GetWindowTextLength(editbox);
@@ -1304,34 +1305,15 @@ void CMpvInputPreferences::OnMenuCmds(UINT, int, CWindow) {
 
 void CMpvInputPreferences::OnHelp(UINT, int, CWindow) {
   popup_message::g_show(
-      R"ABC(mpv receives mouse input, except for right clicks, and keyboard input when in popup or fullscreen mode.
+      R"ABC(mpv always receives mouse input, except for right clicks, and receives keyboard input when in popup or fullscreen mode.
 
-The following commands are provided as script-messages with a 'foobar' word prefix for controling playback, and should be used instead of the corresponding mpv commands.
-
-Example usage for binding the f key:
-f script-message foobar fullscreen
-
-Commands:
-
-pause
-prev
-next
-seek backward
-seek forward
-seek <time>
-stop
-volup
-voldown
-fullscreen
+The following commands are provided as script-messages with a 'foobar' word prefix. Foobar menu commands for controlling playback should be used instead of binding mpv playback commands directly.
 
 context <command>
       (context menu command on the current playing video or displayed track)
 
 menu <command>
       (main menu command)
-
-register-titleformat <unique id> <title formatting string>
-      (subscribes to title formatting updates for the playing or displayed track to be received as script-messages)
 )ABC",
       "input.conf help");
 }

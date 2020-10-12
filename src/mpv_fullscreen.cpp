@@ -63,7 +63,8 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   bool is_osc_enabled() override { return true; }
 
   LRESULT on_create(LPCREATESTRUCT st) {
-    SetClassLong(get_wnd(), GCL_HICON, (LONG)ui_control::get()->get_main_icon());
+    SetClassLong(get_wnd(), GCL_HICON,
+                 (LONG)ui_control::get()->get_main_icon());
 
     update_title();
 
@@ -146,15 +147,20 @@ class close_popup_handler : public initquit {
 static initquit_factory_t<close_popup_handler> popup_closer;
 }  // namespace
 
-void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor) {
+void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor_info) {
   if (g_open_mpv_fullscreen != NULL) {
+    g_open_mpv_fullscreen->SetWindowPos(
+        NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+        monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+        monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+        SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
     g_open_mpv_fullscreen->BringWindowToTop();
     return;
   }
 
   try {
     g_open_mpv_fullscreen = new CWindowAutoLifetime<CMpvFullscreenWindow>(
-        NULL, reopen_popup, monitor);
+        NULL, reopen_popup, monitor_info);
   } catch (std::exception const& e) {
     popup_message::g_complain("Fullscreen window creation failure", e);
   }

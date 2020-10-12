@@ -17,6 +17,8 @@
 #include "resource.h"
 #include "timing_info.h"
 
+void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor);
+
 namespace mpv {
 
 static CWindowAutoLifetime<mpv_player>* g_player;
@@ -43,6 +45,49 @@ void mpv_player::restart() {
 void mpv_player::get_title(pfc::string8 out) {
   if (g_player && g_player->current_display_item != NULL) {
     format_player_title(out, g_player->current_display_item);
+  }
+}
+
+void mpv_player::toggle_fullscreen() {
+  if (g_player) {
+    g_player->container->toggle_fullscreen();
+  } else {
+    MONITORINFO monitor;
+    monitor.cbSize = sizeof(monitor);
+    GetMonitorInfoW(MonitorFromWindow(core_api::get_main_window(),
+                                      MONITOR_DEFAULTTONEAREST),
+                    &monitor);
+
+    RunMpvFullscreenWindow(false, monitor);
+  }
+}
+
+struct monitor_result {
+  HMONITOR hmon;
+  unsigned count;
+};
+
+static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
+                                     LPRECT lprcMonitor, LPARAM dwData) {
+  monitor_result* res = reinterpret_cast<monitor_result*>(dwData);
+  if ((*res).count == 0 && (*res).hmon == NULL) {
+    (*res).hmon = hMonitor;
+  }
+  (*res).count = (*res).count - 1;
+  return true;
+}
+
+void mpv_player::fullscreen_on_monitor(int monitor) {
+  monitor_result r;
+  r.hmon = NULL;
+  r.count = monitor;
+  EnumDisplayMonitors(NULL, NULL, MonitorEnumProc,
+                      reinterpret_cast<LPARAM>(&r));
+  if (r.hmon != NULL) {
+    MONITORINFO monitor_info;
+    monitor_info.cbSize = sizeof(monitor_info);
+    GetMonitorInfoW(r.hmon, &monitor_info);
+    RunMpvFullscreenWindow(false, monitor_info);
   }
 }
 
@@ -577,53 +622,20 @@ bool mpv_player::mpv_init() {
                   (libmpv::mpv_event_client_message*)event->data;
               if (event_message->num_args > 1 &&
                   strcmp(event_message->args[0], "foobar") == 0) {
-                // process 'foobar' script-message
                 if (event_message->num_args > 2 &&
                     strcmp(event_message->args[1], "seek") == 0) {
                   const char* time_str = event_message->args[2];
-                  if (strcmp(time_str, "backward") == 0) {
-                    fb2k::inMainThread([]() {
-                      playback_control::get()->playback_seek_delta(
-                          0.0 - cfg_seek_seconds);
+                  try {
+                    double time = std::stod(time_str);
+                    fb2k::inMainThread([time]() {
+                      playback_control::get()->playback_seek(time);
                     });
-                  } else if (strcmp(time_str, "forward") == 0) {
-                    fb2k::inMainThread([]() {
-                      playback_control::get()->playback_seek_delta(
-                          (double)cfg_seek_seconds);
-                    });
-                  } else {
-                    try {
-                      double time = std::stod(time_str);
-                      fb2k::inMainThread([time]() {
-                        playback_control::get()->playback_seek(time);
-                      });
-                    } catch (...) {
-                      FB2K_console_formatter()
-                          << "mpv: Could not process seek script-message: "
-                             "invalid argument "
-                          << time_str << ", ignoring";
-                    }
+                  } catch (...) {
+                    FB2K_console_formatter()
+                        << "mpv: Could not process seek script-message: "
+                           "invalid argument "
+                        << time_str << ", ignoring";
                   }
-                } else if (strcmp(event_message->args[1], "pause") == 0) {
-                  fb2k::inMainThread(
-                      []() { playback_control::get()->toggle_pause(); });
-                } else if (strcmp(event_message->args[1], "prev") == 0) {
-                  fb2k::inMainThread(
-                      []() { playback_control::get()->previous(); });
-                } else if (strcmp(event_message->args[1], "stop") == 0) {
-                  fb2k::inMainThread([]() { playback_control::get()->stop(); });
-                } else if (strcmp(event_message->args[1], "next") == 0) {
-                  fb2k::inMainThread([]() { playback_control::get()->next(); });
-                } else if (strcmp(event_message->args[1], "volup") == 0) {
-                  fb2k::inMainThread(
-                      []() { playback_control::get()->volume_up(); });
-                } else if (strcmp(event_message->args[1], "voldown") == 0) {
-                  fb2k::inMainThread(
-                      []() { playback_control::get()->volume_down(); });
-                } else if (strcmp(event_message->args[1], "fullscreen") == 0) {
-                  fb2k::inMainThread([this]() {
-                    if (container) container->toggle_fullscreen();
-                  });
                 } else if (event_message->num_args > 2 &&
                            strcmp(event_message->args[1], "context") == 0) {
                   pfc::string8 menu_cmd(event_message->args[2]);

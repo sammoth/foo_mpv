@@ -49,8 +49,10 @@ class menu_node_popup : public uie::menu_node_popup_t {
   std::vector<ui_extension::menu_node_ptr> m_items;
 
  public:
-  menu_node_popup(pfc::string8 text, pfc::string8 description, std::vector<ui_extension::menu_node_ptr> children);
-  menu_node_popup(pfc::string8 text, std::vector<ui_extension::menu_node_ptr> children);
+  menu_node_popup(pfc::string8 text, pfc::string8 description,
+                  std::vector<ui_extension::menu_node_ptr> children);
+  menu_node_popup(pfc::string8 text,
+                  std::vector<ui_extension::menu_node_ptr> children);
 
   void get_child(unsigned p_index, uie::menu_node_ptr& p_out) const;
   unsigned get_children_count() const;
