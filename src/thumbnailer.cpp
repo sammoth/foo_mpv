@@ -725,7 +725,7 @@ album_art_data_ptr thumbnailer::get_art() {
       abort.check();
       if (cfg_logging) {
         FB2K_console_formatter()
-            << "mpv: Using frame at default time " << cfg_thumb_seek;
+            << "mpv: Using frame at time " << cfg_thumb_seek;
       }
       if (!seek(0.01 * (double)cfg_thumb_seek))
         throw exception_album_art_not_found();
@@ -734,7 +734,7 @@ album_art_data_ptr thumbnailer::get_art() {
   }
 
   return encode_output();
-}  // namespace mpv
+}
 
 class empty_album_art_path_list_impl : public album_art_path_list {
  public:

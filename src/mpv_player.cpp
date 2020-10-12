@@ -654,21 +654,9 @@ bool mpv_player::mpv_init() {
                     menu_cmd << " " << event_message->args[i];
                   }
                   fb2k::inMainThread([this, menu_cmd]() {
-                    menu_utils::menu_entry entry =
-                        menu_utils::get_contextmenu_item(menu_cmd);
-                    if (entry.guid != pfc::guid_null) {
-                      metadb_handle_list list;
-                      list.add_item(current_display_item);
-                      if (!menu_helpers::run_command_context(
-                              entry.guid, entry.subcommand, list)) {
-                        FB2K_console_formatter()
-                            << "mpv: Error running context command "
-                            << menu_cmd;
-                      }
-                    } else {
-                      FB2K_console_formatter()
-                          << "mpv: Unknown context command " << menu_cmd;
-                    }
+                    metadb_handle_list list;
+                    list.add_item(current_display_item);
+                    menu_utils::run_contextmenu_item(menu_cmd, list);
                   });
                 } else if (event_message->num_args > 2 &&
                            strcmp(event_message->args[1], "menu") == 0) {
@@ -677,27 +665,7 @@ bool mpv_player::mpv_init() {
                     menu_cmd << " " << event_message->args[i];
                   }
                   fb2k::inMainThread([this, menu_cmd]() {
-                    menu_utils::menu_entry entry =
-                        menu_utils::get_mainmenu_item(menu_cmd);
-                    if (entry.guid != pfc::guid_null) {
-                      if (entry.subcommand != pfc::guid_null) {
-                        if (!mainmenu_commands::g_execute_dynamic(
-                                entry.guid, entry.subcommand)) {
-                          FB2K_console_formatter()
-                              << "mpv: Error running main menu command "
-                              << menu_cmd;
-                        }
-                      } else {
-                        if (!mainmenu_commands::g_execute(entry.guid)) {
-                          FB2K_console_formatter()
-                              << "mpv: Error running main menu command "
-                              << menu_cmd;
-                        }
-                      }
-                    } else {
-                      FB2K_console_formatter()
-                          << "mpv: Unknown menu command " << menu_cmd;
-                    }
+                    menu_utils::run_mainmenu_item(menu_cmd);
                   });
                 } else if (event_message->num_args > 3 &&
                            strcmp(event_message->args[1],

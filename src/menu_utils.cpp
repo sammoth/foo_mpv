@@ -194,32 +194,70 @@ std::vector<menu_entry> get_mainmenu_items() {
   return ret;
 }
 
-menu_entry get_mainmenu_item(pfc::string8 name) {
-  auto stored = menu_memo.find(name);
-  if (stored != menu_memo.end()) {
-    return stored->second;
-  }
-
-  for (auto& item : get_mainmenu_items()) {
-    if (item.name && item.name.equals(name)) {
-      menu_memo[name] = item;
-      return item;
+bool run_mainmenu_item(pfc::string8 name) {
+  auto entry = menu_memo.find(name);
+  bool success = false;
+  if (entry != menu_memo.end()) {
+    if (entry->second.subcommand != pfc::guid_null) {
+      success = mainmenu_commands::g_execute_dynamic(entry->second.guid,
+                                                     entry->second.subcommand);
+    } else {
+      success = mainmenu_commands::g_execute(entry->second.guid);
     }
   }
-  return {pfc::guid_null, pfc::guid_null, pfc::string8()};
+
+  if (!success) {
+    menu_memo.erase(name);
+    for (auto& item : get_mainmenu_items()) {
+      if (item.name && item.name.equals(name)) {
+        if (item.subcommand != pfc::guid_null) {
+          success =
+              mainmenu_commands::g_execute_dynamic(item.guid, item.subcommand);
+        } else {
+          success = mainmenu_commands::g_execute(item.guid);
+        }
+
+        if (success) {
+          menu_memo[name] = item;
+        }
+        break;
+      }
+    }
+  }
+
+  if (!success) {
+    FB2K_console_formatter() << "mpv: Failure running menu command " << name;
+  }
+
+  return success;
 }
-menu_entry get_contextmenu_item(pfc::string8 name) {
-  auto stored = context_memo.find(name);
-  if (stored != context_memo.end()) {
-    return stored->second;
+
+bool run_contextmenu_item(pfc::string8 name, metadb_handle_list_cref items) {
+  auto entry = context_memo.find(name);
+  bool success = false;
+  if (entry != context_memo.end()) {
+    success = menu_helpers::run_command_context(
+        entry->second.guid, entry->second.subcommand, items);
   }
 
-  for (auto& item : get_contextmenu_items()) {
-    if (item.name && item.name.equals(name)) {
-      context_memo[name] = item;
-      return item;
+  if (!success) {
+    context_memo.erase(name);
+    for (auto& item : get_contextmenu_items()) {
+      if (item.name && item.name.equals(name)) {
+        success = menu_helpers::run_command_context(item.guid, item.subcommand,
+                                                    items);
+        if (success) {
+          context_memo[name] = item;
+        }
+        break;
+      }
     }
   }
-  return {pfc::guid_null, pfc::guid_null, pfc::string8()};
+
+  if (!success) {
+    FB2K_console_formatter() << "mpv: Failure running context command " << name;
+  }
+
+  return success;
 }
 }  // namespace menu_utils
