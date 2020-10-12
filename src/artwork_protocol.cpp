@@ -9,11 +9,17 @@
 #include "mpv_player.h"
 
 namespace mpv {
-static std::mutex mutex;
+extern cfg_uint cfg_artwork_type;
+extern cfg_bool cfg_artwork;
+extern advconfig_checkbox_factory cfg_logging;
 
 struct artwork_request {
   artwork_request(metadb_handle_list_cref p_items, long newid)
-      : items(p_items), art_data(), cursor(0), loaded(false), id(newid){};
+      : items(p_items), art_data(), cursor(0), loaded(false), id(newid) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Artwork request " << newid;
+    }
+  };
   metadb_handle_list items;
   album_art_data_ptr art_data = NULL;
   bool loaded;
@@ -22,13 +28,8 @@ struct artwork_request {
 };
 
 static std::unique_ptr<artwork_request> g_request;
-
-extern cfg_uint cfg_artwork_type;
-extern cfg_bool cfg_artwork;
-extern advconfig_checkbox_factory cfg_logging;
-
-abort_callback_impl abort_loading;
-
+static std::mutex mutex;
+static abort_callback_impl abort_loading;
 static std::thread artwork_loader;
 static std::condition_variable cv;
 static std::atomic_bool artwork_loader_terminate = false;
@@ -37,6 +38,10 @@ static std::atomic_bool load;
 bool artwork_loaded() {
   std::lock_guard<std::mutex> lock(mutex);
   bool ret = g_request && g_request->art_data.is_valid();
+  if (cfg_logging && ret) {
+    FB2K_console_formatter()
+        << "mpv: Loading artwork protocol [" << g_request->id << "]";
+  }
   return ret;
 }
 
@@ -181,7 +186,8 @@ static int64_t artworkreader_size(void* cookie) {
   std::lock_guard<std::mutex> lock(mutex);
   if (!g_request || (long)cookie != g_request->id) {
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Stale artwork reference";
+      FB2K_console_formatter()
+          << "mpv: Stale artwork reference [size, " << (long)cookie << "]";
     }
     return libmpv::MPV_ERROR_GENERIC;
   }
@@ -195,7 +201,8 @@ static int64_t artworkreader_read(void* cookie, char* buf, uint64_t nbytes) {
   std::lock_guard<std::mutex> lock(mutex);
   if (!g_request || (long)cookie != g_request->id) {
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Stale artwork reference";
+      FB2K_console_formatter()
+          << "mpv: Stale artwork reference [read, " << (long)cookie << "]";
     }
     return libmpv::MPV_ERROR_GENERIC;
   }
@@ -215,7 +222,8 @@ static int64_t artworkreader_seek(void* cookie, int64_t offset) {
   std::lock_guard<std::mutex> lock(mutex);
   if (!g_request || (long)cookie != g_request->id) {
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Stale artwork reference";
+      FB2K_console_formatter()
+          << "mpv: Stale artwork reference [size, " << (long)cookie << "]";
     }
     return libmpv::MPV_ERROR_GENERIC;
   }
@@ -242,6 +250,9 @@ int artwork_protocol_open(void* user_data, char* uri,
       return libmpv::MPV_ERROR_NOTHING_TO_PLAY;
     }
     info->cookie = (void*)g_request->id;
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Opening artwork stream [" << g_request->id << "]";
+    }
   }
   info->close_fn = artworkreader_close;
   info->size_fn = artworkreader_size;
