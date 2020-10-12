@@ -140,10 +140,17 @@ class artwork_register : public initquit {
 
             types.add_item(type);
 
-            album_art_extractor_instance::ptr extractor =
-                album_art_manager_v2::get()->open(req_items, types,
-                                                  abort_loading);
-            result = extractor->query(type, abort_loading);
+            try {
+              album_art_extractor_instance::ptr extractor =
+                  album_art_manager_v2::get()->open(req_items, types,
+                                                    abort_loading);
+              result = extractor->query(type, abort_loading);
+            } catch (exception_album_art_not_found e) {
+              album_art_extractor_instance::ptr extractor =
+                  album_art_manager_v2::get()->open_stub(abort_loading);
+              result = extractor->query(type, abort_loading);
+            }
+
             {
               std::lock_guard<std::mutex> lock(mutex);
               if (g_request && g_request->id == req_id) {
@@ -251,7 +258,8 @@ int artwork_protocol_open(void* user_data, char* uri,
     }
     info->cookie = (void*)g_request->id;
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Opening artwork stream [" << g_request->id << "]";
+      FB2K_console_formatter()
+          << "mpv: Opening artwork stream [" << g_request->id << "]";
     }
   }
   info->close_fn = artworkreader_close;
