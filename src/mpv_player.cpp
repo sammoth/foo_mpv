@@ -191,118 +191,91 @@ BOOL mpv_player::on_erase_bg(CDCHandle dc) {
   return TRUE;
 }
 
-enum {
-  ID_ENABLED = 1,
-  ID_FULLSCREEN = 2,
-  ID_ART_FRONT = 3,
-  ID_ART_BACK = 4,
-  ID_ART_DISC = 5,
-  ID_ART_ARTIST = 6,
-  ID_STATS = 99,
-  ID_PROFILES = 5000,
-};
-
-void mpv_player::add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
+void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
   if (g_player && g_player->mpv_handle) {
     if (g_player->mpv_state == state::Idle ||
         g_player->mpv_state == state::Artwork ||
         g_player->mpv_state == state::Unloaded) {
-      menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Idle"));
+      menu_hook.add_node(new menu_utils::menu_node_disabled("Idle"));
     } else if (g_player->mpv_state == state::Loading ||
                g_player->mpv_state == state::Preload) {
-      menu->AppendMenu(MF_DISABLED, ID_STATS, _T("Loading..."));
+      menu_hook.add_node(new menu_utils::menu_node_disabled("Loading..."));
     } else {
-      std::wstringstream text;
-      text.setf(std::ios::fixed);
-      text.precision(3);
-      text << g_player->get_string("video-codec") << " "
-           << g_player->get_string("video-params/pixelformat");
-      menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
-      text.str(L"");
-      text << g_player->get_string("width") << "x"
-           << g_player->get_string("height") << " "
-           << g_player->get_double("container-fps") << "fps (display "
-           << g_player->get_double("estimated-vf-fps") << "fps)";
-      menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
-      std::string hwdec = g_player->get_string("hwdec-current");
-      if (hwdec != "no") {
-        text.str(L"");
-        text << "Hardware decoding: " << g_player->get_string("hwdec-current");
-        menu->AppendMenu(MF_DISABLED, ID_STATS, text.str().c_str());
+      pfc::string8 codec_info;
+      codec_info << g_player->get_string("video-codec") << " "
+                 << g_player->get_string("video-params/pixelformat");
+      menu_hook.add_node(new menu_utils::menu_node_disabled(codec_info));
+
+      pfc::string8 display_info;
+      display_info << g_player->get_string("width") << "x"
+                   << g_player->get_string("height") << " "
+                   << pfc::format_float(g_player->get_double("container-fps"), 0, 3) << "fps (display "
+                   << pfc::format_float(g_player->get_double("estimated-vf-fps"), 0, 3) << "fps)";
+      menu_hook.add_node(new menu_utils::menu_node_disabled(display_info));
+
+      pfc::string8 hwdec = g_player->get_string("hwdec-current");
+      if (!hwdec.equals("no")) {
+        hwdec.insert_chars(0, "Hardware decoding: ");
+        menu_hook.add_node(new menu_utils::menu_node_disabled(hwdec));
       }
     }
 
-    menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+    menu_hook.add_node(new uie::menu_node_separator_t());
 
     if (g_player->profiles.size() > 0) {
-      for (unsigned i = 0; i < g_player->profiles.size(); i++) {
-        uAppendMenu(menu->m_hMenu, MF_DEFAULT, ID_PROFILES + i,
-                    g_player->profiles[i].c_str());
+      for (auto& profile : g_player->profiles) {
+        menu_hook.add_node(
+            new menu_utils::menu_node_run(profile, false, [profile]() {
+              const char* cmd_profile[] = {"apply-profile", profile, NULL};
+              if (g_player->command(cmd_profile) < 0 && cfg_logging) {
+                FB2K_console_formatter() << "mpv: Error loading video profile";
+              }
+            }));
       }
-      menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
+
+      menu_hook.add_node(new uie::menu_node_separator_t());
     }
   }
 
-  menu->AppendMenu(cfg_video_enabled ? MF_CHECKED : MF_UNCHECKED, ID_ENABLED,
-                   _T("Enabled"));
-  menudesc->Set(ID_ENABLED, "Enable/disable video playback");
-  menu->AppendMenu(
-      g_player->container->is_fullscreen() ? MF_CHECKED : MF_UNCHECKED,
-      ID_FULLSCREEN, _T("Fullscreen"));
-  menudesc->Set(ID_FULLSCREEN, "Toggle video fullscreen");
+  menu_hook.add_node(new menu_utils::menu_node_run(
+      "Enable video", "Enable/disable video playback", cfg_video_enabled, []() {
+        cfg_video_enabled = !cfg_video_enabled;
+        g_player->update();
+      }));
+
+  menu_hook.add_node(new menu_utils::menu_node_run(
+      "Fullscreen", "Toggle fullscreen video",
+      g_player->container->is_fullscreen(),
+      []() { g_player->container->toggle_fullscreen(); }));
 
   if (cfg_artwork &&
       (!g_player->mpv_handle || g_player->mpv_state == state::Idle ||
        g_player->mpv_state == state::Artwork)) {
-    menu->AppendMenu(MF_SEPARATOR, ID_STATS, _T(""));
-    menu->AppendMenu(cfg_artwork_type == 0 ? MF_CHECKED : MF_UNCHECKED,
-                     ID_ART_FRONT, _T("Front"));
-    menu->AppendMenu(cfg_artwork_type == 1 ? MF_CHECKED : MF_UNCHECKED,
-                     ID_ART_BACK, _T("Back"));
-    menu->AppendMenu(cfg_artwork_type == 2 ? MF_CHECKED : MF_UNCHECKED,
-                     ID_ART_DISC, _T("Disc"));
-    menu->AppendMenu(cfg_artwork_type == 3 ? MF_CHECKED : MF_UNCHECKED,
-                     ID_ART_ARTIST, _T("Artist"));
-  }
-}
+    menu_hook.add_node(new uie::menu_node_separator_t());
 
-void mpv_player::handle_menu_cmd(int cmd) {
-  if (g_player) {
-    switch (cmd) {
-      case ID_ENABLED:
-        cfg_video_enabled = !cfg_video_enabled;
-        g_player->update();
-        break;
-      case ID_FULLSCREEN:
-        g_player->container->toggle_fullscreen();
-        break;
-      case ID_ART_FRONT:
-        cfg_artwork_type = 0;
-        request_artwork(g_player->current_selection);
-        break;
-      case ID_ART_BACK:
-        cfg_artwork_type = 1;
-        request_artwork(g_player->current_selection);
-        break;
-      case ID_ART_DISC:
-        cfg_artwork_type = 2;
-        request_artwork(g_player->current_selection);
-        break;
-      case ID_ART_ARTIST:
-        cfg_artwork_type = 3;
-        request_artwork(g_player->current_selection);
-        break;
-      default:
-        unsigned profile_id = cmd - ID_PROFILES;
-        if (profile_id > -1 && profile_id < g_player->profiles.size()) {
-          const char* cmd_profile[] = {
-              "apply-profile", g_player->profiles[profile_id].c_str(), NULL};
-          if (g_player->command(cmd_profile) < 0 && cfg_logging) {
-            FB2K_console_formatter() << "mpv: Error loading video profile";
-          }
-        }
-        break;
-    }
+    std::vector<ui_extension::menu_node_ptr> artwork_children;
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Front", cfg_artwork_type == 0, []() {
+          cfg_artwork_type = 0;
+          request_artwork(g_player->current_selection);
+        }));
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Back", cfg_artwork_type == 1, []() {
+          cfg_artwork_type = 1;
+          request_artwork(g_player->current_selection);
+        }));
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Disc", cfg_artwork_type == 2, []() {
+          cfg_artwork_type = 2;
+          request_artwork(g_player->current_selection);
+        }));
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Artist", cfg_artwork_type == 3, []() {
+          cfg_artwork_type = 3;
+          request_artwork(g_player->current_selection);
+        }));
+
+    menu_hook.add_node(new menu_utils::menu_node_popup("Cover type", artwork_children));
   }
 }
 
@@ -758,7 +731,7 @@ bool mpv_player::mpv_init() {
             name.compare("libmpv") != 0 && name.compare("encoding") != 0 &&
             name.compare("video") != 0 && name.compare("albumart") != 0 &&
             name.compare("sw-fast") != 0 && name.compare("opengl-hq") != 0) {
-          profiles.push_back(name);
+          profiles.push_back(pfc::string8(name.c_str()));
         }
       }
     }

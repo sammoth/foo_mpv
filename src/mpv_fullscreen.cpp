@@ -92,9 +92,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
     mpv_container::on_resize(size.cx, size.cy);
   }
 
-  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {}
-
-  void handle_menu_cmd(int cmd) {}
+  void add_menu_items(uie::menu_hook_impl& hook) override {}
 
   HWND get_wnd() { return m_hWnd; }
 

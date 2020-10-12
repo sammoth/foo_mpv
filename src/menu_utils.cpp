@@ -1,9 +1,71 @@
 #include "stdafx.h"
 // PCH ^
 
+#include "columns_ui-sdk/ui_extension.h"
 #include "menu_utils.h"
 
 namespace menu_utils {
+menu_node_disabled::menu_node_disabled(pfc::string8 text) : m_text(text){};
+void menu_node_disabled::execute() {}
+bool menu_node_disabled::get_description(pfc::string_base& p_out) const {
+  return false;
+}
+bool menu_node_disabled::get_display_data(pfc::string_base& p_out,
+                                          unsigned& p_displayflags) const {
+  p_out = m_text;
+  p_displayflags = state_disabled;
+  return true;
+}
+
+menu_node_run::menu_node_run(pfc::string8 text, pfc::string8 description,
+                             bool checked, std::function<void()> execute)
+    : m_text(text),
+      m_description(description),
+      m_executor(execute),
+      m_checked(checked){};
+menu_node_run::menu_node_run(pfc::string8 text, bool checked,
+                             std::function<void()> execute)
+    : m_text(text), m_description(), m_executor(execute), m_checked(checked){};
+void menu_node_run::execute() { m_executor(); }
+bool menu_node_run::get_description(pfc::string_base& p_out) const {
+  if (m_description.is_empty()) {
+    return false;
+  } else {
+    p_out = m_description;
+    return true;
+  }
+}
+bool menu_node_run::get_display_data(pfc::string_base& p_out,
+                                     unsigned& p_displayflags) const {
+  p_out = m_text;
+  p_displayflags = m_checked ? state_checked : 0;
+  return true;
+}
+
+menu_node_popup::menu_node_popup(pfc::string8 text, std::vector<ui_extension::menu_node_ptr> children)
+    : m_text(text), m_description(), m_items(children){};
+menu_node_popup::menu_node_popup(pfc::string8 text, pfc::string8 description, std::vector<ui_extension::menu_node_ptr> children)
+    : m_text(text), m_description(description), m_items(children){};
+void menu_node_popup::get_child(unsigned p_index,
+                                uie::menu_node_ptr& p_out) const {
+  p_out = m_items[p_index].get_ptr();
+}
+unsigned menu_node_popup::get_children_count() const { return m_items.size(); }
+bool menu_node_popup::get_description(pfc::string_base& p_out) const {
+  if (m_description.is_empty()) {
+    return false;
+  } else {
+    p_out = m_description;
+    return true;
+  }
+}
+bool menu_node_popup::get_display_data(pfc::string_base& p_out,
+                                       unsigned& p_displayflags) const {
+  p_out = m_text;
+  p_displayflags = 0;
+  return true;
+}
+
 class string8Hasher {
  public:
   std::size_t operator()(const pfc::string8& key) const {

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 
+#include "columns_ui-sdk/ui_extension.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
 #include "preferences.h"
@@ -66,39 +67,26 @@ void mpv_container::pin() {
   mpv_player::on_containers_change();
 }
 
-void mpv_container::on_context_menu(CWindow wnd, CPoint point) {
-  try {
-    {
-      // handle the context menu key case - center the menu
-      if (point == CPoint(-1, -1)) {
-        CRect rc;
-        WIN32_OP(wnd.GetWindowRect(&rc));
-        point = rc.CenterPoint();
-      }
-
-      CMenuDescriptionHybrid menudesc(container_wnd());
-
-      static_api_ptr_t<contextmenu_manager> api;
-      CMenu menu;
-      WIN32_OP(menu.CreatePopupMenu());
-
-      if (owns_player()) {
-        mpv_player::add_menu_items(&menu, &menudesc);
-      }
-
-      add_menu_items(&menu, &menudesc);
-
-      int cmd =
-          menu.TrackPopupMenu(TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD,
-                              point.x, point.y, menudesc, 0);
-
-      handle_menu_cmd(cmd);
-
-      mpv_player::handle_menu_cmd(cmd);
-    }
-  } catch (std::exception const& e) {
-    console::complain("Context menu failure", e);
+void mpv_container::on_context_menu(CWindow wnd, CPoint pt) {
+  pfc::refcounted_object_ptr_t<ui_extension::menu_hook_impl> menu_hook =
+      new ui_extension::menu_hook_impl;
+  if (owns_player()) {
+    mpv_player::add_menu_items(*menu_hook);
   }
+
+  add_menu_items(*menu_hook);
+
+  HMENU menu = CreatePopupMenu();
+  menu_hook->win32_build_menu(menu, 1, pfc_infinite);
+  menu_helpers::win32_auto_mnemonics(menu);
+  const auto cmd = static_cast<unsigned>(
+      TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_NONOTIFY | TPM_RETURNCMD, pt.x,
+                     pt.y, 0, container_wnd(), nullptr));
+  if (cmd >= 1) {
+    menu_hook->execute_by_id(cmd);
+  }
+
+  DestroyMenu(menu);
 }
 
 void mpv_container::on_resize(long p_x, long p_y) {

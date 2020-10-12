@@ -5,6 +5,7 @@
 
 #include <sstream>
 
+#include "menu_utils.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
 #include "preferences.h"
@@ -167,46 +168,25 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     mpv_container::on_resize(size.cx, size.cy);
   }
 
-  enum {
-    ID_UNPIN = 1003,
-    ID_SETCOLOUR = 1004,
-    ID_SEPARATE = 1005,
-    ID_ONTOP = 1006,
-    ID_SEP = 9999,
-  };
-
-  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    if (menu->GetMenuItemCount() > 0) {
-      menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+  void add_menu_items(uie::menu_hook_impl& menu_hook) override {
+    if (menu_hook.get_children_count() > 0) {
+      menu_hook.add_node(new uie::menu_node_separator_t());
     }
-    menu->AppendMenu(cfg_mpv_popup_alwaysontop ? MF_CHECKED : MF_UNCHECKED,
-                     ID_ONTOP, _T("Always on-top"));
-    menudesc->Set(ID_ONTOP, "Keep the video window above other windows");
-    menu->AppendMenu(cfg_mpv_popup_separate ? MF_CHECKED : MF_UNCHECKED,
-                     ID_SEPARATE, _T("Separate from main window"));
-    menudesc->Set(ID_SEPARATE,
-                  "Allow window to separate from the foobar2000 main window");
-  }
-
-  void handle_menu_cmd(int cmd) {
-    RECT client_rect = {};
-    switch (cmd) {
-      case ID_ONTOP:
-        cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
-        DestroyWindow();
-        RunMpvPopupWindow();
-        break;
-      case ID_SEPARATE:
-        cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
-        DestroyWindow();
-        RunMpvPopupWindow();
-        break;
-      case ID_UNPIN:
-        unpin();
-        break;
-      default:
-        break;
-    }
+    menu_hook.add_node(new menu_utils::menu_node_run(
+        "Always on-top", "Keep the video window above other windows",
+        cfg_mpv_popup_alwaysontop, [this]() {
+          cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
+          DestroyWindow();
+          RunMpvPopupWindow();
+        }));
+    menu_hook.add_node(new menu_utils::menu_node_run(
+        "Separate from main window",
+        "Allow window to separate from the foobar2000 main window",
+        cfg_mpv_popup_separate, [this]() {
+          cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
+          DestroyWindow();
+          RunMpvPopupWindow();
+        }));
   }
 
   HWND get_wnd() { return m_hWnd; }

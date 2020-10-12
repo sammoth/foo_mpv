@@ -5,6 +5,7 @@
 
 #include <sstream>
 
+#include "menu_utils.h"
 #include "mpv_container.h"
 #include "mpv_player.h"
 #include "resource.h"
@@ -125,55 +126,33 @@ struct CMpvDuiWindow : public ui_element_instance,
     }
   };
 
-  enum {
-    ID_PIN = 1003,
-    ID_POPOUT = 1004,
-    ID_OSC = 1005,
-    ID_SEP = 9999,
-  };
-
-  void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc) {
-    if (menu->GetMenuItemCount() > 0) {
-      menu->AppendMenu(MF_SEPARATOR, ID_SEP, _T(""));
+  void add_menu_items(uie::menu_hook_impl& menu_hook) override {
+    if (menu_hook.get_children_count() > 0) {
+      menu_hook.add_node(new uie::menu_node_separator_t());
     }
     if (cfg_osc) {
-      menu->AppendMenu(is_osc_enabled() ? MF_CHECKED : MF_UNCHECKED, ID_OSC,
-                       _T("Controls"));
-      menudesc->Set(ID_OSC,
-                    "Enable or disable the video controls for this UI element");
+      menu_hook.add_node(new menu_utils::menu_node_run(
+          "Controls", "Enable the on-screen controls in this UI element",
+          is_osc_enabled(), [this]() {
+            osc_enabled = !osc_enabled;
+            mpv_player::on_containers_change();
+          }));
     }
-    menu->AppendMenu(is_pinned() ? MF_CHECKED : MF_UNCHECKED, ID_PIN,
-                     _T("Pin here"));
-    menudesc->Set(ID_PIN, "Pin the video to this container");
+    menu_hook.add_node(new menu_utils::menu_node_run(
+        "Pin", "Pin the video to this container", is_pinned(), [this]() {
+          if (is_pinned()) {
+            unpin();
+          } else {
+            pin();
+          }
+        }));
 
     if (owns_player()) {
-      menu->AppendMenu(MF_DEFAULT, ID_POPOUT, _T("Pop out"));
-      menudesc->Set(ID_POPOUT, "Open video in popup");
-    }
-  }
-
-  void handle_menu_cmd(int cmd) {
-    CHOOSECOLOR cc = {};
-    static COLORREF acrCustClr[16];
-
-    switch (cmd) {
-      case ID_PIN:
-        if (is_pinned()) {
-          unpin();
-        } else {
-          pin();
-        }
-        break;
-      case ID_POPOUT:
-        unpin();
-        RunMpvPopupWindow();
-        break;
-      case ID_OSC:
-        osc_enabled = !osc_enabled;
-        mpv_player::on_containers_change();
-        break;
-      default:
-        break;
+      menu_hook.add_node(new menu_utils::menu_node_run(
+          "Pop out", "Open video in popup window", false, [this]() {
+            unpin();
+            RunMpvPopupWindow();
+          }));
     }
   }
 

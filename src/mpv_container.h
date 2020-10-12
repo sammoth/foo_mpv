@@ -2,6 +2,7 @@
 #include "stdafx.h"
 // PCH ^
 
+#include "columns_ui-sdk/ui_extension.h"
 #include "../helpers/atl-misc.h"
 
 void RunMpvFullscreenWindow(bool reopen_popup, MONITORINFO monitor);
@@ -41,9 +42,7 @@ class mpv_container {
 
   virtual void invalidate() = 0;
 
-  virtual void add_menu_items(CMenu* menu,
-                              CMenuDescriptionHybrid* menudesc) = 0;
-  virtual void handle_menu_cmd(int cmd) = 0;
+  virtual void add_menu_items(uie::menu_hook_impl& menu_hook) = 0;
   virtual bool is_osc_enabled() = 0;
 
   static mpv_container* get_main_container();

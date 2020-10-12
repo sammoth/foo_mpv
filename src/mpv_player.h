@@ -91,7 +91,7 @@ class mpv_player : play_callback_impl_base,
   std::mutex sync_lock;
   long last_sync_time;
 
-  std::vector<std::string> profiles;
+  std::vector<pfc::string8> profiles;
 
   // utils
   const char* get_string(const char* name);
@@ -147,8 +147,7 @@ class mpv_player : play_callback_impl_base,
   mpv_player();
   ~mpv_player();
   static void on_containers_change();
-  static void add_menu_items(CMenu* menu, CMenuDescriptionHybrid* menudesc);
-  static void handle_menu_cmd(int cmd);
+  static void add_menu_items(uie::menu_hook_impl& menu_hook);
   static void on_new_artwork();
   static void send_message(UINT msg, UINT wparam, UINT lparam);
   static void get_title(pfc::string8 out);
