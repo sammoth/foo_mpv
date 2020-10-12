@@ -8,7 +8,9 @@
 
 void RunMpvPopupWindow();
 
-namespace {
+namespace mpv {
+extern cfg_bool cfg_video_enabled;
+
 static const GUID guid_thumbnails_group = {
     0x41ede16, 0xaf85, 0x408d, {0x88, 0xcc, 0x4, 0x5f, 0xcb, 0x29, 0x62, 0x88}};
 static const GUID guid_player_group = {
@@ -16,6 +18,12 @@ static const GUID guid_player_group = {
     0x9b9f,
     0x4ca2,
     {0xb0, 0xb4, 0x7a, 0x69, 0xf, 0xc7, 0x32, 0x99}};
+
+static const GUID guid_video_enable = {
+    0x516e4c09,
+    0x23d2,
+    0x4e1f,
+    {0x9c, 0xc6, 0x87, 0x1e, 0x7a, 0x1d, 0xf3, 0xad}};
 
 static const GUID guid_mpv_popup = {
     0xfd1d7b8c,
@@ -235,14 +243,14 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
 static service_factory_single_t<mainmenu_mpv_thumbs> g_mainmenu_mpv_thumbs;
 
 static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
-                              LPRECT lprcMonitor, LPARAM dwData) {
+                                     LPRECT lprcMonitor, LPARAM dwData) {
   unsigned* count = reinterpret_cast<unsigned*>(dwData);
   (*count) = (*count) + 1;
   return true;
 }
 
 class mainmenu_mpv_playercontrol : public mainmenu_commands {
-  enum { cmd_restart = 0, cmd_fullscreen = 1, cmd_total };
+  enum { cmd_restart = 0, cmd_enable = 1, cmd_fullscreen = 2, cmd_total };
   t_uint32 get_command_count() override {
     unsigned monitors = 0;
     EnumDisplayMonitors(NULL, NULL, MonitorEnumProc,
@@ -254,6 +262,8 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
     switch (p_index) {
       case cmd_restart:
         return guid_mpv_restart;
+      case cmd_enable:
+        return guid_video_enable;
       case cmd_fullscreen:
         return guid_fullscreen;
       case cmd_fullscreen + 1:
@@ -285,6 +295,9 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
       case cmd_restart:
         p_out = "Restart mpv";
         break;
+      case cmd_enable:
+        p_out = "Enable/disable video";
+        break;
       case cmd_fullscreen:
         p_out = "Toggle fullscreen";
         break;
@@ -300,6 +313,8 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
             "Restarts any running mpv player instance and reloads all "
             "configuration";
         return true;
+      case cmd_enable:
+        return false;
       case cmd_fullscreen:
         p_out = "Toggle fullscreen mode";
         return true;
@@ -321,6 +336,10 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
     switch (p_index) {
       case cmd_restart:
         mpv::mpv_player::restart();
+        break;
+      case cmd_enable:
+        cfg_video_enabled = !cfg_video_enabled;
+        mpv::mpv_player::on_containers_change();
         break;
       case cmd_fullscreen:
         mpv::mpv_player::toggle_fullscreen();

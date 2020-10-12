@@ -490,6 +490,7 @@ bool mpv_player::mpv_init() {
     set_option_string("osc", "no");
     set_option_string("load-stats-overlay", "no");
     set_option_string("load-osd-console", "no");
+    set_option_string("load-scripts", "yes");
     set_option_string("alpha", "blend");
 
     set_option_string("access-references", "no");
@@ -540,12 +541,20 @@ bool mpv_player::mpv_init() {
       set_option_string("hwdec", "auto-safe");
     }
 
-    // load the OSC
-    pfc::string_formatter osc_path = core_api::get_my_full_path();
-    osc_path.truncate(osc_path.scan_filename());
-    osc_path << "mpv\\osc.lua";
-    osc_path.replace_char('\\', '/', 0);
-    set_option_string("scripts", osc_path.c_str());
+    // load the OSC if no custom one is set
+    pfc::string_formatter custom_osc_path;
+    filesystem::g_get_native_path(core_api::get_profile_path(),
+                                  custom_osc_path);
+    custom_osc_path.add_filename("mpv");
+    custom_osc_path.add_filename("scripts");
+    custom_osc_path.add_filename("osc.lua");
+    if (!filesystem::g_exists(custom_osc_path.c_str(), fb2k::noAbort)) {
+      pfc::string_formatter osc_path = core_api::get_my_full_path();
+      osc_path.truncate(osc_path.scan_filename());
+      osc_path << "mpv\\osc.lua";
+      osc_path.replace_char('\\', '/', 0);
+      set_option_string("scripts", osc_path.c_str());
+    }
 
     // apply OSC settings
     std::stringstream opts;
