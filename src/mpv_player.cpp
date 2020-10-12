@@ -72,7 +72,6 @@ mpv_player::mpv_player()
       last_hard_sync(-99),
       last_sync_time(0),
       running_ffs(false),
-      current_selection(NULL),
       current_display_item(NULL),
       mpv_timepos(0),
       mpv_state(state::Unloaded),
@@ -135,7 +134,6 @@ mpv_player::~mpv_player() {
     mpv_handle = NULL;
   }
   g_player = NULL;
-  current_selection.reset();
 }
 
 bool mpv_player::check_queue_any() { return !task_queue.empty(); }
@@ -209,8 +207,12 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
       pfc::string8 display_info;
       display_info << g_player->get_string("width") << "x"
                    << g_player->get_string("height") << " "
-                   << pfc::format_float(g_player->get_double("container-fps"), 0, 3) << "fps (display "
-                   << pfc::format_float(g_player->get_double("estimated-vf-fps"), 0, 3) << "fps)";
+                   << pfc::format_float(g_player->get_double("container-fps"),
+                                        0, 3)
+                   << "fps (display "
+                   << pfc::format_float(
+                          g_player->get_double("estimated-vf-fps"), 0, 3)
+                   << "fps)";
       menu_hook.add_node(new menu_utils::menu_node_disabled(display_info));
 
       pfc::string8 hwdec = g_player->get_string("hwdec-current");
@@ -235,18 +237,19 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
 
       menu_hook.add_node(new uie::menu_node_separator_t());
     }
+
+    menu_hook.add_node(new menu_utils::menu_node_run(
+        "Enable video", "Enable/disable video playback", cfg_video_enabled,
+        []() {
+          cfg_video_enabled = !cfg_video_enabled;
+          g_player->update();
+        }));
+
+    menu_hook.add_node(new menu_utils::menu_node_run(
+        "Fullscreen", "Toggle fullscreen video",
+        g_player->container->is_fullscreen(),
+        []() { g_player->container->toggle_fullscreen(); }));
   }
-
-  menu_hook.add_node(new menu_utils::menu_node_run(
-      "Enable video", "Enable/disable video playback", cfg_video_enabled, []() {
-        cfg_video_enabled = !cfg_video_enabled;
-        g_player->update();
-      }));
-
-  menu_hook.add_node(new menu_utils::menu_node_run(
-      "Fullscreen", "Toggle fullscreen video",
-      g_player->container->is_fullscreen(),
-      []() { g_player->container->toggle_fullscreen(); }));
 
   if (cfg_artwork &&
       (!g_player->mpv_handle || g_player->mpv_state == state::Idle ||
@@ -257,25 +260,26 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
     artwork_children.emplace_back(
         new menu_utils::menu_node_run("Front", cfg_artwork_type == 0, []() {
           cfg_artwork_type = 0;
-          request_artwork(g_player->current_selection);
+          reload_artwork();
         }));
     artwork_children.emplace_back(
         new menu_utils::menu_node_run("Back", cfg_artwork_type == 1, []() {
           cfg_artwork_type = 1;
-          request_artwork(g_player->current_selection);
+          reload_artwork();
         }));
     artwork_children.emplace_back(
         new menu_utils::menu_node_run("Disc", cfg_artwork_type == 2, []() {
           cfg_artwork_type = 2;
-          request_artwork(g_player->current_selection);
+          reload_artwork();
         }));
     artwork_children.emplace_back(
         new menu_utils::menu_node_run("Artist", cfg_artwork_type == 3, []() {
           cfg_artwork_type = 3;
-          request_artwork(g_player->current_selection);
+          reload_artwork();
         }));
 
-    menu_hook.add_node(new menu_utils::menu_node_popup("Cover type", artwork_children));
+    menu_hook.add_node(
+        new menu_utils::menu_node_popup("Cover type", artwork_children));
   }
 }
 
@@ -686,8 +690,7 @@ bool mpv_player::mpv_init() {
 
                 if (mpv_state != new_state) {
                   if (new_state == state::Idle && mpv_state != state::Artwork) {
-                    request_artwork(current_selection);
-                    set_display_item(current_selection);
+                    request_artwork();
                   }
 
                   set_state(new_state);
@@ -759,7 +762,7 @@ void mpv_player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
     publish_titleformatting_subscriptions();
 
     if (mpv_state == state::Artwork) {
-      request_artwork(current_display_item);
+      reload_artwork();
     }
   }
 }
@@ -770,24 +773,9 @@ void mpv_player::set_display_item(metadb_handle_ptr item) {
 }
 
 void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
-  metadb_handle_ptr new_item;
-  if (p_selection.get_count() > 0) new_item = p_selection[0];
-
-  if (new_item == current_selection) return;
-
-  current_selection = new_item;
-
   if (mpv_state == state::Idle || mpv_state == state::Artwork ||
       mpv_state == state::Unloaded) {
-    if (current_selection.is_empty()) {
-      task t;
-      t.type = task_type::Stop;
-      queue_task(t);
-      set_display_item(NULL);
-    } else {
-      request_artwork(current_selection);
-      set_display_item(current_selection);
-    }
+    request_artwork(p_selection);
   }
 }
 
@@ -866,8 +854,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
 
   if (!enabled || !test_video_pattern(metadb)) {
     mpv_state = state::Idle;
-    request_artwork(current_selection);
-    set_display_item(current_selection);
+    request_artwork();
     return;
   }
 
@@ -974,8 +961,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     FB2K_console_formatter() << "mpv: Skipping loading item '" << filename
                              << "' because it is not a local file";
     mpv_state = state::Idle;
-    request_artwork(current_selection);
-    set_display_item(current_selection);
+    request_artwork();
     return;
   }
 }
@@ -1167,10 +1153,14 @@ void mpv_player::load_artwork() {
       } else if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Loading artwork";
       }
+
+      set_display_item(single_artwork_item());
     } else {
       task t;
       t.type = task_type::Stop;
       queue_task(t);
+
+      set_display_item(NULL);
     }
   }
 }

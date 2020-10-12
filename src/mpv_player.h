@@ -117,9 +117,8 @@ class mpv_player : play_callback_impl_base,
   // scripting/artwork
   void on_selection_changed(metadb_handle_list_cref) override;
   void on_changed_sorted(metadb_handle_list_cref, bool) override;
-  metadb_handle_ptr current_selection;
   metadb_handle_ptr current_display_item;
-  void set_display_item(metadb_handle_ptr);
+  void set_display_item(metadb_handle_ptr item);
   struct titleformat_subscription {
     pfc::string8 id;
     titleformat_object::ptr object;
