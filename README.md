@@ -23,6 +23,8 @@ mpv video player UI element for foobar2000.
 
 ### Configuration
 
+Note that the default keybindings are disabled. You can copy the ones you want back from [here](https://github.com/mpv-player/mpv/blob/master/etc/input.conf).
+
 Some mpv options might intefere with the operation of the component. Good options to set would be things like video filters. The special profiles `[video]` and `[albumart]` are applied automatically when video is playing or album art is showing. Any other profiles will be available to apply at runtime using the context menu.
 
 The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths relative to this in `mpv.conf` by using `~~` as normal, or place scripts in `<foobar profile>/mpv/scripts`.
