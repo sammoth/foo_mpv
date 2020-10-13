@@ -121,7 +121,9 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
 
   bool is_fullscreen() override { return true; }
 
-  void toggle_fullscreen() override { DestroyWindow(); }
+  void toggle_fullscreen() override {
+    fb2k::inMainThread([this]() { DestroyWindow(); });
+  }
 
   HWND container_wnd() override { return get_wnd(); }
   bool is_visible() override { return !IsIconic(); }

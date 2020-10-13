@@ -116,7 +116,9 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     RunMpvFullscreenWindow(true, monitor);
   };
 
-  void on_lose_player() override { DestroyWindow(); }
+  void on_lose_player() override {
+    DestroyWindow();
+  }
 
   bool is_osc_enabled() override { return true; }
 
@@ -176,16 +178,20 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
         "Always on-top", "Keep the video window above other windows",
         cfg_mpv_popup_alwaysontop, [this]() {
           cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
-          DestroyWindow();
-          RunMpvPopupWindow();
+          fb2k::inMainThread([this]() {
+            DestroyWindow();
+            RunMpvPopupWindow();
+          });
         }));
     menu_hook.add_node(new menu_utils::menu_node_run(
         "Separate from main window",
         "Allow window to separate from the foobar2000 main window",
         cfg_mpv_popup_separate, [this]() {
           cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
-          DestroyWindow();
-          RunMpvPopupWindow();
+          fb2k::inMainThread([this]() {
+            DestroyWindow();
+            RunMpvPopupWindow();
+          });
         }));
   }
 

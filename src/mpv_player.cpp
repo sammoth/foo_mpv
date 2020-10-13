@@ -294,6 +294,8 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
         "Fullscreen", "Toggle fullscreen video",
         g_player->container->is_fullscreen(),
         []() { g_player->container->toggle_fullscreen(); }));
+  } else {
+    menu_hook.add_node(new menu_utils::menu_node_disabled("Unloaded"));
   }
 
   if (cfg_artwork &&
@@ -371,16 +373,13 @@ bool mpv_player::find_window() {
 void mpv_player::update() {
   mpv_container* new_container = mpv_container::get_main_container();
   mpv_container* old_container = container;
-  container = new_container;
+  {
+    std::lock_guard<std::mutex> lock_init(init_mutex);
+    container = new_container;
+  }
 
   if (container == NULL) {
-    // destroy player window first in case
-    // the container destroys itself
     DestroyWindow();
-
-    if (old_container != new_container && old_container) {
-      old_container->on_lose_player();
-    }
 
     return;
   } else {
@@ -474,7 +473,7 @@ bool mpv_player::mpv_init() {
   if (!libmpv::get()->ready) return false;
   std::lock_guard<std::mutex> lock_init(init_mutex);
 
-  if (!mpv_handle && m_hWnd != NULL) {
+  if (!mpv_handle && m_hWnd && container) {
     pfc::string_formatter path;
     filesystem::g_get_native_path(core_api::get_profile_path(), path);
     path.add_filename("mpv");
