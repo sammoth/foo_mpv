@@ -49,6 +49,7 @@ jobs:
           mv .\src\lua\osc.lua .\out\mpv\osc.lua
           Compress-Archive -Path '.\out\mpv','.\out\foo_mpv.dll' -DestinationPath .\release.zip
           mv .\release.zip .\foo_mpv.fb2k-component
+          Compress-Archive -Path '.\out\foo_mpv.pdb' -DestinationPath .\pdb.zip
 
     - name: Create Release
       id: create_release
@@ -81,8 +82,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./out/foo_mpv.pdb
-        asset_name: Debug symbols
+        asset_path: ./out/pdb.zip
+        asset_name: pdb.zip
         asset_content_type: application/octet-stream
 
     - uses: actions/upload-artifact@v2
