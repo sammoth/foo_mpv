@@ -602,11 +602,21 @@ bool thumbnailer::decode_frame(bool to_keyframe) {
   while (true) {
     av_packet_unref(p_packet);
     abort.check();
-    if (av_read_frame(p_format_context, p_packet) < 0) continue;
+
+    int err = av_read_frame(p_format_context, p_packet);
+    if (err < 0) {
+      if (cfg_logging) {
+        FB2K_console_formatter() << "mpv: Error reading video frame";
+      }
+      return 0;
+    }
 
     if (p_packet->stream_index != stream_index) continue;
 
-    if (avcodec_send_packet(p_codec_context, p_packet) < 0) continue;
+    err = avcodec_send_packet(p_codec_context, p_packet);
+    if (err < 0) {
+      continue;
+    }
 
     av_frame_unref(p_frame);
     if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
