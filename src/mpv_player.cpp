@@ -958,6 +958,8 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     // wait for file to load
     std::unique_lock<std::mutex> lock_starting(mutex);
     event_cv.wait(lock_starting, [this, filename]() {
+      if (mpv_state == state::Shutdown) return true;
+      if (mpv_state == state::Idle) return true;
       const char* path = get_string("path");
       return path != NULL && filename.equals(path);
     });
@@ -1155,8 +1157,7 @@ void mpv_player::on_new_artwork() {
 void mpv_player::load_artwork() {
   if (!mpv_handle && !mpv_init()) return;
 
-  if (mpv_state == state::Idle || mpv_state == state::Artwork ||
-      mpv_state == state::Preload) {
+  if (mpv_state == state::Idle || mpv_state == state::Artwork) {
     if (artwork_loaded()) {
       const char* cmd_profile[] = {"apply-profile", "albumart", NULL};
       if (command(cmd_profile) < 0 && cfg_logging) {

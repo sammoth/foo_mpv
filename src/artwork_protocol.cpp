@@ -110,8 +110,8 @@ class artwork_register : public initquit {
           lock.unlock();
         } else if (!cfg_artwork) {
           g_request->loaded = true;
-          mpv_player::on_new_artwork();
           lock.unlock();
+          mpv_player::on_new_artwork();
         } else {
           metadb_handle_list req_items(g_request->items);
           unsigned req_id = g_request->id;
