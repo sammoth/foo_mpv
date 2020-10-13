@@ -20,6 +20,7 @@ mpv video player UI element for foobar2000.
 - Can read mpv.conf from `mpv/mpv.conf` in your foobar2000 profile folder (editable in the UI).
 - Switch mpv configuration profiles at runtime via the context menu.
 - Mouse and keyboard input mostly supported thorough `mpv/input.conf` (editable in the UI).
+- Automatic updates via [foo_acfu](https://acfu.3dyd.com/home/)
 
 ### Configuration
 
