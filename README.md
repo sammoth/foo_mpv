@@ -23,15 +23,23 @@ mpv video player UI element for foobar2000.
 
 ### Configuration
 
-Be careful choosing options in mpv.conf. Some options might intefere with the operation of the component. Good options to set would be things like video filters. The special profiles `[video]` and `[albumart]` are applied automatically when video is playing or album art is showing. Any other profiles will be available to apply at runtime using the context menu.
+Some mpv options might intefere with the operation of the component. Good options to set would be things like video filters. The special profiles `[video]` and `[albumart]` are applied automatically when video is playing or album art is showing. Any other profiles will be available to apply at runtime using the context menu.
 
 The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths relative to this in `mpv.conf` by using `~~` as normal, or place scripts in `<foobar profile>/mpv/scripts`.
 
 Mouse input is passed to mpv except for the right mouse button which is reserved for the context menu, and keyboard input is passed to mpv when in popup or fullscreen modes. You can bind input in `input.conf` to foobar menu or context menu commands using the special `script-message`s `foobar menu` and `foobar context`. There are helpers for adding these in the preferences.
 
-For scripting purposes, it is possible to register a titleformatting string to be published for the currently displayed track video/artwork using the `script-message` `foobar register-titleformat <unique id> <titleformatting script>`. Updates will then be sent as `foobar titleformat <unique id> <string>` whenever the displayed track changes. This can be used to display information about the current track in mpv.
+For scripting purposes, it is possible to register a titleformatting string to be published for the currently displayed track video/artwork using the `script-message`:
 
-There is an example of using this to customise the OSC [in the source code](../blob/master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry of a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, meaning that you can use a customised OSC while still using the UI features for controlling it.
+`foobar register-titleformat <unique id> <titleformatting script>`.
+
+Updates will then be sent as:
+
+`foobar titleformat <unique id> <string>`
+
+whenever the displayed track changes. This can be used to display information about the current track in mpv.
+
+There is an example of using this to customise the OSC [in the source code](../master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry of a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, meaning that you can use a customised OSC while still using the UI features for controlling it.
 
 The synchronisation between foobar and mpv is somewhat less jarring if mpv finishes loading/seeking in the file first, as it will just wait on the first frame for the audio to catch up. If foobar begins playback first, the video will need to be sped up momentarily. Therefore it is preferable for mpv to load/seek within files as fast as possible, and enabling mpv's `low-latency` profile might help with this.
 

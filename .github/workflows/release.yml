@@ -40,7 +40,9 @@ jobs:
           Expand-7Zip -ArchiveFileName .\mpv.7z -TargetPath .\libmpv
           mv .\libmpv\mpv-1.dll .\out\mpv\mpv-1.dll
           $Version = '${{ github.ref }}'
-          (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "' + ($Version -replace '-', ' ') + '"') | Out-File .\src\main.cpp
+          $Version = $Version -replace "refs/tags/v"
+          $Version = $Version -replace "-", " "
+          (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "' + $Version + '"') | Out-File .\src\main.cpp
           MSBuild.exe /t:Build /p:Configuration=Release .\src\foo_mpv.sln
           mv .\src\Release\foo_mpv\foo_mpv.dll .\out\foo_mpv.dll
           mv .\src\Release\foo_mpv\foo_mpv.pdb .\out\foo_mpv.pdb
