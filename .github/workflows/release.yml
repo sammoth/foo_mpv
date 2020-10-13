@@ -82,7 +82,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./out/pdb.zip
+        asset_path: ./pdb.zip
         asset_name: pdb.zip
         asset_content_type: application/octet-stream
 
