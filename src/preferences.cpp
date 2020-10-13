@@ -140,11 +140,6 @@ static const GUID guid_cfg_native_logging = {
     0x239,
     0x441d,
     {0x8a, 0x8e, 0x99, 0x83, 0x2a, 0xda, 0xe7, 0xd0}};
-static const GUID guid_cfg_seek_seconds = {
-    0xa9f41576,
-    0xaf69,
-    0x4579,
-    {0xa7, 0x45, 0x93, 0x35, 0xe7, 0xcc, 0x76, 0xd1}};
 static const GUID guid_cfg_video_enabled = {
     0xe3a285f2,
     0x6804,
@@ -364,10 +359,6 @@ advconfig_integer_factory cfg_hard_sync_threshold("Hard sync threshold (ms)",
 advconfig_integer_factory cfg_hard_sync_interval(
     "Minimum time between hard syncs (seconds)", guid_cfg_hard_sync_interval,
     guid_cfg_branch, 0, 10, 0, 30, 0);
-
-advconfig_integer_factory cfg_seek_seconds("Manual seek distance (seconds)",
-                                           guid_cfg_seek_seconds,
-                                           guid_cfg_branch, 0, 5, 0, 1000, 0);
 
 advconfig_checkbox_factory cfg_logging("Enable verbose console logging",
                                        guid_cfg_logging, guid_cfg_branch, 0,
