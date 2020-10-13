@@ -1028,7 +1028,7 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
   CMpvConfPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback) {}
   ~CMpvConfPreferences() {
-    if (edit_font != NULL) DeleteObject(edit_font);
+    //if (edit_font != NULL) DeleteObject(edit_font);
     if (sep_font != NULL) DeleteObject(sep_font);
   }
 
@@ -1054,7 +1054,7 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
 
   const preferences_page_callback::ptr m_callback;
 
-  HFONT edit_font = NULL;
+  //HFONT edit_font = NULL;
   HFONT sep_font = NULL;
 };
 
@@ -1069,12 +1069,12 @@ BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
     header_size = (header_size * dpi) / 72;
   }
 
-  edit_font =
-      CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
-                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-                 CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
+  //edit_font =
+  //    CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
+  //               DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+  //               CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
   CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT1));
-  edit.SetFont(edit_font);
+  //edit.SetFont(edit_font);
 
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -1211,7 +1211,7 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   CMpvInputPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback) {}
   ~CMpvInputPreferences() {
-    if (edit_font != NULL) DeleteObject(edit_font);
+    //if (edit_font != NULL) DeleteObject(edit_font);
     if (sep_font != NULL) DeleteObject(sep_font);
   }
 
@@ -1243,7 +1243,7 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
 
   const preferences_page_callback::ptr m_callback;
 
-  HFONT edit_font = NULL;
+  //HFONT edit_font = NULL;
   HFONT sep_font = NULL;
 };
 
@@ -1327,12 +1327,12 @@ BOOL CMpvInputPreferences::OnInitDialog(CWindow, LPARAM) {
     header_size = (header_size * dpi) / 72;
   }
 
-  edit_font =
-      CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
-                 DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
-                 CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
+  //edit_font =
+  //    CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
+  //               DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
+  //               CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
   CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT2));
-  edit.SetFont(edit_font);
+  //edit.SetFont(edit_font);
 
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
