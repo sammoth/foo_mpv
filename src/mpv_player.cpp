@@ -487,8 +487,7 @@ bool mpv_player::mpv_init() {
 
     set_option_string("ytdl", "no");
     set_option_string("osc", "no");
-    set_option_string("load-stats-overlay", "no");
-    set_option_string("load-osd-console", "no");
+    set_option_string("load-stats-overlay", "yes");
     set_option_string("load-scripts", "yes");
     set_option_string("alpha", "blend");
 
