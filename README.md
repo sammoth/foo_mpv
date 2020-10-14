@@ -5,7 +5,7 @@ mpv video player UI element for foobar2000.
 
 ### Features
 - For playback of local video files.
-- A/V sync should be approximately as fast and accurate as a standalone video player, but this component is not a decoder for foobar2000, a 'real' video player or a good replacement for one. The video is separately demuxed and decoded by mpv and its playback time is synchronised with foobar2000. It's a compromise for videos where you might want to use foobar2000's library, tagging or audio processing features, ie. music videos.
+- A/V sync should be approximately as fast and accurate as a standalone video player, but this component is not a decoder for foobar2000, a 'real' video player or a good replacement for one. The video is separately demuxed and decoded by mpv and its playback time is synchronised with foobar2000. It's a compromise for videos where you might want to use foobar2000's library, tagging or audio processing features, ie. music videos. It might not work well for particular video files, or you might have to massage them into behaving well with the component, for example by remuxing.
 - Optionally acts as an album art display when no video is available.
 - On-screen control based on mpv's, can be enabled/disabled per-UI-element.
 - Thumbnail generator for providing album art for videos to foobar, with an on-disk cache.
