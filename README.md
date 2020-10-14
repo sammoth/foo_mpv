@@ -9,9 +9,7 @@ mpv video player UI element for foobar2000.
 - Optionally acts as an album art display when no video is available.
 - On-screen control based on mpv's, can be enabled/disabled per-UI element.
 - Thumbnail generator for providing album art for videos to foobar, with an on-disk cache.
-- Thumbnails are used as a fallback to other art sources, which allows mixing thumbnails and box art in different views, eg:
-<img src="screenshot2.png" width="380">
-
+- Thumbnails are provided as a fallback to other art sources, which allows you to combine both box art and thumbnails within playlist views (see screenshot).
 - Thumbnail picker for visually choosing a thumbnail for a video. The time is saved in foobar's database.
 - Algorithm for automatically choosing 'good' thumbnails with broad tonal range, ie. no black/white frames.
 - DefaultUI element, Columns UI panel, standalone popup and fullscreen mode.
