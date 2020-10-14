@@ -11,7 +11,7 @@ mpv video player UI element for foobar2000.
 - Thumbnail generator for providing album art for videos to foobar, with an on-disk cache.
 - Thumbnails are provided as a fallback to other art sources, which allows you to combine both box art and thumbnails within playlist views (see screenshot).
 - Thumbnail picker for visually choosing a thumbnail for a video. The time is saved in foobar's database.
-- Algorithm for automatically choosing 'good' thumbnails with broad tonal range, ie. no black/white frames.
+- Algorithm for automatically choosing 'good' thumbnails and avoiding black/white frames.
 - DefaultUI element, Columns UI panel, standalone popup and fullscreen mode.
 - Single video instance moves to the largest currently visible UI element unless manually pinned to one area via the context menu, making it simple to switch between a small instance and larger instance in your layout.
 - Developed to work well in Wine.
@@ -46,4 +46,4 @@ There is an example of using this to customise the OSC [in the source code](../m
 
 ### Issues
 
-If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge. Some ffmpeg-muxed mkv files seem problematic in foobar.
+Some files will not synchronise well, if foobar and mpv have a different idea of what the timestamps are for the audio in a file. If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge with the default settings. Some ffmpeg-muxed mkv files seem problematic in foobar. Files with split FLAC streams (which used to be allowed in older mkvmerge versions) also seem problematic.
