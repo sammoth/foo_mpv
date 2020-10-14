@@ -44,6 +44,4 @@ whenever the displayed track changes. This can be used to display information ab
 
 There is an example of using this to customise the OSC [in the source code](../master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry of a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, meaning that you can use a customised OSC while still using the UI features for controlling it.
 
-The synchronisation between foobar and mpv is somewhat less jarring if mpv finishes loading/seeking in the file first, as it will just wait on the first frame for the audio to catch up. If foobar begins playback first, the video will need to be sped up momentarily. Therefore it is preferable for mpv to load/seek within files as fast as possible, and enabling mpv's `low-latency` profile might help with this.
-
 If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge. Some ffmpeg-muxed mkv files seem problematic in foobar.
