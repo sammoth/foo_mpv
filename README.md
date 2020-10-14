@@ -7,18 +7,18 @@ mpv video player UI element for foobar2000.
 - For playback of local video files.
 - A/V sync should be approximately as fast and accurate as a standalone video player, but this component is not a decoder for foobar2000, a 'real' video player or a good replacement for one. The video is separately demuxed and decoded by mpv and its playback time is synchronised with foobar2000. It's a compromise for videos where you might want to use foobar2000's library, tagging or audio processing features, ie. music videos.
 - Optionally acts as an album art display when no video is available.
-- On-screen control based on mpv's, can be enabled/disabled per-UI element.
+- On-screen control based on mpv's, can be enabled/disabled per-UI-element.
 - Thumbnail generator for providing album art for videos to foobar, with an on-disk cache.
 - Thumbnails are provided as a fallback to other art sources, which allows you to combine both box art and thumbnails within playlist views (see screenshot).
 - Thumbnail picker for visually choosing a thumbnail for a video. The time is saved in foobar's database.
 - Algorithm for automatically choosing 'good' thumbnails and avoiding black/white frames.
-- DefaultUI element, Columns UI panel, standalone popup and fullscreen mode.
+- Default UI element, Columns UI panel, standalone popup and fullscreen mode.
 - Single video instance moves to the largest currently visible UI element unless manually pinned to one area via the context menu, making it simple to switch between a small instance and larger instance in your layout.
 - Developed to work well in Wine.
 - Can read mpv.conf from `mpv/mpv.conf` in your foobar2000 profile folder (editable in the UI).
 - Switch mpv configuration profiles at runtime via the context menu.
 - Mouse and keyboard input mostly supported thorough `mpv/input.conf` (editable in the UI).
-- Automatic updates via [foo_acfu](https://acfu.3dyd.com/home/)
+- Optional update notification via [foo_acfu](https://acfu.3dyd.com/home/)
 
 ### Configuration
 
