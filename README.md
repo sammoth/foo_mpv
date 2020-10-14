@@ -32,16 +32,20 @@ The mpv profile folder is set to `<foobar profile>/mpv`, so you can use paths re
 
 Mouse input is passed to mpv except for the right mouse button which is reserved for the context menu, and keyboard input is passed to mpv when in popup or fullscreen modes. You can bind input in `input.conf` to foobar menu or context menu commands using the special `script-message`s `foobar menu` and `foobar context`. There are helpers for adding these in the preferences.
 
-For scripting purposes, it is possible to register a titleformatting string to be published for the currently displayed track video/artwork using the `script-message`:
+### Scripting
+
+There are two messages for communicating between mpv Lua scripts and foobar. It is possible to register a titleformatting string to be published for the currently displayed track video/artwork using the following `script-message`:
 
 `foobar register-titleformat <unique id> <titleformatting script>`.
 
-Updates will then be sent as:
+Updates will then be sent whenever the displayed track changed, as:
 
 `foobar titleformat <unique id> <string>`
 
-whenever the displayed track changes. This can be used to display information about the current track in mpv.
+This can be used to display or react to information about the current track in mpv.
 
-There is an example of using this to customise the OSC [in the source code](../master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry of a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, meaning that you can use a customised OSC while still using the UI features for controlling it.
+There is an example of using this to customise the OSC [in the source code](../master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry of a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, so that you can use a customised OSC while still using the UI features for controlling it.
+
+### Issues
 
 If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge. Some ffmpeg-muxed mkv files seem problematic in foobar.
