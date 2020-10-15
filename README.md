@@ -22,6 +22,8 @@ mpv video player UI element for foobar2000.
 
 ### Configuration
 
+The component is not a decoder, you will need to make sure foobar2000 can play the audio from whichever video files you want to play first. For anything not supported by default, you can install and configure the [ffmpeg decoder wrapper component](https://www.foobar2000.org/components/view/foo_input_ffmpeg).
+
 Note that the default keybindings are disabled. You can copy the ones you want back from [here](https://github.com/mpv-player/mpv/blob/master/etc/input.conf).
 
 Some mpv options might intefere with the operation of the component. Good options to set would be things like video filters. The special profiles `[video]` and `[albumart]` are applied automatically when video is playing or album art is showing. Any other profiles will be available to apply at runtime using the context menu.
