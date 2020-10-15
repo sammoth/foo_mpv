@@ -32,7 +32,7 @@ Mouse input is passed to mpv except for the right mouse button which is reserved
 
 ### Scripting
 
-There are two messages for communicating between mpv Lua scripts and foobar. It is possible to register a titleformatting string to be published for the currently displayed track video/artwork using the following `script-message`:
+There are two messages for communicating track information between mpv Lua scripts and foobar. It is possible to register a titleformatting string to be published for the currently displayed track video/artwork using the `script-message`:
 
 `foobar register-titleformat <unique id> <titleformatting script>`.
 
