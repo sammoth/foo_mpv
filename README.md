@@ -42,7 +42,7 @@ Updates will then be sent whenever the displayed track changed, as:
 
 This can be used to display or react to information about the current track in mpv.
 
-There is an example of using this to customise the OSC [in the source code](../master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry of a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, so that you can use a customised OSC while still using the UI features for controlling it.
+There is an example of using this to customise the OSC [in the source code](../master/src/lua/osc_love_button.lua). A love heart button is added to the OSC that turns pink when the current track has `%loved% = 1`. Clicking the button invokes a context menu entry for a Masstagger script which toggles the value of `%loved%` for the current file. By placing a customised OSC in `<foobar profile>/mpv/scripts/osc.lua`, the component will not load the built-in OSC file, so that you can use a customised OSC while still using the component's UI features for controlling it (eg. disabling it per-panel).
 
 ### Issues
 
