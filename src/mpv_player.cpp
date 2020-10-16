@@ -487,6 +487,7 @@ bool mpv_player::mpv_init() {
     set_option_string("config-dir", path.c_str());
 
     set_option_string("ytdl", "yes");
+    set_option_string("ytdl-format", "bestvideo/best");
     set_option_string("osc", "no");
     set_option_string("load-stats-overlay", "yes");
     set_option_string("load-scripts", "yes");
