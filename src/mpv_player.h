@@ -77,7 +77,7 @@ class mpv_player : play_callback_impl_base,
   void play(metadb_handle_ptr metadb, double start_time);
   void stop();
   void pause(bool p_state);
-  void seek(double time);
+  void seek(double time, bool is_hard_sync);
   void sync(double debug_time);
   void initial_sync();
   void load_artwork();
@@ -90,7 +90,7 @@ class mpv_player : play_callback_impl_base,
   double last_hard_sync;
   std::mutex sync_lock;
   long last_sync_time;
-  double seek_offset = 0.0;
+  bool apply_seek_offset = false;
 
   std::vector<pfc::string8> profiles;
 
@@ -150,7 +150,7 @@ class mpv_player : play_callback_impl_base,
   static void add_menu_items(uie::menu_hook_impl& menu_hook);
   static void on_new_artwork();
   static void send_message(UINT msg, UINT wparam, UINT lparam);
-  static void get_title(pfc::string8 out);
+  static void get_title(pfc::string8& out);
   static void toggle_fullscreen();
   static void fullscreen_on_monitor(int monitor);
 

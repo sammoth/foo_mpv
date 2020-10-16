@@ -42,7 +42,7 @@ void mpv_player::restart() {
   }
 }
 
-void mpv_player::get_title(pfc::string8 out) {
+void mpv_player::get_title(pfc::string8& out) {
   if (g_player && g_player->current_display_item != NULL) {
     format_player_title(out, g_player->current_display_item);
   }
@@ -145,7 +145,7 @@ mpv_player::mpv_player()
           stop();
           break;
         case task_type::Seek:
-          seek(task.time);
+          seek(task.time, task.flag);
           break;
         case task_type::FirstFrameSync:
           running_ffs = true;
@@ -849,6 +849,7 @@ void mpv_player::on_playback_seek(double p_time) {
   task t;
   t.type = task_type::Seek;
   t.time = p_time;
+  t.flag = false;
   queue_task(t);
 }
 void mpv_player::on_playback_pause(bool p_state) {
@@ -871,7 +872,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   pfc::string8 filename;
   filename.add_filename(metadb->get_path());
 
-  seek_offset = 0;
+  apply_seek_offset = false;
   bool play_this = false;
   if (enabled) {
     if (filename.has_prefix("\\file://")) {
@@ -882,13 +883,13 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     } else if (cfg_foo_youtube && filename.has_prefix("\\fy+")) {
       if (cfg_remote_always_play || test_video_pattern(metadb)) {
         play_this = true;
-        seek_offset = cfg_remote_offset;
+        apply_seek_offset = true;
         filename.replace_string("\\fy+", "ytdl://");
       }
     } else if (cfg_ytdl_any) {
       if (cfg_remote_always_play || test_video_pattern(metadb)) {
         play_this = true;
-        seek_offset = cfg_remote_offset;
+        apply_seek_offset = true;
         filename.replace_string("\\fy+", "\\");
         filename.replace_string("\\", "ytdl://");
       }
@@ -913,6 +914,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     }
     time_base = time_base_l;
 
+    double seek_offset = apply_seek_offset ? (double)cfg_remote_offset : 0.0;
     last_mpv_seek = ceil(1000 * (time + seek_offset + time_base)) / 1000.0;
     last_hard_sync = -99;
 
@@ -1038,15 +1040,17 @@ void mpv_player::pause(bool state) {
   }
 }
 
-void mpv_player::seek(double time) {
+void mpv_player::seek(double time, bool is_hard_sync) {
   if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
 
+  double seek_offset = apply_seek_offset ? (double)cfg_remote_offset : 0.0;
   if (cfg_logging) {
-    FB2K_console_formatter() << "mpv: Seeking to " << time << "+" << seek_offset << "=" << time + seek_offset;
+    FB2K_console_formatter() << "mpv: Seeking to " << time << "+" << seek_offset
+                             << "=" << time + seek_offset;
   }
 
   last_mpv_seek = time_base + time + seek_offset;
-  last_hard_sync = -99;
+  last_hard_sync = is_hard_sync ? time + seek_offset : -99;
   // reset speed
   double unity = 1.0;
   if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 &&
@@ -1125,6 +1129,13 @@ void mpv_player::sync(double debug_time) {
   double desync = time_base + fb_time - mpv_time;
   double new_speed = 1.0;
 
+  if (running_ffs) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Skipping regular sync";
+    }
+    return;
+  }
+
   if (abs(desync) > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
@@ -1133,20 +1144,13 @@ void mpv_player::sync(double debug_time) {
       task t;
       t.type = task_type::Seek;
       t.time = fb_time;
+      t.flag = true;
       queue_task(t);
     }
-    last_hard_sync = fb_time;
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Hard a/v sync";
     }
   } else {
-    if (running_ffs) {
-      if (cfg_logging) {
-        FB2K_console_formatter() << "mpv: Skipping regular sync";
-      }
-      return;
-    }
-
     // soft sync
     if (abs(desync) > 0.001 * cfg_max_drift) {
       // aim to correct mpv internal timer in 1 second, then let mpv catch up
@@ -1369,13 +1373,14 @@ void mpv_player::initial_sync() {
 
   double desync = time_base + fb_time - mpv_timepos;
   // if mpv is behind on start, catch up
-  if (desync > cfg_hard_sync_threshold) {
+  if (desync > 0.001 * cfg_hard_sync_threshold &&
+      (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
     task t;
     t.type = task_type::Seek;
-    t.time = time_base + fb_time;
+    t.time = fb_time;
+    t.flag = true;
     queue_task(t);
-    last_hard_sync = fb_time;
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Behind on initial sync - seeking";
     }
