@@ -103,9 +103,10 @@ extern cfg_uint cfg_bg_color, cfg_artwork_type, cfg_osc_layout,
     cfg_osc_seekbarstyle, cfg_osc_transparency, cfg_osc_fadeduration,
     cfg_osc_deadzone, cfg_osc_scalewindowed, cfg_osc_scalefullscreen,
     cfg_osc_timeout;
-extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile;
+extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile, cfg_foo_youtube,
+    cfg_ytdl_any, cfg_remote_always_play;
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
-    cfg_hard_sync_interval, cfg_seek_seconds;
+    cfg_hard_sync_interval, cfg_seek_seconds, cfg_remote_offset;
 
 mpv_player::mpv_player()
     : enabled(false),
@@ -485,15 +486,11 @@ bool mpv_player::mpv_init() {
     set_option_string("config", "yes");
     set_option_string("config-dir", path.c_str());
 
-    set_option_string("ytdl", "no");
+    set_option_string("ytdl", "yes");
     set_option_string("osc", "no");
     set_option_string("load-stats-overlay", "yes");
     set_option_string("load-scripts", "yes");
     set_option_string("alpha", "blend");
-
-    set_option_string("access-references", "no");
-    set_option_string("ordered-chapters", "no");
-    set_option_string("network-timeout", "1");
 
     set_background();
 
@@ -871,16 +868,37 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   if (metadb.is_empty()) return;
   if (!mpv_handle && !mpv_init()) return;
 
-  if (!enabled || !test_video_pattern(metadb)) {
-    mpv_state = state::Idle;
-    request_artwork();
-    return;
-  }
-
   pfc::string8 filename;
   filename.add_filename(metadb->get_path());
-  if (filename.has_prefix("\\file://")) {
-    filename.remove_chars(0, 8);
+
+  seek_offset = 0;
+  bool play_this = false;
+  if (enabled) {
+    if (filename.has_prefix("\\file://")) {
+      if (test_video_pattern(metadb)) {
+        play_this = true;
+        filename.replace_string("\\file://", "");
+      }
+    } else if (cfg_foo_youtube && filename.has_prefix("\\fy+")) {
+      if (cfg_remote_always_play || test_video_pattern(metadb)) {
+        play_this = true;
+        seek_offset = cfg_remote_offset;
+        filename.replace_string("\\fy+", "ytdl://");
+      }
+    } else if (cfg_ytdl_any) {
+      if (cfg_remote_always_play || test_video_pattern(metadb)) {
+        play_this = true;
+        seek_offset = cfg_remote_offset;
+        filename.replace_string("\\fy+", "\\");
+        filename.replace_string("\\", "ytdl://");
+      }
+    }
+  }
+
+  if (play_this) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Playing URI " << filename;
+    }
 
     double time_base_l = 0.0;
     if (metadb->get_subsong_index() > 1) {
@@ -895,18 +913,19 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     }
     time_base = time_base_l;
 
-    last_mpv_seek = ceil(1000 * (time + time_base)) / 1000.0;
+    last_mpv_seek = ceil(1000 * (time + seek_offset + time_base)) / 1000.0;
     last_hard_sync = -99;
 
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);
     time_sstring.precision(3);
-    time_sstring << time_base + time;
+    time_sstring << time_base + time + seek_offset;
     std::string time_string = time_sstring.str();
     set_option_string("start", time_string.c_str());
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Loading item '" << filename
-                               << "' at start time " << time_base + time;
+      FB2K_console_formatter()
+          << "mpv: Loading item '" << filename << "' at start time "
+          << time_base + time + seek_offset;
     }
 
     // reset speed
@@ -978,9 +997,11 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
         FB2K_console_formatter() << "mpv: Starting first frame sync after load";
       }
     }
-  } else if (cfg_logging) {
-    FB2K_console_formatter() << "mpv: Skipping loading item '" << filename
-                             << "' because it is not a local file";
+  } else {
+    if (cfg_logging) {
+      FB2K_console_formatter()
+          << "mpv: Not loading path " << metadb->get_path();
+    }
     mpv_state = state::Idle;
     request_artwork();
     return;
@@ -1021,10 +1042,10 @@ void mpv_player::seek(double time) {
   if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
 
   if (cfg_logging) {
-    FB2K_console_formatter() << "mpv: Seeking to " << time;
+    FB2K_console_formatter() << "mpv: Seeking to " << time << "+" << seek_offset << "=" << time + seek_offset;
   }
 
-  last_mpv_seek = time_base + time;
+  last_mpv_seek = time_base + time + seek_offset;
   last_hard_sync = -99;
   // reset speed
   double unity = 1.0;
@@ -1037,7 +1058,7 @@ void mpv_player::seek(double time) {
   std::stringstream time_sstring;
   time_sstring.setf(std::ios::fixed);
   time_sstring.precision(15);
-  time_sstring << time_base + time;
+  time_sstring << time_base + time + seek_offset;
   std::string time_string = time_sstring.str();
   const char* cmd[] = {"seek", time_string.c_str(), "absolute+exact", NULL};
 

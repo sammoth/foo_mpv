@@ -90,6 +90,7 @@ class mpv_player : play_callback_impl_base,
   double last_hard_sync;
   std::mutex sync_lock;
   long last_sync_time;
+  double seek_offset = 0.0;
 
   std::vector<pfc::string8> profiles;
 

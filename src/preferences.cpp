@@ -42,8 +42,7 @@ const char* default_input_conf =
     "LEFT script-message foobar menu /Playback/Seek/Back by 5 seconds\r\n"
     "DOWN script-message foobar menu /Playback/Seek/Ahead by 10 seconds\r\n"
     "UP script-message foobar menu /Playback/Seek/Back by 10 seconds\r\n"
-    "SPACE script-message foobar menu /Playback/Play or pause\r\n"
-        ;
+    "SPACE script-message foobar menu /Playback/Play or pause\r\n";
 
 class default_config_create : public initquit {
  public:
@@ -294,6 +293,24 @@ static const GUID guid_cfg_video_filter = {
     0x4625,
     {0xa5, 0x47, 0x4e, 0xe1, 0xda, 0x47, 0x11, 0x51}};
 
+static const GUID guid_cfg_foo_youtube = {
+    0x6b1cb82c, 0x3ec, 0x4307, {0x96, 0x23, 0x10, 0xcf, 0x7b, 0x1, 0x72, 0xcc}};
+static const GUID guid_cfg_ytdl_any = {
+    0x2adbcb49,
+    0x8134,
+    0x4f54,
+    {0x9d, 0x50, 0x7a, 0x95, 0x10, 0xee, 0x10, 0x67}};
+static const GUID guid_cfg_remote_offset = {
+    0x3d4a9f5a,
+    0xcd1b,
+    0x4aa8,
+    {0xbf, 0x3b, 0x4f, 0x74, 0x0, 0xbe, 0x74, 0xbf}};
+static const GUID guid_cfg_remote_always_play = {
+    0xe2ef7641,
+    0x3c40,
+    0x4534,
+    {0xb6, 0x61, 0x5e, 0xaf, 0xa6, 0x26, 0xeb, 0x5b}};
+
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
 cfg_uint cfg_bg_color(guid_cfg_bg_color, 0);
@@ -366,6 +383,19 @@ advconfig_checkbox_factory cfg_logging("Enable verbose console logging",
 advconfig_checkbox_factory cfg_mpv_logfile("Enable mpv log file",
                                            guid_cfg_native_logging,
                                            guid_cfg_branch, 0, false);
+
+advconfig_checkbox_factory cfg_foo_youtube(
+    "Play foo_youtube playlist items using ytdl_hook", guid_cfg_foo_youtube,
+    guid_cfg_branch, 0, false);
+advconfig_checkbox_factory cfg_ytdl_any(
+    "Play any non-local playlist items using ytdl_hook", guid_cfg_ytdl_any,
+    guid_cfg_branch, 0, false);
+advconfig_checkbox_factory cfg_remote_always_play(
+    "Ignore filter query for remote files", guid_cfg_remote_always_play,
+    guid_cfg_branch, 1, false);
+advconfig_integer_factory cfg_remote_offset(
+    "Seek offset when opening remote files (seconds)", guid_cfg_remote_offset,
+    guid_cfg_branch, 0, 4, 0, 30, 0);
 
 static titleformat_object::ptr popup_titleformat_script;
 static search_filter::ptr thumb_filter;
@@ -1028,7 +1058,7 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
   CMpvConfPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback) {}
   ~CMpvConfPreferences() {
-    //if (edit_font != NULL) DeleteObject(edit_font);
+    // if (edit_font != NULL) DeleteObject(edit_font);
     if (sep_font != NULL) DeleteObject(sep_font);
   }
 
@@ -1054,7 +1084,7 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
 
   const preferences_page_callback::ptr m_callback;
 
-  //HFONT edit_font = NULL;
+  // HFONT edit_font = NULL;
   HFONT sep_font = NULL;
 };
 
@@ -1069,12 +1099,12 @@ BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
     header_size = (header_size * dpi) / 72;
   }
 
-  //edit_font =
+  // edit_font =
   //    CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
   //               DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
   //               CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
   CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT1));
-  //edit.SetFont(edit_font);
+  // edit.SetFont(edit_font);
 
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -1211,7 +1241,7 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   CMpvInputPreferences(preferences_page_callback::ptr callback)
       : m_callback(callback) {}
   ~CMpvInputPreferences() {
-    //if (edit_font != NULL) DeleteObject(edit_font);
+    // if (edit_font != NULL) DeleteObject(edit_font);
     if (sep_font != NULL) DeleteObject(sep_font);
   }
 
@@ -1243,7 +1273,7 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
 
   const preferences_page_callback::ptr m_callback;
 
-  //HFONT edit_font = NULL;
+  // HFONT edit_font = NULL;
   HFONT sep_font = NULL;
 };
 
@@ -1327,12 +1357,12 @@ BOOL CMpvInputPreferences::OnInitDialog(CWindow, LPARAM) {
     header_size = (header_size * dpi) / 72;
   }
 
-  //edit_font =
+  // edit_font =
   //    CreateFont(text_size, 0, 0, 0, FW_REGULAR, FALSE, FALSE, FALSE,
   //               DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
   //               CLEARTYPE_QUALITY, FIXED_PITCH, NULL);
   CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT2));
-  //edit.SetFont(edit_font);
+  // edit.SetFont(edit_font);
 
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
