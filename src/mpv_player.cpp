@@ -979,12 +979,8 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
 
     // wait for file to load
     std::unique_lock<std::mutex> lock_starting(mutex);
-    event_cv.wait(lock_starting, [this, filename]() {
-      if (mpv_state == state::Shutdown) return true;
-      if (mpv_state == state::Idle) return true;
-      const char* path = get_string("path");
-      return path != NULL && filename.equals(path);
-    });
+    event_cv.wait(lock_starting,
+                  [this, filename]() { return check_queue_any() || mpv_state != state::Loading; });
     lock_starting.unlock();
 
     if (get_bool("pause")) {
@@ -1076,12 +1072,12 @@ void mpv_player::seek(double time, bool is_hard_sync) {
     while (true) {
       std::unique_lock<std::mutex> lock(mutex);
       event_cv.wait(lock, [this]() {
-        return mpv_state == state::Idle || mpv_state == state::Shutdown ||
+        return check_queue_any() || mpv_state == state::Idle || mpv_state == state::Shutdown ||
                mpv_state == state::Active || mpv_state == state::Artwork;
       });
       lock.unlock();
 
-      if (mpv_state == state::Idle || mpv_state == state::Shutdown ||
+      if (check_queue_any() || mpv_state == state::Idle || mpv_state == state::Shutdown ||
           mpv_state == state::Artwork) {
         if (cfg_logging) {
           FB2K_console_formatter() << "mpv: Aborting seeking";
