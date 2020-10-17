@@ -132,7 +132,7 @@ mpv_player::mpv_player()
       std::unique_lock<std::mutex> lock(mutex);
       control_thread_cv.wait(lock, [this] { return !task_queue.empty(); });
       task task = task_queue.front();
-      task_queue.pop();
+      task_queue.pop_front();
       lock.unlock();
 
       switch (task.type) {
@@ -166,10 +166,10 @@ mpv_player::mpv_player()
 mpv_player::~mpv_player() {
   {
     std::lock_guard<std::mutex> lock(mutex);
-    while (!task_queue.empty()) task_queue.pop();
+    while (!task_queue.empty()) task_queue.pop_front();
     task t;
     t.type = task_type::Quit;
-    task_queue.push(t);
+    task_queue.push_back(t);
   }
   control_thread_cv.notify_all();
 
@@ -184,10 +184,22 @@ mpv_player::~mpv_player() {
 
 bool mpv_player::check_queue_any() { return !task_queue.empty(); }
 
+bool mpv_player::check_queue_time_change_locking() {
+  std::lock_guard<std::mutex> lock(mutex);
+  for (auto& task : task_queue) {
+    if (task.type == task_type::Seek || task.type == task_type::Play ||
+        task.type == task_type::Quit || task.type == task_type::Stop) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 void mpv_player::queue_task(task t) {
   {
     std::lock_guard<std::mutex> lock(mutex);
-    task_queue.push(t);
+    task_queue.push_back(t);
   }
   control_thread_cv.notify_all();
   event_cv.notify_all();
@@ -979,8 +991,9 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
 
     // wait for file to load
     std::unique_lock<std::mutex> lock_starting(mutex);
-    event_cv.wait(lock_starting,
-                  [this, filename]() { return check_queue_any() || mpv_state != state::Loading; });
+    event_cv.wait(lock_starting, [this, filename]() {
+      return check_queue_any() || mpv_state != state::Loading;
+    });
     lock_starting.unlock();
 
     if (get_bool("pause")) {
@@ -1072,13 +1085,14 @@ void mpv_player::seek(double time, bool is_hard_sync) {
     while (true) {
       std::unique_lock<std::mutex> lock(mutex);
       event_cv.wait(lock, [this]() {
-        return check_queue_any() || mpv_state == state::Idle || mpv_state == state::Shutdown ||
-               mpv_state == state::Active || mpv_state == state::Artwork;
+        return check_queue_any() || mpv_state == state::Idle ||
+               mpv_state == state::Shutdown || mpv_state == state::Active ||
+               mpv_state == state::Artwork;
       });
       lock.unlock();
 
-      if (check_queue_any() || mpv_state == state::Idle || mpv_state == state::Shutdown ||
-          mpv_state == state::Artwork) {
+      if (check_queue_time_change_locking() || mpv_state == state::Idle ||
+          mpv_state == state::Shutdown || mpv_state == state::Artwork) {
         if (cfg_logging) {
           FB2K_console_formatter() << "mpv: Aborting seeking";
         }

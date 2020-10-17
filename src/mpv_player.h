@@ -69,9 +69,10 @@ class mpv_player : play_callback_impl_base,
   std::thread control_thread;
   std::condition_variable control_thread_cv;
   std::atomic_bool running_ffs;
-  std::queue<task> task_queue;
+  std::deque<task> task_queue;
   void queue_task(task t);
   bool check_queue_any();
+  bool check_queue_time_change_locking();
 
   // methods run off thread
   void play(metadb_handle_ptr metadb, double start_time);
