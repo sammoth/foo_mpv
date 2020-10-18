@@ -106,7 +106,8 @@ extern cfg_uint cfg_bg_color, cfg_artwork_type, cfg_osc_layout,
 extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile, cfg_foo_youtube,
     cfg_ytdl_any, cfg_remote_always_play;
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
-    cfg_hard_sync_interval, cfg_seek_seconds, cfg_remote_offset;
+    cfg_hard_sync_interval, cfg_seek_seconds, cfg_remote_offset,
+    cfg_no_sync_threshold;
 
 mpv_player::mpv_player()
     : enabled(false),
@@ -1149,6 +1150,14 @@ void mpv_player::sync(double debug_time) {
     return;
   }
 
+  if (abs(desync) > cfg_no_sync_threshold) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Desync over threshold, not syncing at "
+                               << debug_time << ", offset " << desync;
+    }
+    return;
+  }
+
   if (abs(desync) > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
@@ -1391,6 +1400,15 @@ void mpv_player::initial_sync() {
   }
 
   double desync = time_base + fb_time - mpv_timepos;
+
+  if (abs(desync) > cfg_no_sync_threshold) {
+    if (cfg_logging) {
+      FB2K_console_formatter()
+          << "mpv: Desync " << desync << " over threshold on initial sync";
+    }
+    return;
+  }
+
   // if mpv is behind on start, catch up
   if (desync > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
@@ -1401,7 +1419,8 @@ void mpv_player::initial_sync() {
     t.flag = true;
     queue_task(t);
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Behind on initial sync - seeking";
+      FB2K_console_formatter() << "mpv: Behind on initial sync by " << desync
+                               << " - seeking to " << fb_time;
     }
     return;
   } else if (desync > 0) {

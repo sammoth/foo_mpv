@@ -310,6 +310,12 @@ static const GUID guid_cfg_remote_always_play = {
     0x3c40,
     0x4534,
     {0xb6, 0x61, 0x5e, 0xaf, 0xa6, 0x26, 0xeb, 0x5b}};
+static const GUID guid_cfg_no_sync_threshold
+    = {0x21c9064b,
+       0xaba9,
+       0x4a6b,
+       {0xbc, 0xbd, 0x0, 0x37, 0x3b, 0x39, 0x95, 0xfd}};
+
 
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
@@ -377,6 +383,10 @@ advconfig_integer_factory cfg_hard_sync_interval(
     "Minimum time between hard syncs (seconds)", guid_cfg_hard_sync_interval,
     guid_cfg_branch, 0, 10, 0, 30, 0);
 
+advconfig_integer_factory cfg_no_sync_threshold(
+    "Don't attempt to synchronise when desync greater than (seconds)", guid_cfg_no_sync_threshold,
+    guid_cfg_branch, 0, 1000, 5, 99999999, 0);
+
 advconfig_checkbox_factory cfg_logging("Enable verbose console logging",
                                        guid_cfg_logging, guid_cfg_branch, 0,
                                        false);
@@ -396,6 +406,7 @@ advconfig_checkbox_factory cfg_remote_always_play(
 advconfig_integer_factory cfg_remote_offset(
     "Seek offset when opening remote files (seconds)", guid_cfg_remote_offset,
     guid_cfg_branch, 0, 4, 0, 30, 0);
+
 
 static titleformat_object::ptr popup_titleformat_script;
 static search_filter::ptr thumb_filter;
