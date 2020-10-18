@@ -824,8 +824,9 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
 
         trim_db(data->get_size());
       } catch (SQLite::Exception e) {
-        FB2K_console_formatter()
-            << "mpv: Error writing to thumbnail cache: " << e.what();
+        FB2K_console_formatter() << "mpv: Error writing " << metadb->get_path()
+                                 << "[" << metadb->get_subsong_index() << "]"
+                                 << " to thumbnail cache: " << e.what();
       }
     }
   }
