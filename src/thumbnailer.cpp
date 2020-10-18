@@ -338,6 +338,9 @@ void thumbnailer::load_stream() {
   p_format_context->interrupt_callback.callback = ffmpeg_interrupt_cb;
   p_format_context->interrupt_callback.opaque = &abort;
   p_format_context->protocol_whitelist = av_strdup("file");
+  p_format_context->format_whitelist = av_strdup(
+      "aa,apng,asf,concat,gif,image2,mov,mp4,2gp,mpegts,mpjpeg,rawvideo,"
+      "vapoursynth,aiff,avi,flv,matroska,ogg,webm");
   p_packet = av_packet_alloc();
   p_frame = av_frame_alloc();
 
