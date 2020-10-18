@@ -430,6 +430,7 @@ void mpv_player::update() {
       metadb_handle_ptr handle;
       playback_control::get()->get_now_playing(handle);
       if (handle.is_valid()) {
+        timing_info::refresh(false);
         task t;
         t.type = task_type::Play;
         t.play_file = handle;
@@ -1142,7 +1143,8 @@ void mpv_player::sync(double debug_time) {
 
   if (running_ffs) {
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Skipping regular sync";
+      FB2K_console_formatter()
+          << "mpv: Skipping regular sync at " << debug_time;
     }
     return;
   }
@@ -1159,7 +1161,8 @@ void mpv_player::sync(double debug_time) {
       queue_task(t);
     }
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Hard a/v sync";
+      FB2K_console_formatter()
+          << "mpv: Hard a/v sync at " << debug_time << ", offset " << desync;
     }
   } else {
     // soft sync
@@ -1183,10 +1186,14 @@ void mpv_player::sync(double debug_time) {
 }
 
 void mpv_player::on_new_artwork() {
-  if (g_player) {
+  if (g_player && (g_player->mpv_state == state::Artwork ||
+                   g_player->mpv_state == state::Idle ||
+                   g_player->mpv_state == state::Unloaded)) {
     task t;
     t.type = task_type::LoadArtwork;
     g_player->queue_task(t);
+  } else if (cfg_logging) {
+    FB2K_console_formatter() << "mpv: Ignoring loaded artwork";
   }
 }
 
@@ -1259,7 +1266,8 @@ void mpv_player::initial_sync() {
     std::unique_lock<std::mutex> lock(mutex);
     event_cv.wait(lock, [this]() {
       return check_queue_any() || mpv_state == state::Idle ||
-             mpv_state == state::Shutdown || mpv_timepos > last_mpv_seek;
+             mpv_state == state::Shutdown ||
+             (mpv_state != state::Seeking && mpv_timepos > last_mpv_seek);
     });
 
     if (check_queue_any()) {
@@ -1289,7 +1297,7 @@ void mpv_player::initial_sync() {
       return;
     }
 
-    if (mpv_timepos > last_mpv_seek) {
+    if (mpv_state != state::Seeking && mpv_timepos > last_mpv_seek) {
       // frame decoded, wait for fb
       if (cfg_logging) {
         FB2K_console_formatter()
