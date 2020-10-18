@@ -400,11 +400,15 @@ advconfig_integer_factory cfg_remote_offset(
 static titleformat_object::ptr popup_titleformat_script;
 static search_filter::ptr thumb_filter;
 static search_filter::ptr video_filter;
+std::mutex filters_mutex;
 
 void format_player_title(pfc::string8& s, metadb_handle_ptr item) {
-  if (popup_titleformat_script.is_empty()) {
-    static_api_ptr_t<titleformat_compiler>()->compile_safe(
-        popup_titleformat_script, cfg_popup_titleformat);
+  {
+    std::lock_guard<std::mutex> lock_guard(filters_mutex);
+    if (popup_titleformat_script.is_empty()) {
+      static_api_ptr_t<titleformat_compiler>()->compile_safe(
+          popup_titleformat_script, cfg_popup_titleformat);
+    }
   }
 
   if (item.is_valid()) {
@@ -414,14 +418,19 @@ void format_player_title(pfc::string8& s, metadb_handle_ptr item) {
 
 bool test_thumb_pattern(metadb_handle_ptr metadb) {
   if (!cfg_thumb_filter) return true;
-  if (thumb_filter.is_empty()) {
-    try {
-      thumb_filter =
-          static_api_ptr_t<search_filter_manager>()->create(cfg_thumb_pattern);
-    } catch (std::exception e) {
-      return false;
+  if (metadb.is_empty()) return false;
+  {
+    std::lock_guard<std::mutex> lock_guard(filters_mutex);
+    if (thumb_filter.is_empty()) {
+      try {
+        thumb_filter = static_api_ptr_t<search_filter_manager>()->create(
+            cfg_thumb_pattern);
+      } catch (std::exception e) {
+        return false;
+      }
     }
   }
+  if (thumb_filter.is_empty()) return false;
 
   metadb_handle_list in;
   in.add_item(metadb);
@@ -432,13 +441,17 @@ bool test_thumb_pattern(metadb_handle_ptr metadb) {
 
 bool test_video_pattern(metadb_handle_ptr metadb) {
   if (!cfg_video_filter) return true;
-  if (video_filter.is_empty()) {
-    try {
-      video_filter =
-          static_api_ptr_t<search_filter_manager>()->create(cfg_video_pattern);
-    } catch (std::exception e) {
-      return false;
+  {
+    std::lock_guard<std::mutex> lock_guard(filters_mutex);
+    if (video_filter.is_empty()) {
+      try {
+        video_filter = static_api_ptr_t<search_filter_manager>()->create(
+            cfg_video_pattern);
+      } catch (std::exception e) {
+        return false;
+      }
     }
+    if (video_filter.is_empty()) return false;
   }
 
   metadb_handle_list in;
@@ -643,17 +656,23 @@ void CMpvPlayerPreferences::apply() {
   cfg_popup_titleformat.reset();
   cfg_popup_titleformat.set_string(format.get_ptr());
 
-  static_api_ptr_t<titleformat_compiler>()->compile_safe(
-      popup_titleformat_script, cfg_popup_titleformat);
+  {
+    std::lock_guard<std::mutex> lock_guard(filters_mutex);
+    static_api_ptr_t<titleformat_compiler>()->compile_safe(
+        popup_titleformat_script, cfg_popup_titleformat);
+  }
 
   pfc::string video_pattern = uGetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN);
   cfg_video_pattern.reset();
   cfg_video_pattern.set_string(video_pattern.get_ptr());
-  try {
-    video_filter =
-        static_api_ptr_t<search_filter_manager>()->create(cfg_video_pattern);
-  } catch (std::exception ex) {
-    video_filter.reset();
+  {
+    std::lock_guard<std::mutex> lock_guard(filters_mutex);
+    try {
+      video_filter =
+          static_api_ptr_t<search_filter_manager>()->create(cfg_video_pattern);
+    } catch (std::exception ex) {
+      video_filter.reset();
+    }
   }
 
   cfg_panel_metric =
@@ -829,11 +848,14 @@ void CMpvThumbnailPreferences::apply() {
   cfg_thumb_pattern.reset();
   cfg_thumb_pattern.set_string(format.get_ptr());
 
-  try {
-    thumb_filter =
-        static_api_ptr_t<search_filter_manager>()->create(cfg_thumb_pattern);
-  } catch (std::exception ex) {
-    thumb_filter.reset();
+  {
+    std::lock_guard<std::mutex> lock_guard(filters_mutex);
+    try {
+      thumb_filter =
+          static_api_ptr_t<search_filter_manager>()->create(cfg_thumb_pattern);
+    } catch (std::exception ex) {
+      thumb_filter.reset();
+    }
   }
 
   cfg_thumbs = IsDlgButtonChecked(IDC_CHECK_THUMBNAILS);

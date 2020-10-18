@@ -49,11 +49,19 @@ static const char* query_delete_str =
 static std::unique_ptr<std::timed_mutex[]> art_generation_mutexes(
     new std::timed_mutex[256]);
 static titleformat_object::ptr art_generation_mutex_formatter;
+static std::mutex art_generation_mutex_formatter_mutex;
 
 static std::timed_mutex* get_mutex_for_item(metadb_handle_ptr metadb) {
-  if (art_generation_mutex_formatter.is_empty()) {
-    static_api_ptr_t<titleformat_compiler>()->compile_force(
-        art_generation_mutex_formatter, "%path% | %subsong%");
+  {
+    std::lock_guard<std::mutex> lock_guard(
+        art_generation_mutex_formatter_mutex);
+    if (art_generation_mutex_formatter.is_empty()) {
+      static_api_ptr_t<titleformat_compiler>()->compile_force(
+          art_generation_mutex_formatter, "%path% | %subsong%");
+    }
+    if (art_generation_mutex_formatter.is_empty()) {
+      throw exception_album_art_not_found();
+    }
   }
 
   pfc::string_formatter str;
@@ -836,6 +844,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     }
 
     metadb_handle_ptr item = get_thumbnail_item_from_items(items);
+    if (item.is_empty()) throw exception_album_art_not_found();
     // does this item match the configured thumbnail search query
     if (!test_thumb_pattern(item)) throw exception_album_art_not_found();
 
