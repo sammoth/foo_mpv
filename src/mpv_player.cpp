@@ -1131,6 +1131,14 @@ void mpv_player::sync(double debug_time) {
   std::lock_guard<std::mutex> lock(sync_lock);
   last_sync_time = std::lround(debug_time);
 
+  if (!get_bool("seekable") && mpv_state == state::Active) {
+    if (cfg_logging) {
+      FB2K_console_formatter()
+          << "mpv: Ignoring sync at " << debug_time << " - file not seekable";
+    }
+    return;
+  }
+
   double mpv_time = -1.0;
   if (!mpv_handle || !enabled || mpv_state != state::Active ||
       playback_control::get()->is_paused() ||
@@ -1321,10 +1329,21 @@ void mpv_player::initial_sync() {
       lock.unlock();
       break;
     }
+
     lock.unlock();
   }
 
   libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
+
+  if (!get_bool("seekable") && mpv_state == state::Active) {
+    if (cfg_logging) {
+      FB2K_console_formatter() << "mpv: Abort initial sync - file not seekable";
+    }
+    if (set_property_string("pause", "no") < 0 && cfg_logging) {
+      FB2K_console_formatter() << "mpv: Error unpausing";
+    }
+    return;
+  }
 
   // wait for fb to catch up to the first frame
   double vis_time = 0.0;
