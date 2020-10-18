@@ -283,8 +283,9 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
     menu_hook.add_node(new uie::menu_node_separator_t());
 
     if (g_player->profiles.size() > 0) {
+      std::vector<ui_extension::menu_node_ptr> profile_children;
       for (auto& profile : g_player->profiles) {
-        menu_hook.add_node(
+        profile_children.emplace_back(
             new menu_utils::menu_node_run(profile, false, [profile]() {
               const char* cmd_profile[] = {"apply-profile", profile, NULL};
               if (g_player->command(cmd_profile) < 0 && cfg_logging) {
@@ -292,6 +293,8 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
               }
             }));
       }
+      menu_hook.add_node(
+          new menu_utils::menu_node_popup("Profile", profile_children));
 
       menu_hook.add_node(new uie::menu_node_separator_t());
     }
