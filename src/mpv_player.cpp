@@ -947,13 +947,6 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
           << time_base + time + seek_offset;
     }
 
-    // reset speed
-    double unity = 1.0;
-    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 &&
-        cfg_logging) {
-      FB2K_console_formatter() << "mpv: Error setting speed";
-    }
-
     const char* cmd_profile[] = {"apply-profile", "video", NULL};
     if (command(cmd_profile) < 0 && cfg_logging) {
       FB2K_console_formatter() << "mpv: Error loading video profile";
@@ -967,11 +960,32 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       }
     }
 
-    set_state(state::Loading);
-    const char* cmd[] = {"loadfile", filename.c_str(), NULL};
-    if (command(cmd) < 0 && cfg_logging) {
-      FB2K_console_formatter()
-          << "mpv: Error loading item '" << filename << "'";
+    bool next_chapter =
+        mpv_state == state::Active && current_display_item.is_valid() &&
+        time == 0.0 && current_display_item->get_path() && metadb->get_path() &&
+        uStringCompare(current_display_item->get_path(), metadb->get_path()) ==
+            0 &&
+        current_display_item->get_subsong_index() + 1 ==
+            metadb->get_subsong_index();
+
+    // reset speed
+    double unity = 1.0;
+    if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 &&
+        cfg_logging) {
+      FB2K_console_formatter() << "mpv: Error setting speed";
+    }
+
+    if (next_chapter) {
+      if (cfg_logging) {
+        FB2K_console_formatter() << "mpv: Playing next chapter";
+      }
+    } else {
+      set_state(state::Loading);
+      const char* cmd[] = {"loadfile", filename.c_str(), NULL};
+      if (command(cmd) < 0 && cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Error loading item '" << filename << "'";
+      }
     }
     set_display_item(metadb);
 
@@ -993,24 +1007,27 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       command(osc_cmd_3);
     });
 
-    // wait for file to load
-    std::unique_lock<std::mutex> lock_starting(mutex);
-    event_cv.wait(lock_starting, [this, filename]() {
-      return check_queue_any() || mpv_state != state::Loading;
-    });
-    lock_starting.unlock();
+    if (!next_chapter) {
+      // wait for file to load
+      std::unique_lock<std::mutex> lock_starting(mutex);
+      event_cv.wait(lock_starting, [this, filename]() {
+        return check_queue_any() || mpv_state != state::Loading;
+      });
+      lock_starting.unlock();
 
-    if (get_bool("pause")) {
-      sync_on_unpause = true;
-      if (cfg_logging) {
-        FB2K_console_formatter() << "mpv: Setting sync_on_unpause after load";
-      }
-    } else {
-      task t;
-      t.type = task_type::FirstFrameSync;
-      queue_task(t);
-      if (cfg_logging) {
-        FB2K_console_formatter() << "mpv: Starting first frame sync after load";
+      if (get_bool("pause")) {
+        sync_on_unpause = true;
+        if (cfg_logging) {
+          FB2K_console_formatter() << "mpv: Setting sync_on_unpause after load";
+        }
+      } else {
+        task t;
+        t.type = task_type::FirstFrameSync;
+        queue_task(t);
+        if (cfg_logging) {
+          FB2K_console_formatter()
+              << "mpv: Starting first frame sync after load";
+        }
       }
     }
   } else {
