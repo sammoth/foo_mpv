@@ -5,6 +5,7 @@
 
 #include "mpv_player.h"
 #include "thumbnailer.h"
+#include "resource.h"
 
 void RunMpvPopupWindow();
 
@@ -296,7 +297,7 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
         p_out = "Restart mpv";
         break;
       case cmd_enable:
-        p_out = "Enable/disable video";
+        p_out = "Enable video";
         break;
       case cmd_fullscreen:
         p_out = "Toggle fullscreen";
@@ -327,6 +328,9 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
   bool get_display(t_uint32 p_index, pfc::string_base& p_text,
                    t_uint32& p_flags) override {
     p_flags = flag_defaulthidden;
+    if (p_index == cmd_enable && cfg_video_enabled) {
+      p_flags |= flag_checked;
+    }
     get_name(p_index, p_text);
     return true;
   }
@@ -351,4 +355,26 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
 };
 static service_factory_single_t<mainmenu_mpv_playercontrol>
     g_mainmenu_mpv_playercontrol;
-}  // namespace
+
+class video_enable_button : public uie::button_v2 {
+  const GUID& get_item_guid() const { return guid_video_enable; };
+  uie::t_button_guid get_guid_type() const {
+    return uie::BUTTON_GUID_MENU_ITEM_MAIN;
+  }
+  unsigned get_button_state() const {
+    return cfg_video_enabled ? uie::BUTTON_STATE_PRESSED
+                             : uie::BUTTON_STATE_DEFAULT;
+  }
+
+  HANDLE get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext,
+                         unsigned cx_hint, unsigned cy_hint,
+                         unsigned& handle_type) const override {
+    auto icon =
+        (HICON)LoadImage(core_api::get_my_instance(), MAKEINTRESOURCE(IDI_ICON1),
+                         IMAGE_ICON, cx_hint, cy_hint, NULL);
+    handle_type = uie::button_v2::handle_type_icon;
+    return (HANDLE)icon;
+  }
+};
+uie::button_factory<video_enable_button> g_cui_video_enabled_button;
+}  // namespace mpv

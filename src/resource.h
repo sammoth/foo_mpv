@@ -10,6 +10,7 @@
 #define IDD_MPV_PREFS4                  111
 #define IDI_SCROLL                      115
 #define IDD_DIALOG_MENUCHOOSER          116
+#define IDI_ICON1                       119
 #define IDC_BUTTON_BG                   1001
 #define IDC_EDIT_POPUP                  1002
 #define IDC_CHECK_FSBG                  1003
@@ -73,7 +74,7 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        118
+#define _APS_NEXT_RESOURCE_VALUE        120
 #define _APS_NEXT_COMMAND_VALUE         40001
 #define _APS_NEXT_CONTROL_VALUE         1096
 #define _APS_NEXT_SYMED_VALUE           101

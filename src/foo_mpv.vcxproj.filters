@@ -105,5 +105,8 @@
     <Image Include="IDI_SCROLL.ico">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="video.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>

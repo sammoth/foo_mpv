@@ -188,6 +188,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="IDI_SCROLL.ico" />
+    <Image Include="video.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
