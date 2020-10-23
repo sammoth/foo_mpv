@@ -4,13 +4,13 @@
 #include <thread>
 
 #include "mpv_player.h"
-#include "thumbnailer.h"
 #include "resource.h"
+#include "thumbnailer.h"
 
 void RunMpvPopupWindow();
 
 namespace mpv {
-extern cfg_bool cfg_video_enabled;
+extern cfg_bool cfg_video_enabled, cfg_autopopup;
 
 static const GUID guid_thumbnails_group = {
     0x41ede16, 0xaf85, 0x408d, {0x88, 0xcc, 0x4, 0x5f, 0xcb, 0x29, 0x62, 0x88}};
@@ -109,6 +109,11 @@ static const GUID guid_fullscreen_monitor_10 = {
     0x2397,
     0x4e93,
     {0xaa, 0x14, 0x2, 0x11, 0xd2, 0x37, 0x9e, 0xa8}};
+static const GUID guid_auto_popup = {
+    0xdbd44123,
+    0x702f,
+    0x4cd3,
+    {0xbf, 0x1c, 0xe9, 0xbe, 0xfd, 0xc5, 0xa9, 0x89}};
 
 static mainmenu_group_popup_factory g_thumbnails_group(
     guid_thumbnails_group, mainmenu_groups::library,
@@ -251,7 +256,13 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
 }
 
 class mainmenu_mpv_playercontrol : public mainmenu_commands {
-  enum { cmd_restart = 0, cmd_enable = 1, cmd_fullscreen = 2, cmd_total };
+  enum {
+    cmd_restart = 0,
+    cmd_enable = 1,
+    cmd_auto_popup = 2,
+    cmd_fullscreen = 3,
+    cmd_total
+  };
   t_uint32 get_command_count() override {
     unsigned monitors = 0;
     EnumDisplayMonitors(NULL, NULL, MonitorEnumProc,
@@ -265,6 +276,8 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
         return guid_mpv_restart;
       case cmd_enable:
         return guid_video_enable;
+      case cmd_auto_popup:
+        return guid_auto_popup;
       case cmd_fullscreen:
         return guid_fullscreen;
       case cmd_fullscreen + 1:
@@ -299,6 +312,9 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
       case cmd_enable:
         p_out = "Enable video";
         break;
+      case cmd_auto_popup:
+        p_out = "Automatically open popup";
+        break;
       case cmd_fullscreen:
         p_out = "Toggle fullscreen";
         break;
@@ -316,6 +332,11 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
         return true;
       case cmd_enable:
         return false;
+      case cmd_auto_popup:
+        p_out =
+            "Automatically open and close the video player popup when the "
+            "current track has a video stream";
+        return true;
       case cmd_fullscreen:
         p_out = "Toggle fullscreen mode";
         return true;
@@ -331,6 +352,9 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
     if (p_index == cmd_enable && cfg_video_enabled) {
       p_flags |= flag_checked;
     }
+    if (p_index == cmd_auto_popup && cfg_autopopup) {
+      p_flags |= flag_checked;
+    }
     get_name(p_index, p_text);
     return true;
   }
@@ -344,6 +368,9 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
       case cmd_enable:
         cfg_video_enabled = !cfg_video_enabled;
         mpv::mpv_player::on_containers_change();
+        break;
+      case cmd_auto_popup:
+        cfg_autopopup = !cfg_autopopup;
         break;
       case cmd_fullscreen:
         mpv::mpv_player::toggle_fullscreen();
@@ -369,9 +396,9 @@ class video_enable_button : public uie::button_v2 {
   HANDLE get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext,
                          unsigned cx_hint, unsigned cy_hint,
                          unsigned& handle_type) const override {
-    auto icon =
-        (HICON)LoadImage(core_api::get_my_instance(), MAKEINTRESOURCE(IDI_ICON1),
-                         IMAGE_ICON, cx_hint, cy_hint, NULL);
+    auto icon = (HICON)LoadImage(core_api::get_my_instance(),
+                                 MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON,
+                                 cx_hint, cy_hint, NULL);
     handle_type = uie::button_v2::handle_type_icon;
     return (HANDLE)icon;
   }

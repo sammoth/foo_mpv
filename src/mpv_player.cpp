@@ -98,7 +98,7 @@ static const int idle_active_userdata = 12792384;
 
 extern cfg_bool cfg_video_enabled, cfg_black_fullscreen, cfg_stop_hidden,
     cfg_artwork, cfg_osc, cfg_osc_scalewithvideo, cfg_hwdec, cfg_latency,
-    cfg_deint, cfg_gpuhq;
+    cfg_deint, cfg_gpuhq, cfg_autopopup;
 extern cfg_uint cfg_bg_color, cfg_artwork_type, cfg_osc_layout,
     cfg_osc_seekbarstyle, cfg_osc_transparency, cfg_osc_fadeduration,
     cfg_osc_deadzone, cfg_osc_scalewindowed, cfg_osc_scalefullscreen,

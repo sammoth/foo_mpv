@@ -311,6 +311,13 @@ static const GUID guid_cfg_remote_always_play = {
     0x4534,
     {0xb6, 0x61, 0x5e, 0xaf, 0xa6, 0x26, 0xeb, 0x5b}};
 
+static const GUID guid_cfg_autopopup
+    = {0xcaa1c643,
+       0x4ff5,
+       0x4e24,
+       {0x95, 0x89, 0x87, 0xb2, 0xdd, 0x26, 0x64, 0x5}};
+
+
 cfg_bool cfg_video_enabled(guid_cfg_video_enabled, true);
 
 cfg_uint cfg_bg_color(guid_cfg_bg_color, 0);
@@ -322,6 +329,8 @@ cfg_bool cfg_hwdec(guid_cfg_hwdec, false);
 cfg_bool cfg_deint(guid_cfg_deint, true);
 cfg_bool cfg_latency(guid_cfg_latency, false);
 cfg_bool cfg_gpuhq(guid_cfg_gpuhq, false);
+
+cfg_bool cfg_autopopup(guid_cfg_autopopup, false);
 
 static const char* cfg_popup_titleformat_default =
     "%title% - %artist%[' ('%album%')']";
