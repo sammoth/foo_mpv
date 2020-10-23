@@ -154,6 +154,8 @@ class mpv_player : ui_selection_callback_impl_base,
   static void on_playback_time(double p_time);
   static void on_volume_change(float new_vol);
 
+  static bool should_play_this(metadb_handle_ptr metadb, pfc::string8& out);
+
   static void restart();
 
   // window

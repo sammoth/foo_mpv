@@ -896,40 +896,42 @@ void mpv_player::on_playback_time(double p_time) {
   }
 }
 
+bool mpv_player::should_play_this(metadb_handle_ptr metadb, pfc::string8& out) {
+  bool play_this = false;
+  out.add_filename(metadb->get_path());
+
+  if (out.has_prefix("\\file://")) {
+    if (test_video_pattern(metadb)) {
+      play_this = true;
+      out.replace_string("\\file://", "");
+    }
+  } else if (cfg_foo_youtube && out.has_prefix("\\fy+")) {
+    if (cfg_remote_always_play || test_video_pattern(metadb)) {
+      play_this = true;
+      out.replace_string("\\fy+", "ytdl://");
+    }
+  } else if (cfg_ytdl_any) {
+    if (cfg_remote_always_play || test_video_pattern(metadb)) {
+      play_this = true;
+      out.replace_string("\\fy+", "\\");
+      out.replace_string("\\", "ytdl://");
+    }
+  }
+
+  return play_this;
+}
+
 void mpv_player::play(metadb_handle_ptr metadb, double time) {
   if (metadb.is_empty()) return;
   if (!mpv_handle && !mpv_init()) return;
 
-  pfc::string8 filename;
-  filename.add_filename(metadb->get_path());
+  pfc::string8 path;
 
-  apply_seek_offset = false;
-  bool play_this = false;
-  if (enabled) {
-    if (filename.has_prefix("\\file://")) {
-      if (test_video_pattern(metadb)) {
-        play_this = true;
-        filename.replace_string("\\file://", "");
-      }
-    } else if (cfg_foo_youtube && filename.has_prefix("\\fy+")) {
-      if (cfg_remote_always_play || test_video_pattern(metadb)) {
-        play_this = true;
-        apply_seek_offset = true;
-        filename.replace_string("\\fy+", "ytdl://");
-      }
-    } else if (cfg_ytdl_any) {
-      if (cfg_remote_always_play || test_video_pattern(metadb)) {
-        play_this = true;
-        apply_seek_offset = true;
-        filename.replace_string("\\fy+", "\\");
-        filename.replace_string("\\", "ytdl://");
-      }
-    }
-  }
+  if (enabled && should_play_this(metadb, path)) {
+    apply_seek_offset = path.has_prefix("ytdl://");
 
-  if (play_this) {
     if (cfg_logging) {
-      FB2K_console_formatter() << "mpv: Playing URI " << filename;
+      FB2K_console_formatter() << "mpv: Playing URI " << path;
     }
 
     double time_base_l = 0.0;
@@ -957,7 +959,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     set_option_string("start", time_string.c_str());
     if (cfg_logging) {
       FB2K_console_formatter()
-          << "mpv: Loading item '" << filename << "' at start time "
+          << "mpv: Loading item '" << path << "' at start time "
           << time_base + time + seek_offset;
     }
 
@@ -995,10 +997,10 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       }
     } else {
       set_state(state::Loading);
-      const char* cmd[] = {"loadfile", filename.c_str(), NULL};
+      const char* cmd[] = {"loadfile", path.c_str(), NULL};
       if (command(cmd) < 0 && cfg_logging) {
         FB2K_console_formatter()
-            << "mpv: Error loading item '" << filename << "'";
+            << "mpv: Error loading item '" << path << "'";
       }
     }
     set_display_item(metadb);
@@ -1024,7 +1026,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
     if (!next_chapter) {
       // wait for file to load
       std::unique_lock<std::mutex> lock_starting(mutex);
-      event_cv.wait(lock_starting, [this, filename]() {
+      event_cv.wait(lock_starting, [this, path]() {
         return check_queue_any() || mpv_state != state::Loading;
       });
       lock_starting.unlock();
