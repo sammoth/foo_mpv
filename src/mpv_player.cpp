@@ -816,70 +816,84 @@ void mpv_player::on_volume_change(float new_vol) {
   std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
   const char* cmd[] = {"script-message", "foobar", "volume-changed",
                        vol.c_str(), NULL};
-  command(cmd);
+  if (g_player) {
+    g_player->command(cmd);
+  }
 }
 
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
                                       bool p_paused) {
-  set_state(state::Preload);
-  task t1;
-  t1.type = task_type::Pause;
-  t1.flag = p_paused;
-  queue_task(t1);
+  if (g_player) {
+    g_player->set_state(state::Preload);
+    task t1;
+    t1.type = task_type::Pause;
+    t1.flag = p_paused;
+    g_player->queue_task(t1);
+  }
 }
 void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
-  update_title();
-  update();
+  if (g_player) {
+    g_player->update_title();
+    g_player->update();
 
-  timing_info::refresh(false);
+    timing_info::refresh(false);
 
-  {
-    std::lock_guard<std::mutex> lock(sync_lock);
-    last_sync_time = 0;
+    {
+      std::lock_guard<std::mutex> lock(g_player->sync_lock);
+      g_player->last_sync_time = 0;
+    }
+
+    task t;
+    t.type = task_type::Play;
+    t.play_file = p_track;
+    t.time = 0.0;
+    g_player->queue_task(t);
   }
-
-  task t;
-  t.type = task_type::Play;
-  t.play_file = p_track;
-  t.time = 0.0;
-  queue_task(t);
 }
 void mpv_player::on_playback_stop(play_control::t_stop_reason p_reason) {
-  update_title();
+  if (g_player) {
+    g_player->update_title();
 
-  if (mpv_state != state::Artwork) {
-    task t;
-    t.type = task_type::Stop;
-    queue_task(t);
+    if (g_player->mpv_state != state::Artwork) {
+      task t;
+      t.type = task_type::Stop;
+      g_player->queue_task(t);
+    }
   }
 }
 void mpv_player::on_playback_seek(double p_time) {
-  update_title();
+  if (g_player) {
+    g_player->update_title();
 
-  timing_info::refresh(true);
+    timing_info::refresh(true);
 
-  {
-    std::lock_guard<std::mutex> lock(sync_lock);
-    last_sync_time = (int)floor(p_time);
+    {
+      std::lock_guard<std::mutex> lock(g_player->sync_lock);
+      g_player->last_sync_time = (int)floor(p_time);
+    }
+
+    task t;
+    t.type = task_type::Seek;
+    t.time = p_time;
+    t.flag = false;
+    g_player->queue_task(t);
   }
-
-  task t;
-  t.type = task_type::Seek;
-  t.time = p_time;
-  t.flag = false;
-  queue_task(t);
 }
 void mpv_player::on_playback_pause(bool p_state) {
-  update_title();
-  task t;
-  t.type = task_type::Pause;
-  t.flag = p_state;
-  queue_task(t);
+  if (g_player) {
+    g_player->update_title();
+    task t;
+    t.type = task_type::Pause;
+    t.flag = p_state;
+    g_player->queue_task(t);
+  }
 }
 void mpv_player::on_playback_time(double p_time) {
-  update_title();
-  update();
-  sync(p_time);
+  if (g_player) {
+    g_player->update_title();
+    g_player->update();
+    g_player->sync(p_time);
+  }
 }
 
 void mpv_player::play(metadb_handle_ptr metadb, double time) {

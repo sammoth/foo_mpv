@@ -19,8 +19,7 @@ namespace mpv {
 
 void get_popup_title(pfc::string8& s);
 
-class mpv_player : play_callback_impl_base,
-                   ui_selection_callback_impl_base,
+class mpv_player : ui_selection_callback_impl_base,
                    metadb_io_callback_dynamic_impl_base,
                    public CWindowImpl<mpv_player> {
   // player instance handle
@@ -106,16 +105,6 @@ class mpv_player : play_callback_impl_base,
   int command(const char** args);
   int set_option(const char* name, libmpv::mpv_format format, void* data);
 
-  // play callbacks
-  void on_playback_starting(play_control::t_track_command p_command,
-                            bool p_paused);
-  void on_playback_new_track(metadb_handle_ptr p_track);
-  void on_playback_stop(play_control::t_stop_reason p_reason);
-  void on_playback_seek(double p_time);
-  void on_playback_pause(bool p_state);
-  void on_playback_time(double p_time);
-  void on_volume_change(float new_vol);
-
   // scripting/artwork
   void on_selection_changed(metadb_handle_list_cref) override;
   void on_changed_sorted(metadb_handle_list_cref, bool) override;
@@ -154,6 +143,16 @@ class mpv_player : play_callback_impl_base,
   static void get_title(pfc::string8& out);
   static void toggle_fullscreen();
   static void fullscreen_on_monitor(int monitor);
+
+  // play callbacks
+  static void on_playback_starting(play_control::t_track_command p_command,
+                            bool p_paused);
+  static void on_playback_new_track(metadb_handle_ptr p_track);
+  static void on_playback_stop(play_control::t_stop_reason p_reason);
+  static void on_playback_seek(double p_time);
+  static void on_playback_pause(bool p_state);
+  static void on_playback_time(double p_time);
+  static void on_volume_change(float new_vol);
 
   static void restart();
 

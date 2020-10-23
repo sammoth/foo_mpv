@@ -134,6 +134,7 @@
     <ClCompile Include="artwork_protocol.cpp" />
     <ClCompile Include="menu_utils.cpp" />
     <ClCompile Include="mpv_fullscreen.cpp" />
+    <ClCompile Include="play_callback.cpp" />
     <ClCompile Include="thumbnail_chooser.cpp" />
     <ClCompile Include="thumbnailer.cpp" />
     <ClCompile Include="libmpv.cpp" />
