@@ -13,15 +13,12 @@
 #include <thread>
 
 #include "libmpv.h"
-#include "mpv_container.h"
+#include "player_container.h"
 
 namespace mpv {
-
-void get_popup_title(pfc::string8& s);
-
-class mpv_player : ui_selection_callback_impl_base,
+class player : ui_selection_callback_impl_base,
                    metadb_io_callback_dynamic_impl_base,
-                   public CWindowImpl<mpv_player> {
+                   public CWindowImpl<player> {
   // player instance handle
   libmpv::mpv_handle* mpv_handle;
   HWND mpv_window_hwnd;
@@ -118,7 +115,7 @@ class mpv_player : ui_selection_callback_impl_base,
   void publish_titleformatting_subscriptions();
 
   // windowing
-  mpv_container* container;
+  player_container* container;
   void update_title();
   void set_background();
 
@@ -128,14 +125,14 @@ class mpv_player : ui_selection_callback_impl_base,
   void on_destroy();
 
   void update();
-  bool contained_in(mpv_container* p_container);
+  bool contained_in(player_container* p_container);
 
   bool find_window();
   void on_mouse_move(UINT, CPoint);
 
  public:
-  mpv_player();
-  ~mpv_player();
+  player();
+  ~player();
   static void on_containers_change();
   static void add_menu_items(uie::menu_hook_impl& menu_hook);
   static void on_new_artwork();

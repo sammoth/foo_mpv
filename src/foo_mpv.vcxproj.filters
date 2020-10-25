@@ -21,28 +21,13 @@
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mpv_dui_panel.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mpv_popup.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="mainmenu.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mpv_cui_panel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="preferences.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="timing_info.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mpv_container.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="mpv_player.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="libmpv.cpp">
@@ -54,9 +39,6 @@
     <ClCompile Include="thumbnail_chooser.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mpv_fullscreen.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="artwork_protocol.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -64,6 +46,24 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="play_callback.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="fullscreen_window.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="popup_window.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="player_container.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="player.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="cui_panel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dui_panel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -75,12 +75,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="timing_info.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mpv_container.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="mpv_player.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="libmpv.h">
@@ -96,6 +90,18 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="menu_utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="fullscreen_window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="popup_window.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="player_container.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="player.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

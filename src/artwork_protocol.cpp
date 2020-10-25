@@ -6,7 +6,7 @@
 
 #include "artwork_protocol.h"
 #include "libmpv.h"
-#include "mpv_player.h"
+#include "player.h"
 
 namespace mpv {
 extern cfg_uint cfg_artwork_type;
@@ -111,7 +111,7 @@ class artwork_register : public initquit {
         } else if (!cfg_artwork) {
           g_request->loaded = true;
           lock.unlock();
-          mpv_player::on_new_artwork();
+          player::on_new_artwork();
         } else {
           metadb_handle_list req_items(g_request->items);
           unsigned req_id = g_request->id;
@@ -156,14 +156,14 @@ class artwork_register : public initquit {
               if (g_request && g_request->id == req_id) {
                 g_request->art_data = result;
                 g_request->loaded = true;
-                mpv_player::on_new_artwork();
+                player::on_new_artwork();
               }
             }
           } catch (...) {
             std::lock_guard<std::mutex> lock(mutex);
             if (g_request && g_request->id == req_id) {
               g_request->loaded = true;
-              mpv_player::on_new_artwork();
+              player::on_new_artwork();
             }
           }
         }

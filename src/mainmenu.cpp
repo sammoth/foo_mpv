@@ -3,11 +3,10 @@
 
 #include <thread>
 
-#include "mpv_player.h"
+#include "player.h"
+#include "popup_window.h"
 #include "resource.h"
 #include "thumbnailer.h"
-
-void RunMpvPopupWindow();
 
 namespace mpv {
 extern cfg_bool cfg_video_enabled, cfg_autopopup;
@@ -171,7 +170,7 @@ class mainmenu_mpv : public mainmenu_commands {
                service_ptr_t<service_base> p_callback) override {
     switch (p_index) {
       case cmd_popup:
-        RunMpvPopupWindow();
+        popup_window::open();
         break;
       default:
         uBugCheck();  // should never happen unless somebody called us with
@@ -363,20 +362,20 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
                service_ptr_t<service_base> p_callback) override {
     switch (p_index) {
       case cmd_restart:
-        mpv::mpv_player::restart();
+        mpv::player::restart();
         break;
       case cmd_enable:
         cfg_video_enabled = !cfg_video_enabled;
-        mpv::mpv_player::on_containers_change();
+        mpv::player::on_containers_change();
         break;
       case cmd_auto_popup:
         cfg_autopopup = !cfg_autopopup;
         break;
       case cmd_fullscreen:
-        mpv::mpv_player::toggle_fullscreen();
+        mpv::player::toggle_fullscreen();
         break;
       default:
-        mpv::mpv_player::fullscreen_on_monitor(p_index - cmd_total);
+        mpv::player::fullscreen_on_monitor(p_index - cmd_total);
     }
   }
 };

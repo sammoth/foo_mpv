@@ -8,15 +8,14 @@
 
 #include "../columns_ui-sdk/ui_extension.h"
 #include "../foobar2000/SDK/foobar2000.h"
-#include "mpv_container.h"
-#include "mpv_player.h"
-#include "resource.h"
 #include "menu_utils.h"
-
-void RunMpvPopupWindow();
+#include "player_container.h"
+#include "player.h"
+#include "popup_window.h"
+#include "resource.h"
 
 namespace mpv {
-static const GUID g_guid_mpv_cui_panel = {
+static const GUID guid_cui_panel = {
     0xd784f81,
     0x76c1,
     0x48e2,
@@ -24,11 +23,11 @@ static const GUID g_guid_mpv_cui_panel = {
 
 extern cfg_bool cfg_osc;
 
-struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
+struct cui_panel_window : public player_container, CWindowImpl<cui_panel_window> {
   DECLARE_WND_CLASS_EX(TEXT("{9D6179F4-0A94-4F76-B7EB-C4A853853DCB}"),
                        CS_VREDRAW | CS_HREDRAW | CS_DBLCLKS, (-1));
 
-  BEGIN_MSG_MAP_EX(CMpvCuiWindow)
+  BEGIN_MSG_MAP_EX(cui_panel_window)
   MSG_WM_ERASEBKGND(on_erase_bg)
   MSG_WM_CREATE(on_create)
   MSG_WM_SIZE(on_size)
@@ -38,7 +37,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 
   static DWORD GetWndStyle(DWORD style) { return WS_CHILD | WS_VISIBLE; }
 
-  CMpvCuiWindow() {}
+  cui_panel_window() {}
 
   BOOL on_erase_bg(CDCHandle dc) {
     CRect rc;
@@ -50,14 +49,14 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   }
 
   LRESULT on_create(LPCREATESTRUCT lp) {
-    mpv_container::on_create();
+    player_container::on_create();
     return 0;
   }
 
-  void on_destroy() { mpv_container::on_destroy(); }
+  void on_destroy() { player_container::on_destroy(); }
 
   void on_size(UINT wparam, CSize size) {
-    mpv_container::on_resize(size.cx, size.cy);
+    player_container::on_resize(size.cx, size.cy);
   }
 
   HWND container_wnd() override { return m_hWnd; }
@@ -74,7 +73,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 
   void set_osc_enabled(bool p_enabled) {
     osc_enabled = p_enabled;
-    mpv_player::on_containers_change();
+    player::on_containers_change();
   }
 
   HWND get_wnd() { return m_hWnd; }
@@ -88,7 +87,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
           "Controls", "Enable the on-screen controls in this UI element",
           is_osc_enabled(), [this]() {
             osc_enabled = !osc_enabled;
-            mpv_player::on_containers_change();
+            player::on_containers_change();
           }));
     }
     menu_hook.add_node(new menu_utils::menu_node_run(
@@ -104,7 +103,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
       menu_hook.add_node(new menu_utils::menu_node_run(
           "Pop out", "Open video in popup window", false, [this]() {
             unpin();
-            RunMpvPopupWindow();
+            popup_window::open();
           }));
     }
   }
@@ -116,7 +115,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
 class MpvCuiWindow : public uie::container_ui_extension {
  public:
   const GUID& get_extension_guid() const override {
-    return g_guid_mpv_cui_panel;
+    return guid_cui_panel;
   }
   void get_name(pfc::string_base& out) const override { out = "mpv"; }
   void get_category(pfc::string_base& out) const override { out = "Panels"; }
@@ -151,13 +150,13 @@ class MpvCuiWindow : public uie::container_ui_extension {
 
   LRESULT on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) override;
 
-  CWindowAutoLifetime<mpv::CMpvCuiWindow>* wnd_child = NULL;
+  CWindowAutoLifetime<mpv::cui_panel_window>* wnd_child = NULL;
 };
 
 LRESULT MpvCuiWindow::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
   switch (msg) {
     case WM_CREATE:
-      wnd_child = new CWindowAutoLifetime<CMpvCuiWindow>(wnd);
+      wnd_child = new CWindowAutoLifetime<cui_panel_window>(wnd);
       if (cfg_pinned) {
         wnd_child->pin();
       }

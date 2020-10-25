@@ -133,18 +133,18 @@
   <ItemGroup>
     <ClCompile Include="artwork_protocol.cpp" />
     <ClCompile Include="menu_utils.cpp" />
-    <ClCompile Include="mpv_fullscreen.cpp" />
+    <ClCompile Include="fullscreen_window.cpp" />
     <ClCompile Include="play_callback.cpp" />
     <ClCompile Include="thumbnail_chooser.cpp" />
     <ClCompile Include="thumbnailer.cpp" />
     <ClCompile Include="libmpv.cpp" />
-    <ClCompile Include="mpv_player.cpp" />
+    <ClCompile Include="player.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="mainmenu.cpp" />
-    <ClCompile Include="mpv_container.cpp" />
-    <ClCompile Include="mpv_dui_panel.cpp" />
-    <ClCompile Include="mpv_popup.cpp" />
-    <ClCompile Include="mpv_cui_panel.cpp" />
+    <ClCompile Include="player_container.cpp" />
+    <ClCompile Include="dui_panel.cpp" />
+    <ClCompile Include="popup_window.cpp" />
+    <ClCompile Include="cui_panel.cpp" />
     <ClCompile Include="preferences.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -155,11 +155,13 @@
   <ItemGroup>
     <ClInclude Include="artwork_protocol.h" />
     <ClInclude Include="menu_utils.h" />
+    <ClInclude Include="fullscreen_window.h" />
+    <ClInclude Include="popup_window.h" />
     <ClInclude Include="thumbnailer.h" />
     <ClInclude Include="preferences.h" />
     <ClInclude Include="libmpv.h" />
-    <ClInclude Include="mpv_player.h" />
-    <ClInclude Include="mpv_container.h" />
+    <ClInclude Include="player.h" />
+    <ClInclude Include="player_container.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="timing_info.h" />

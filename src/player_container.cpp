@@ -4,27 +4,28 @@
 #include <algorithm>
 
 #include "columns_ui-sdk/ui_extension.h"
-#include "mpv_container.h"
-#include "mpv_player.h"
+#include "player.h"
+#include "player_container.h"
+#include "fullscreen_window.h"
 #include "preferences.h"
 
 namespace mpv {
 extern cfg_uint cfg_bg_color, cfg_panel_metric;
 
-static std::vector<mpv_container*> g_containers;
-static mpv_container* pinned_container;
+static std::vector<player_container*> g_containers;
+static player_container* pinned_container;
 
-void mpv_container::invalidate_all_containers() {
+void player_container::invalidate_all_containers() {
   for (auto& c : g_containers) {
     c->invalidate();
   }
 }
 
-bool mpv_container::owns_player() {
-  return mpv_container::get_main_container() == this;
+bool player_container::owns_player() {
+  return player_container::get_main_container() == this;
 }
 
-static bool container_compare(mpv_container* a, mpv_container* b) {
+static bool container_compare(player_container* a, player_container* b) {
   if (a->is_fullscreen()) return true;
   if (b->is_fullscreen()) return false;
   if (a->is_pinned()) return true;
@@ -46,32 +47,32 @@ static bool container_compare(mpv_container* a, mpv_container* b) {
   }
 }
 
-mpv_container* mpv_container::get_main_container() {
+player_container* player_container::get_main_container() {
   if (g_containers.empty()) return NULL;
-  mpv_container* main = NULL;
+  player_container* main = NULL;
   std::sort(g_containers.begin(), g_containers.end(), container_compare);
   return *g_containers.begin();
 }
 
-bool mpv_container::is_pinned() { return pinned_container == this; }
+bool player_container::is_pinned() { return pinned_container == this; }
 
-t_ui_color mpv_container::get_bg() { return cfg_bg_color; }
+t_ui_color player_container::get_bg() { return cfg_bg_color; }
 
-void mpv_container::unpin() {
+void player_container::unpin() {
   pinned_container = NULL;
-  mpv_player::on_containers_change();
+  player::on_containers_change();
 }
 
-void mpv_container::pin() {
+void player_container::pin() {
   pinned_container = this;
-  mpv_player::on_containers_change();
+  player::on_containers_change();
 }
 
-void mpv_container::on_context_menu(CWindow wnd, CPoint pt) {
+void player_container::on_context_menu(CWindow wnd, CPoint pt) {
   pfc::refcounted_object_ptr_t<ui_extension::menu_hook_impl> menu_hook =
       new ui_extension::menu_hook_impl;
   if (owns_player()) {
-    mpv_player::add_menu_items(*menu_hook);
+    player::add_menu_items(*menu_hook);
   }
 
   add_menu_items(*menu_hook);
@@ -89,22 +90,32 @@ void mpv_container::on_context_menu(CWindow wnd, CPoint pt) {
   DestroyMenu(menu);
 }
 
-void mpv_container::on_resize(long p_x, long p_y) {
+void player_container::on_resize(long p_x, long p_y) {
   cx = p_x;
   cy = p_y;
-  mpv_player::on_containers_change();
+  player::on_containers_change();
 }
 
-void mpv_container::on_create() {
+void player_container::on_create() {
   g_containers.push_back(this);
-  mpv_player::on_containers_change();
+  player::on_containers_change();
 }
 
-void mpv_container::on_destroy() {
+void player_container::on_destroy() {
   g_containers.erase(
       std::remove(g_containers.begin(), g_containers.end(), this),
       g_containers.end());
   if (pinned_container == this) pinned_container = NULL;
-  mpv_player::on_containers_change();
+  player::on_containers_change();
 }
+
+void player_container::toggle_fullscreen() {
+  MONITORINFO monitor;
+  monitor.cbSize = sizeof(monitor);
+  GetMonitorInfoW(MonitorFromWindow(container_wnd(), MONITOR_DEFAULTTONEAREST),
+                  &monitor);
+
+  fullscreen_window::open(false, monitor);
+};
+
 }  // namespace mpv

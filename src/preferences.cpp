@@ -18,8 +18,8 @@
 #include "../helpers/win32_dialog.h"
 #include "artwork_protocol.h"
 #include "menu_utils.h"
-#include "mpv_container.h"
-#include "mpv_player.h"
+#include "player_container.h"
+#include "player.h"
 #include "preferences.h"
 
 namespace mpv {
@@ -687,8 +687,8 @@ void CMpvPlayerPreferences::apply() {
   cfg_panel_metric =
       ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
 
-  mpv_container::invalidate_all_containers();
-  mpv_player::restart();
+  player_container::invalidate_all_containers();
+  player::restart();
   dirty = false;
   OnChanged();
   reload_artwork();
@@ -883,7 +883,7 @@ void CMpvThumbnailPreferences::apply() {
 
   cfg_thumb_seek = ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).GetPos();
 
-  mpv_container::invalidate_all_containers();
+  player_container::invalidate_all_containers();
   dirty = false;
   OnChanged();
   reload_artwork();
@@ -1074,7 +1074,7 @@ void CMpvOscPreferences::apply() {
   cfg_osc_timeout =
       ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT)).GetPos();
 
-  mpv_player::restart();
+  player::restart();
   dirty = false;
   OnChanged();
 }
@@ -1210,7 +1210,7 @@ void CMpvConfPreferences::apply() {
     return;
   }
 
-  mpv_player::restart();
+  player::restart();
 
   dirty = false;
   OnChanged();
@@ -1452,7 +1452,7 @@ void CMpvInputPreferences::apply() {
     return;
   }
 
-  mpv_player::restart();
+  player::restart();
 
   dirty = false;
   OnChanged();
