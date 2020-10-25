@@ -382,25 +382,39 @@ class mainmenu_mpv_playercontrol : public mainmenu_commands {
 static service_factory_single_t<mainmenu_mpv_playercontrol>
     g_mainmenu_mpv_playercontrol;
 
-class video_enable_button : public uie::button_v2 {
+class video_enable_button : public uie::button {
   const GUID& get_item_guid() const { return guid_video_enable; };
   uie::t_button_guid get_guid_type() const {
     return uie::BUTTON_GUID_MENU_ITEM_MAIN;
   }
   unsigned get_button_state() const {
-    return cfg_video_enabled ? uie::BUTTON_STATE_PRESSED
-                             : uie::BUTTON_STATE_DEFAULT;
+    return cfg_video_enabled
+               ? uie::BUTTON_STATE_ENABLED | uie::BUTTON_STATE_PRESSED
+               : uie::BUTTON_STATE_ENABLED;
   }
-
-  HANDLE get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext,
-                         unsigned cx_hint, unsigned cy_hint,
-                         unsigned& handle_type) const override {
-    auto icon = (HICON)LoadImage(core_api::get_my_instance(),
-                                 MAKEINTRESOURCE(IDI_ICON1), IMAGE_ICON,
-                                 cx_hint, cy_hint, NULL);
-    handle_type = uie::button_v2::handle_type_icon;
-    return (HANDLE)icon;
+  HBITMAP get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext,
+                          uie::t_mask& p_mask_type, COLORREF& cr_mask,
+                          HBITMAP& bm_mask) const {
+    return NULL;
   }
 };
-uie::button_factory<video_enable_button> g_cui_video_enabled_button;
+
+class autopopup_button : public uie::button {
+  const GUID& get_item_guid() const { return guid_auto_popup; };
+  uie::t_button_guid get_guid_type() const {
+    return uie::BUTTON_GUID_MENU_ITEM_MAIN;
+  }
+  unsigned get_button_state() const {
+    return cfg_autopopup ? uie::BUTTON_STATE_ENABLED | uie::BUTTON_STATE_PRESSED
+                         : uie::BUTTON_STATE_ENABLED;
+  }
+  HBITMAP get_item_bitmap(unsigned command_state_index, COLORREF cr_btntext,
+                          uie::t_mask& p_mask_type, COLORREF& cr_mask,
+                          HBITMAP& bm_mask) const {
+    return NULL;
+  }
+};
+
+static service_factory_single_t<video_enable_button> g_video_enabled_button;
+static service_factory_single_t<autopopup_button> g_autopopup_button;
 }  // namespace mpv
