@@ -14,6 +14,7 @@
 #include "fullscreen_window.h"
 #include "menu_utils.h"
 #include "player.h"
+#include "popup_window.h"
 #include "preferences.h"
 #include "resource.h"
 #include "timing_info.h"
@@ -37,12 +38,6 @@ void player::restart() {
     g_player->DestroyWindow();
     g_player = new CWindowAutoLifetime<player>(main->container_wnd());
     main->on_gain_player();
-  }
-}
-
-void player::get_title(pfc::string8& out) {
-  if (g_player && g_player->current_display_item != NULL) {
-    format_player_title(out, g_player->current_display_item);
   }
 }
 
@@ -451,6 +446,7 @@ void player::update() {
   }
 
   set_background();
+  update_title();
 }
 
 bool player::contained_in(player_container* p_container) {
@@ -465,6 +461,8 @@ void player::update_title() {
                              title.c_str(), NULL};
   command(osc_cmd_1);
   uSetWindowText(m_hWnd, title);
+  fullscreen_window::set_title(title);
+  popup_window::set_title(title);
 }
 
 void player::set_background() {
@@ -801,6 +799,7 @@ void player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
 void player::set_display_item(metadb_handle_ptr item) {
   current_display_item = item;
   publish_titleformatting_subscriptions();
+  update_title();
 }
 
 void player::on_selection_changed(metadb_handle_list_cref p_selection) {

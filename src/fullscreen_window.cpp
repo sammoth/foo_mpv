@@ -43,10 +43,6 @@ bool fullscreen_window::is_osc_enabled() { return true; }
 LRESULT fullscreen_window::on_create(LPCREATESTRUCT st) {
   SetClassLong(get_wnd(), GCL_HICON, (LONG)ui_control::get()->get_main_icon());
 
-  pfc::string8 title;
-  player::get_title(title);
-  set_title(title);
-
   // with some window managers under wine, the window doesn't
   // properly go fullscreen unless it is resized while visible
   ShowWindow(SW_SHOW);

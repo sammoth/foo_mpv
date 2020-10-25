@@ -101,10 +101,6 @@ LRESULT popup_window::on_create(LPCREATESTRUCT st) {
 
   SetClassLong(get_wnd(), GCL_HICON, (LONG)ui_control::get()->get_main_icon());
 
-  pfc::string8 title;
-  player::get_title(title);
-  set_title(title);
-
   RECT rect = cfg_mpv_popup_rect;
   if (standard_config_objects::query_remember_window_positions() &&
           rect.bottom != 0 ||
@@ -122,6 +118,7 @@ LRESULT popup_window::on_create(LPCREATESTRUCT st) {
                  SWP_NOZORDER | SWP_FRAMECHANGED);
   }
 
+  g_popup = this;
   player_container::on_create();
 
   unpin();
@@ -177,7 +174,7 @@ void popup_window::open(bool pop_existing) {
   }
 
   try {
-    g_popup = new CWindowAutoLifetime<popup_window>(NULL);
+    new CWindowAutoLifetime<popup_window>(NULL);
   } catch (std::exception const& e) {
     popup_message::g_complain("Popup creation failure", e);
   }
