@@ -5,11 +5,11 @@
 
 #include <sstream>
 
-#include "menu_utils.h"
-#include "player_container.h"
-#include "player.h"
-#include "popup_window.h"
 #include "fullscreen_window.h"
+#include "menu_utils.h"
+#include "player.h"
+#include "player_container.h"
+#include "popup_window.h"
 #include "preferences.h"
 #include "resource.h"
 
@@ -33,7 +33,6 @@ static cfg_struct_t<RECT> cfg_mpv_popup_rect(guid_cfg_mpv_popup_rect, 0);
 static cfg_bool cfg_mpv_popup_alwaysontop(guid_cfg_mpv_popup_alwaysontop,
                                           false);
 static cfg_bool cfg_mpv_popup_separate(guid_cfg_mpv_popup_separate, true);
-
 
 DWORD popup_window::GetWndStyle(DWORD style) {
   return WS_OVERLAPPEDWINDOW | WS_VISIBLE;
@@ -188,9 +187,7 @@ void popup_window::close() {
 }
 
 void popup_window::set_title(pfc::string8 title) {
-  if (g_popup) {
-    uSetWindowText(g_popup->m_hWnd, title);
-  }
+  uSetWindowText(m_hWnd, title);
 }
 
 class close_popup_initquit : public initquit {

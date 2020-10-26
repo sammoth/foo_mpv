@@ -33,9 +33,7 @@ BOOL fullscreen_window::on_erase_bg(CDCHandle dc) {
 }
 
 void fullscreen_window::set_title(pfc::string8 title) {
-  if (g_fullscreen_window) {
-    uSetWindowText(g_fullscreen_window->m_hWnd, title);
-  }
+  uSetWindowText(m_hWnd, title);
 }
 
 bool fullscreen_window::is_osc_enabled() { return true; }
@@ -51,6 +49,7 @@ LRESULT fullscreen_window::on_create(LPCREATESTRUCT st) {
                monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
                SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
 
+  g_fullscreen_window = this;
   player_container::on_create();
 
   return 0;
@@ -106,19 +105,19 @@ bool fullscreen_window::is_popup() { return true; }
 void fullscreen_window::invalidate() { Invalidate(); }
 
 void fullscreen_window::open(bool reopen_popup, MONITORINFO monitor_info) {
-  if (mpv::g_fullscreen_window != NULL) {
-    mpv::g_fullscreen_window->SetWindowPos(
+  if (g_fullscreen_window != NULL) {
+    g_fullscreen_window->SetWindowPos(
         NULL, monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
         monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
         monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
         SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
-    mpv::g_fullscreen_window->BringWindowToTop();
+    g_fullscreen_window->BringWindowToTop();
     return;
   }
 
   try {
-    mpv::g_fullscreen_window = new CWindowAutoLifetime<mpv::fullscreen_window>(
-        NULL, reopen_popup, monitor_info);
+    new CWindowAutoLifetime<fullscreen_window>(NULL, reopen_popup,
+                                               monitor_info);
   } catch (std::exception const& e) {
     popup_message::g_complain("Fullscreen window creation failure", e);
   }

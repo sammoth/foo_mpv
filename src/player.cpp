@@ -461,8 +461,7 @@ void player::update_title() {
                              title.c_str(), NULL};
   command(osc_cmd_1);
   uSetWindowText(m_hWnd, title);
-  fullscreen_window::set_title(title);
-  popup_window::set_title(title);
+  container->set_title(title);
 }
 
 void player::set_background() {

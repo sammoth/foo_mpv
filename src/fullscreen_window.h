@@ -30,7 +30,6 @@ class fullscreen_window : public CWindowImpl<fullscreen_window>,
 
   static DWORD GetWndStyle(DWORD style);
   BOOL on_erase_bg(CDCHandle dc);
-  static void set_title(pfc::string8 title);
   bool is_osc_enabled() override;
   LRESULT on_create(LPCREATESTRUCT st);
   void on_destroy();
@@ -47,6 +46,7 @@ class fullscreen_window : public CWindowImpl<fullscreen_window>,
   bool is_visible() override;
   bool is_popup() override;
   void invalidate() override;
+  void set_title(pfc::string8 title) override;
 
   static void open(bool reopen_popup, MONITORINFO monitor_info);
   static void close();

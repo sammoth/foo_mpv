@@ -49,6 +49,6 @@ class popup_window : public CWindowImpl<popup_window>, public player_container {
   static void open();
   static void open(bool pop_existing);
   static void close();
-  static void set_title(pfc::string8 title);
+  void set_title(pfc::string8 title) override;
 };
 }  // namespace mpv
