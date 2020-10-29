@@ -25,7 +25,7 @@ static CWindowAutoLifetime<player>* g_player;
 void player::on_containers_change() {
   auto main = player_container::get_main_container();
   if (main && !g_player) {
-    g_player = new CWindowAutoLifetime<player>(main->container_wnd());
+    g_player = new CWindowAutoLifetime<player>(main->container_wnd(), main);
     main->on_gain_player();
   }
 
@@ -36,7 +36,7 @@ void player::restart() {
   if (g_player) {
     auto main = player_container::get_main_container();
     g_player->DestroyWindow();
-    g_player = new CWindowAutoLifetime<player>(main->container_wnd());
+    g_player = new CWindowAutoLifetime<player>(main->container_wnd(), main);
     main->on_gain_player();
   }
 }
@@ -101,9 +101,8 @@ extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile, cfg_foo_youtube,
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
     cfg_hard_sync_interval, cfg_seek_seconds, cfg_remote_offset;
 
-player::player()
-    : enabled(false),
-      mpv_handle(NULL),
+player::player(player_container* p_container)
+    : mpv_handle(NULL),
       mpv_window_hwnd(NULL),
       task_queue(),
       sync_on_unpause(false),
@@ -113,12 +112,15 @@ player::player()
       running_ffs(false),
       current_display_item(NULL),
       mpv_timepos(0),
-      mpv_state(state::Unloaded),
-      container(player_container::get_main_container()),
+      mpv_state(mpv_state_t::Unloaded),
       time_base(0) {
   metadb_handle_list selection;
   ui_selection_manager::get()->get_selection(selection);
-  on_selection_changed(selection);
+
+  container = p_container;
+  video_enabled =
+      cfg_video_enabled && (p_container->is_fullscreen() ||
+                            p_container->is_visible() || !cfg_stop_hidden);
 
   control_thread = std::thread([this]() {
     while (true) {
@@ -198,37 +200,37 @@ void player::queue_task(task t) {
   event_cv.notify_all();
 }
 
-void player::set_state(state state) {
+void player::set_state(mpv_state_t mpv_state_t) {
   if (cfg_logging) {
-    switch (state) {
-      case state::Active:
+    switch (mpv_state_t) {
+      case mpv_state_t::Active:
         FB2K_console_formatter() << "mpv: State -> Active";
         break;
-      case state::Artwork:
+      case mpv_state_t::Artwork:
         FB2K_console_formatter() << "mpv: State -> Artwork";
         break;
-      case state::Idle:
+      case mpv_state_t::Idle:
         FB2K_console_formatter() << "mpv: State -> Idle";
         break;
-      case state::Loading:
+      case mpv_state_t::Loading:
         FB2K_console_formatter() << "mpv: State -> Loading";
         break;
-      case state::Preload:
+      case mpv_state_t::Preload:
         FB2K_console_formatter() << "mpv: State -> Preload";
         break;
-      case state::Seeking:
+      case mpv_state_t::Seeking:
         FB2K_console_formatter() << "mpv: State -> Seeking";
         break;
-      case state::Shutdown:
+      case mpv_state_t::Shutdown:
         FB2K_console_formatter() << "mpv: State -> Shutdown";
         break;
-      case state::Unloaded:
+      case mpv_state_t::Unloaded:
         FB2K_console_formatter() << "mpv: State -> Unloaded";
         break;
     }
   }
 
-  mpv_state = state;
+  mpv_state = mpv_state_t;
 }
 
 BOOL player::on_erase_bg(CDCHandle dc) {
@@ -242,12 +244,12 @@ BOOL player::on_erase_bg(CDCHandle dc) {
 
 void player::add_menu_items(uie::menu_hook_impl& menu_hook) {
   if (g_player && g_player->mpv_handle) {
-    if (g_player->mpv_state == state::Idle ||
-        g_player->mpv_state == state::Artwork ||
-        g_player->mpv_state == state::Unloaded) {
+    if (g_player->mpv_state == mpv_state_t::Idle ||
+        g_player->mpv_state == mpv_state_t::Artwork ||
+        g_player->mpv_state == mpv_state_t::Unloaded) {
       menu_hook.add_node(new menu_utils::menu_node_disabled("Idle"));
-    } else if (g_player->mpv_state == state::Loading ||
-               g_player->mpv_state == state::Preload) {
+    } else if (g_player->mpv_state == mpv_state_t::Loading ||
+               g_player->mpv_state == mpv_state_t::Preload) {
       menu_hook.add_node(new menu_utils::menu_node_disabled("Loading..."));
     } else {
       pfc::string8 codec_info;
@@ -308,8 +310,8 @@ void player::add_menu_items(uie::menu_hook_impl& menu_hook) {
   }
 
   if (cfg_artwork &&
-      (!g_player->mpv_handle || g_player->mpv_state == state::Idle ||
-       g_player->mpv_state == state::Artwork)) {
+      (!g_player->mpv_handle || g_player->mpv_state == mpv_state_t::Idle ||
+       g_player->mpv_state == mpv_state_t::Artwork)) {
     menu_hook.add_node(new uie::menu_node_separator_t());
 
     std::vector<ui_extension::menu_node_ptr> artwork_children;
@@ -353,7 +355,25 @@ void player::on_context_menu(CWindow wnd, CPoint point) {
 void player::on_destroy() { command_string("quit"); }
 
 LRESULT player::on_create(LPCREATESTRUCT lpcreate) {
-  update();
+  video_enabled =
+      cfg_video_enabled && (container->is_fullscreen() ||
+                            container->is_visible() || !cfg_stop_hidden);
+  if (video_enabled && playback_control::get()->is_playing()) {
+    metadb_handle_ptr handle;
+    playback_control::get()->get_now_playing(handle);
+    if (handle.is_valid()) {
+      timing_info::refresh(false);
+      task t;
+      t.type = task_type::Play;
+      t.play_file = handle;
+      t.time = playback_control::get()->playback_get_position();
+      queue_task(t);
+    }
+  } else {
+    mpv_state = mpv_state_t::Idle;
+    request_artwork();
+  }
+
   return 0;
 }
 
@@ -419,8 +439,8 @@ void player::update() {
   bool vis = container->is_visible();
   if (cfg_video_enabled && (container->is_fullscreen() ||
                             container->is_visible() || !cfg_stop_hidden)) {
-    bool starting = !enabled;
-    enabled = true;
+    bool starting = !video_enabled;
+    video_enabled = true;
 
     if (starting && playback_control::get()->is_playing()) {
       metadb_handle_ptr handle;
@@ -435,10 +455,10 @@ void player::update() {
       }
     }
   } else {
-    bool stopping = enabled;
-    enabled = false;
+    bool stopping = video_enabled;
+    video_enabled = false;
 
-    if (stopping && mpv_state != state::Artwork) {
+    if (stopping && mpv_state != mpv_state_t::Artwork) {
       task t;
       t.type = task_type::Stop;
       queue_task(t);
@@ -689,7 +709,7 @@ bool player::mpv_init() {
                 }
               }
             } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
-              mpv_state = state::Shutdown;
+              mpv_state = mpv_state_t::Shutdown;
               return;
             } else if (event->event_id == libmpv::MPV_EVENT_PROPERTY_CHANGE) {
               libmpv::mpv_event_property* event_property =
@@ -707,17 +727,21 @@ bool player::mpv_init() {
                     path != NULL && strcmp(path, "artwork://") == 0;
                 bool seeking = get_bool("seeking");
 
-                state new_state =
-                    showing_art ? state::Artwork
-                                : seeking ? state::Seeking
-                                          : idle ? state::Idle : state::Active;
+                mpv_state_t new_state =
+                    showing_art ? mpv_state_t::Artwork
+                                : seeking ? mpv_state_t::Seeking
+                                          : idle ? mpv_state_t::Idle
+                                                 : mpv_state_t::Active;
 
-                if (mpv_state == state::Preload && new_state == state::Idle) {
-                  new_state = state::Preload;
+                if ((mpv_state == mpv_state_t::Unloaded ||
+                     mpv_state == mpv_state_t::Preload) &&
+                    new_state == mpv_state_t::Idle) {
+                  new_state = mpv_state_t::Preload;
                 }
 
                 if (mpv_state != new_state) {
-                  if (new_state == state::Idle && mpv_state != state::Artwork) {
+                  if (new_state == mpv_state_t::Idle &&
+                      mpv_state != mpv_state_t::Artwork) {
                     request_artwork();
                   }
 
@@ -789,7 +813,7 @@ void player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
           changed, current_display_item) < UINT_MAX) {
     publish_titleformatting_subscriptions();
 
-    if (mpv_state == state::Artwork) {
+    if (mpv_state == mpv_state_t::Artwork) {
       reload_artwork();
     }
   }
@@ -802,8 +826,8 @@ void player::set_display_item(metadb_handle_ptr item) {
 }
 
 void player::on_selection_changed(metadb_handle_list_cref p_selection) {
-  if (mpv_state == state::Idle || mpv_state == state::Artwork ||
-      mpv_state == state::Unloaded) {
+  if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork ||
+      mpv_state == mpv_state_t::Unloaded) {
     request_artwork(p_selection);
   }
 }
@@ -820,7 +844,7 @@ void player::on_volume_change(float new_vol) {
 void player::on_playback_starting(play_control::t_track_command p_command,
                                   bool p_paused) {
   if (g_player) {
-    g_player->set_state(state::Preload);
+    g_player->set_state(mpv_state_t::Preload);
     task t1;
     t1.type = task_type::Pause;
     t1.flag = p_paused;
@@ -829,9 +853,6 @@ void player::on_playback_starting(play_control::t_track_command p_command,
 }
 void player::on_playback_new_track(metadb_handle_ptr p_track) {
   if (g_player) {
-    g_player->update_title();
-    g_player->update();
-
     timing_info::refresh(false);
 
     {
@@ -850,7 +871,7 @@ void player::on_playback_stop(play_control::t_stop_reason p_reason) {
   if (g_player) {
     g_player->update_title();
 
-    if (g_player->mpv_state != state::Artwork) {
+    if (g_player->mpv_state != mpv_state_t::Artwork) {
       task t;
       t.type = task_type::Stop;
       g_player->queue_task(t);
@@ -923,7 +944,7 @@ void player::play(metadb_handle_ptr metadb, double time) {
 
   pfc::string8 path;
 
-  if (enabled && should_play_this(metadb, path)) {
+  if (video_enabled && should_play_this(metadb, path)) {
     apply_seek_offset = path.has_prefix("ytdl://");
 
     if (cfg_logging) {
@@ -973,7 +994,7 @@ void player::play(metadb_handle_ptr metadb, double time) {
     }
 
     bool next_chapter =
-        mpv_state == state::Active && current_display_item.is_valid() &&
+        mpv_state == mpv_state_t::Active && current_display_item.is_valid() &&
         time == 0.0 && current_display_item->get_path() && metadb->get_path() &&
         uStringCompare(current_display_item->get_path(), metadb->get_path()) ==
             0 &&
@@ -992,7 +1013,7 @@ void player::play(metadb_handle_ptr metadb, double time) {
         FB2K_console_formatter() << "mpv: Playing next chapter";
       }
     } else {
-      set_state(state::Loading);
+      set_state(mpv_state_t::Loading);
       const char* cmd[] = {"loadfile", path.c_str(), NULL};
       if (command(cmd) < 0 && cfg_logging) {
         FB2K_console_formatter() << "mpv: Error loading item '" << path << "'";
@@ -1022,7 +1043,7 @@ void player::play(metadb_handle_ptr metadb, double time) {
       // wait for file to load
       std::unique_lock<std::mutex> lock_starting(mutex);
       event_cv.wait(lock_starting, [this, path]() {
-        return check_queue_any() || mpv_state != state::Loading;
+        return check_queue_any() || mpv_state != mpv_state_t::Loading;
       });
       lock_starting.unlock();
 
@@ -1046,7 +1067,7 @@ void player::play(metadb_handle_ptr metadb, double time) {
       FB2K_console_formatter()
           << "mpv: Not loading path " << metadb->get_path();
     }
-    mpv_state = state::Idle;
+    mpv_state = mpv_state_t::Idle;
     request_artwork();
     return;
   }
@@ -1062,19 +1083,20 @@ void player::stop() {
   }
 }
 
-void player::pause(bool state) {
-  if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
+void player::pause(bool mpv_state_t) {
+  if (!mpv_handle || !video_enabled || mpv_state == mpv_state_t::Idle) return;
 
   if (cfg_logging) {
     FB2K_console_formatter()
-        << (state ? "mpv: Pause -> yes" : "mpv: Pause -> no");
+        << (mpv_state_t ? "mpv: Pause -> yes" : "mpv: Pause -> no");
   }
 
-  if (set_property_string("pause", state ? "yes" : "no") < 0 && cfg_logging) {
+  if (set_property_string("pause", mpv_state_t ? "yes" : "no") < 0 &&
+      cfg_logging) {
     FB2K_console_formatter() << "mpv: Error pausing";
   }
 
-  if (!state && sync_on_unpause) {
+  if (!mpv_state_t && sync_on_unpause) {
     sync_on_unpause = false;
     task t;
     t.type = task_type::FirstFrameSync;
@@ -1083,7 +1105,7 @@ void player::pause(bool state) {
 }
 
 void player::seek(double time, bool is_hard_sync) {
-  if (!mpv_handle || !enabled || mpv_state == state::Idle) return;
+  if (!mpv_handle || !video_enabled || mpv_state == mpv_state_t::Idle) return;
 
   double seek_offset = apply_seek_offset ? (double)cfg_remote_offset : 0.0;
   if (cfg_logging) {
@@ -1117,21 +1139,23 @@ void player::seek(double time, bool is_hard_sync) {
     while (true) {
       std::unique_lock<std::mutex> lock(mutex);
       event_cv.wait(lock, [this]() {
-        return check_queue_any() || mpv_state == state::Idle ||
-               mpv_state == state::Shutdown || mpv_state == state::Active ||
-               mpv_state == state::Artwork;
+        return check_queue_any() || mpv_state == mpv_state_t::Idle ||
+               mpv_state == mpv_state_t::Shutdown ||
+               mpv_state == mpv_state_t::Active ||
+               mpv_state == mpv_state_t::Artwork;
       });
       lock.unlock();
 
-      if (check_queue_time_change_locking() || mpv_state == state::Idle ||
-          mpv_state == state::Shutdown || mpv_state == state::Artwork) {
+      if (check_queue_time_change_locking() || mpv_state == mpv_state_t::Idle ||
+          mpv_state == mpv_state_t::Shutdown ||
+          mpv_state == mpv_state_t::Artwork) {
         if (cfg_logging) {
           FB2K_console_formatter() << "mpv: Aborting seeking";
         }
         return;
       }
 
-      if (mpv_state == state::Active) {
+      if (mpv_state == mpv_state_t::Active) {
         if (command(cmd) < 0) {
           Sleep(20);
         } else {
@@ -1161,7 +1185,7 @@ void player::sync(double debug_time) {
   std::lock_guard<std::mutex> lock(sync_lock);
   last_sync_time = std::lround(debug_time);
 
-  if (!get_bool("seekable") && mpv_state == state::Active) {
+  if (!get_bool("seekable") && mpv_state == mpv_state_t::Active) {
     if (cfg_logging) {
       FB2K_console_formatter()
           << "mpv: Ignoring sync at " << debug_time << " - file not seekable";
@@ -1170,7 +1194,7 @@ void player::sync(double debug_time) {
   }
 
   double mpv_time = -1.0;
-  if (!mpv_handle || !enabled || mpv_state != state::Active ||
+  if (!mpv_handle || !video_enabled || mpv_state != mpv_state_t::Active ||
       playback_control::get()->is_paused() ||
       get_property("time-pos", libmpv::MPV_FORMAT_DOUBLE, &mpv_time) < 0) {
     return;
@@ -1225,9 +1249,9 @@ void player::sync(double debug_time) {
 }
 
 void player::on_new_artwork() {
-  if (g_player && (g_player->mpv_state == state::Artwork ||
-                   g_player->mpv_state == state::Idle ||
-                   g_player->mpv_state == state::Unloaded)) {
+  if (g_player && (g_player->mpv_state == mpv_state_t::Artwork ||
+                   g_player->mpv_state == mpv_state_t::Idle ||
+                   g_player->mpv_state == mpv_state_t::Unloaded)) {
     task t;
     t.type = task_type::LoadArtwork;
     g_player->queue_task(t);
@@ -1239,7 +1263,7 @@ void player::on_new_artwork() {
 void player::load_artwork() {
   if (!mpv_handle && !mpv_init()) return;
 
-  if (mpv_state == state::Idle || mpv_state == state::Artwork) {
+  if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork) {
     if (artwork_loaded()) {
       const char* cmd_profile[] = {"apply-profile", "albumart", NULL};
       if (command(cmd_profile) < 0 && cfg_logging) {
@@ -1268,7 +1292,7 @@ void player::load_artwork() {
 }
 
 void player::initial_sync() {
-  if (!mpv_handle || !enabled) return;
+  if (!mpv_handle || !video_enabled) return;
 
   {
     std::lock_guard<std::mutex> queuelock(mutex);
@@ -1304,9 +1328,9 @@ void player::initial_sync() {
   while (true) {
     std::unique_lock<std::mutex> lock(mutex);
     event_cv.wait(lock, [this]() {
-      return check_queue_any() || mpv_state == state::Idle ||
-             mpv_state == state::Shutdown ||
-             (mpv_state != state::Seeking && mpv_timepos > last_mpv_seek);
+      return check_queue_any() || mpv_state == mpv_state_t::Idle ||
+             mpv_state == mpv_state_t::Shutdown ||
+             (mpv_state != mpv_state_t::Seeking && mpv_timepos > last_mpv_seek);
     });
 
     if (check_queue_any()) {
@@ -1318,7 +1342,7 @@ void player::initial_sync() {
       return;
     }
 
-    if (mpv_state == state::Idle) {
+    if (mpv_state == mpv_state_t::Idle) {
       libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
       if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Abort initial sync - idle";
@@ -1327,7 +1351,7 @@ void player::initial_sync() {
       return;
     }
 
-    if (mpv_state == state::Shutdown) {
+    if (mpv_state == mpv_state_t::Shutdown) {
       libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
       if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Abort initial sync - shutdown";
@@ -1336,7 +1360,7 @@ void player::initial_sync() {
       return;
     }
 
-    if (mpv_state != state::Seeking && mpv_timepos > last_mpv_seek) {
+    if (mpv_state != mpv_state_t::Seeking && mpv_timepos > last_mpv_seek) {
       // frame decoded, wait for fb
       if (cfg_logging) {
         FB2K_console_formatter()
@@ -1357,7 +1381,7 @@ void player::initial_sync() {
 
   libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
 
-  if (!get_bool("seekable") && mpv_state == state::Active) {
+  if (!get_bool("seekable") && mpv_state == mpv_state_t::Active) {
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Abort initial sync - file not seekable";
     }

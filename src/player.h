@@ -17,12 +17,16 @@
 
 namespace mpv {
 class player : ui_selection_callback_impl_base,
-                   metadb_io_callback_dynamic_impl_base,
-                   public CWindowImpl<player> {
+               metadb_io_callback_dynamic_impl_base,
+               public CWindowImpl<player> {
   // player instance handle
   libmpv::mpv_handle* mpv_handle;
   HWND mpv_window_hwnd;
-  bool enabled;
+
+  bool video_enabled;
+  player_container* container;
+  bool fullscreen;
+  bool osc_enabled;
 
   // start mpv within the window
   bool mpv_init();
@@ -33,7 +37,7 @@ class player : ui_selection_callback_impl_base,
   std::condition_variable event_cv;
   std::mutex mutex;
   std::atomic<double> mpv_timepos;
-  enum class state {
+  enum class mpv_state_t {
     Unloaded,
     Preload,
     Loading,
@@ -43,8 +47,8 @@ class player : ui_selection_callback_impl_base,
     Artwork,
     Shutdown
   };
-  std::atomic<state> mpv_state;
-  void set_state(state new_state);
+  std::atomic<mpv_state_t> mpv_state;
+  void set_state(mpv_state_t new_state);
 
   // thread for deferred player control tasks
   enum class task_type {
@@ -115,7 +119,6 @@ class player : ui_selection_callback_impl_base,
   void publish_titleformatting_subscriptions();
 
   // windowing
-  player_container* container;
   void update_title();
   void set_background();
 
@@ -131,7 +134,7 @@ class player : ui_selection_callback_impl_base,
   void on_mouse_move(UINT, CPoint);
 
  public:
-  player();
+  player(player_container* container);
   ~player();
   static void on_containers_change();
   static void add_menu_items(uie::menu_hook_impl& menu_hook);
@@ -142,7 +145,7 @@ class player : ui_selection_callback_impl_base,
 
   // play callbacks
   static void on_playback_starting(play_control::t_track_command p_command,
-                            bool p_paused);
+                                   bool p_paused);
   static void on_playback_new_track(metadb_handle_ptr p_track);
   static void on_playback_stop(play_control::t_stop_reason p_reason);
   static void on_playback_seek(double p_time);

@@ -22,16 +22,20 @@ class mpv_play_callback : public play_callback_static {
   void on_playback_new_track(metadb_handle_ptr p_track) {
     pfc::string8 uri;
     bool should_play = player::should_play_this(p_track, uri);
-    if (cfg_video_enabled && cfg_autopopup && should_play) {
-      popup_window::open(false);
-    }
+
     if (!cfg_video_enabled || (cfg_autopopup && !should_play)) {
       popup_window::close();
     }
+
     player::on_playback_new_track(p_track);
+
+    if (cfg_video_enabled && cfg_autopopup && should_play) {
+      popup_window::open(false);
+    }
   };
   void on_playback_stop(play_control::t_stop_reason p_reason) {
-    if (cfg_autopopup && p_reason != play_control::t_stop_reason::stop_reason_starting_another) {
+    if (cfg_autopopup &&
+        p_reason != play_control::t_stop_reason::stop_reason_starting_another) {
       popup_window::close();
     }
     player::on_playback_stop(p_reason);
