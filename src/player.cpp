@@ -14,75 +14,13 @@
 #include "fullscreen_window.h"
 #include "menu_utils.h"
 #include "player.h"
+#include "player_window.h"
 #include "popup_window.h"
 #include "preferences.h"
 #include "resource.h"
 #include "timing_info.h"
 
 namespace mpv {
-static CWindowAutoLifetime<player>* g_player;
-
-void player::on_containers_change() {
-  auto main = player_container::get_main_container();
-  if (main && !g_player) {
-    g_player = new CWindowAutoLifetime<player>(main->container_wnd(), main);
-    main->on_gain_player();
-  }
-
-  if (g_player) g_player->update();
-}
-
-void player::restart() {
-  if (g_player) {
-    auto main = player_container::get_main_container();
-    g_player->DestroyWindow();
-    g_player = new CWindowAutoLifetime<player>(main->container_wnd(), main);
-    main->on_gain_player();
-  }
-}
-
-void player::toggle_fullscreen() {
-  if (g_player) {
-    g_player->container->toggle_fullscreen();
-  } else {
-    MONITORINFO monitor;
-    monitor.cbSize = sizeof(monitor);
-    GetMonitorInfoW(MonitorFromWindow(core_api::get_main_window(),
-                                      MONITOR_DEFAULTTONEAREST),
-                    &monitor);
-
-    fullscreen_window::open(false, monitor);
-  }
-}
-
-struct monitor_result {
-  HMONITOR hmon;
-  unsigned count;
-};
-
-static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
-                                     LPRECT lprcMonitor, LPARAM dwData) {
-  monitor_result* res = reinterpret_cast<monitor_result*>(dwData);
-  if ((*res).count == 0 && (*res).hmon == NULL) {
-    (*res).hmon = hMonitor;
-  }
-  (*res).count = (*res).count - 1;
-  return true;
-}
-
-void player::fullscreen_on_monitor(int monitor) {
-  monitor_result r;
-  r.hmon = NULL;
-  r.count = monitor;
-  EnumDisplayMonitors(NULL, NULL, MonitorEnumProc,
-                      reinterpret_cast<LPARAM>(&r));
-  if (r.hmon != NULL) {
-    MONITORINFO monitor_info;
-    monitor_info.cbSize = sizeof(monitor_info);
-    GetMonitorInfoW(r.hmon, &monitor_info);
-    fullscreen_window::open(false, monitor_info);
-  }
-}
 
 static const int time_pos_userdata = 28903278;
 static const int seeking_userdata = 982628764;
@@ -101,27 +39,27 @@ extern advconfig_checkbox_factory cfg_logging, cfg_mpv_logfile, cfg_foo_youtube,
 extern advconfig_integer_factory cfg_max_drift, cfg_hard_sync_threshold,
     cfg_hard_sync_interval, cfg_seek_seconds, cfg_remote_offset;
 
-player::player(player_container* p_container)
+std::unique_ptr<player> player::create(HWND parent) {
+  std::unique_ptr<player> ret(new player(parent));
+  if (!ret->init()) {
+    ret.reset();
+  }
+  return ret;
+}
+
+player::player(HWND parent)
     : mpv_handle(NULL),
-      mpv_window_hwnd(NULL),
+      parent_window_hwnd(parent),
       task_queue(),
       sync_on_unpause(false),
       last_mpv_seek(0),
       last_hard_sync(-99),
       last_sync_time(0),
-      running_ffs(false),
+      running_initial_sync(false),
       current_display_item(NULL),
       mpv_timepos(0),
       mpv_state(mpv_state_t::Unloaded),
       time_base(0) {
-  metadb_handle_list selection;
-  ui_selection_manager::get()->get_selection(selection);
-
-  container = p_container;
-  video_enabled =
-      cfg_video_enabled && (p_container->is_fullscreen() ||
-                            p_container->is_visible() || !cfg_stop_hidden);
-
   control_thread = std::thread([this]() {
     while (true) {
       std::unique_lock<std::mutex> lock(mutex);
@@ -134,24 +72,24 @@ player::player(player_container* p_container)
         case task_type::Quit:
           return;
         case task_type::Play:
-          play(task.play_file, task.time);
+          run_play(task.play_file, task.time);
           break;
         case task_type::Stop:
-          stop();
+          run_stop();
           break;
         case task_type::Seek:
-          seek(task.time, task.flag);
+          run_seek(task.time, task.flag);
           break;
         case task_type::FirstFrameSync:
-          running_ffs = true;
-          initial_sync();
-          running_ffs = false;
+          running_initial_sync = true;
+          run_initial_sync();
+          running_initial_sync = false;
           break;
         case task_type::Pause:
-          pause(task.flag);
+          run_pause(task.flag);
           break;
         case task_type::LoadArtwork:
-          load_artwork();
+          run_load_artwork();
           break;
       }
     }
@@ -159,6 +97,8 @@ player::player(player_container* p_container)
 }
 
 player::~player() {
+  command_string("quit");
+
   {
     std::lock_guard<std::mutex> lock(mutex);
     while (!task_queue.empty()) task_queue.pop_front();
@@ -174,7 +114,303 @@ player::~player() {
     libmpv::get()->terminate_destroy(mpv_handle);
     mpv_handle = NULL;
   }
-  g_player = NULL;
+}
+
+bool player::init() {
+  if (!libmpv::get()->ready) return false;
+  if (mpv_handle) {
+    uBugCheck();
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock_init(init_mutex);
+
+  pfc::string_formatter path;
+  filesystem::g_get_native_path(core_api::get_profile_path(), path);
+  path.add_filename("mpv");
+  mpv_handle = libmpv::get()->create();
+
+  int64_t l_wid = (intptr_t)(parent_window_hwnd);
+  set_option("wid", libmpv::MPV_FORMAT_INT64, &l_wid);
+
+  set_option_string("config", "yes");
+  set_option_string("config-dir", path.c_str());
+
+  set_option_string("ytdl", "yes");
+  set_option_string("ytdl-format", "bestvideo/best");
+  set_option_string("osc", "no");
+  set_option_string("load-stats-overlay", "yes");
+  set_option_string("load-scripts", "yes");
+  set_option_string("alpha", "blend");
+
+  set_background();
+
+  if (cfg_mpv_logfile) {
+    path.add_filename("mpv.log");
+    set_option_string("log-file", path.c_str());
+  }
+
+  // no display for music
+  set_option_string("audio-display", "no");
+
+  // everything syncs to foobar
+  set_option_string("video-sync", "audio");
+  set_option_string("untimed", "no");
+
+  // seek fast
+  set_option_string("hr-seek-framedrop", "yes");
+  set_option_string("hr-seek-demuxer-offset", "0");
+  set_option_string("initial-audio-sync", "no");
+
+  // input
+  set_option_string("window-dragging", "no");
+
+  // foobar plays the audio
+  set_option_string("audio", "no");
+
+  // keep the renderer initialised
+  set_option_string("force-window", "yes");
+  set_option_string("idle", "yes");
+
+  // don't unload the file when finished, maybe fb is still playing and we
+  // could be asked to seek backwards
+  set_option_string("keep-open", "yes");
+  set_option_string("keep-open-pause", "no");
+  set_option_string("cache-pause", "no");
+
+  // user settings
+  if (cfg_deint) {
+    set_option_string("vf-append", "@foompvdeint:bwdif:deint=1");
+  }
+
+  if (cfg_hwdec) {
+    set_option_string("hwdec", "auto-safe");
+  }
+
+  // load the OSC if no custom one is set
+  pfc::string_formatter custom_osc_path;
+  filesystem::g_get_native_path(core_api::get_profile_path(), custom_osc_path);
+  custom_osc_path.add_filename("mpv");
+  custom_osc_path.add_filename("scripts");
+  custom_osc_path.add_filename("osc.lua");
+  if (!filesystem::g_exists(custom_osc_path.c_str(), fb2k::noAbort)) {
+    pfc::string_formatter osc_path = core_api::get_my_full_path();
+    osc_path.truncate(osc_path.scan_filename());
+    osc_path << "mpv\\osc.lua";
+    osc_path.replace_char('\\', '/', 0);
+    set_option_string("scripts", osc_path.c_str());
+  }
+
+  // apply OSC settings
+  std::stringstream opts;
+  opts << "osc-layout=";
+  switch (cfg_osc_layout) {
+    case 0:
+      opts << "bottombar";
+      break;
+    case 1:
+      opts << "topbar";
+      break;
+    case 2:
+      opts << "box";
+      break;
+    case 3:
+      opts << "slimbox";
+      break;
+  }
+
+  opts << ",osc-seekbarstyle=";
+  switch (cfg_osc_seekbarstyle) {
+    case 0:
+      opts << "bar";
+      break;
+    case 1:
+      opts << "diamond";
+      break;
+    case 2:
+      opts << "knob";
+      break;
+  }
+
+  opts << ",osc-boxalpha=" << ((255 * cfg_osc_transparency) / 100);
+  opts << ",osc-hidetimeout=" << cfg_osc_timeout;
+  opts << ",osc-fadeduration=" << cfg_osc_fadeduration;
+  opts << ",osc-deadzonesize=" << (0.01 * cfg_osc_deadzone);
+  opts << ",osc-scalewindowed=" << (0.01 * cfg_osc_scalewindowed);
+  opts << ",osc-scalefullscreen=" << (0.01 * cfg_osc_scalefullscreen);
+  opts << ",osc-vidscale=" << (cfg_osc_scalewithvideo ? "yes" : "no");
+
+  std::string opts_str = opts.str();
+  set_option_string("script-opts", opts_str.c_str());
+
+  libmpv::get()->stream_cb_add_ro(mpv_handle, "artwork", this,
+                                  artwork_protocol_open);
+  set_option_string("image-display-duration", "inf");
+
+  libmpv::get()->observe_property(mpv_handle, seeking_userdata, "seeking",
+                                  libmpv::MPV_FORMAT_FLAG);
+  libmpv::get()->observe_property(mpv_handle, idle_active_userdata,
+                                  "idle-active", libmpv::MPV_FORMAT_FLAG);
+  libmpv::get()->observe_property(mpv_handle, path_userdata, "path",
+                                  libmpv::MPV_FORMAT_STRING);
+
+  if (libmpv::get()->initialize(mpv_handle) != 0) {
+    libmpv::get()->terminate_destroy(mpv_handle);
+    mpv_handle = NULL;
+    return false;
+  } else {
+    event_listener = std::thread([this]() {
+      if (!mpv_handle) {
+        FB2K_console_formatter()
+            << "mpv: libmpv event listener started but mpv wasn't running";
+        return;
+      }
+
+      while (true) {
+        libmpv::mpv_event* event = libmpv::get()->wait_event(mpv_handle, -1);
+
+        {
+          std::lock_guard<std::mutex> lock(mutex);
+
+          if (event->event_id == libmpv::MPV_EVENT_CLIENT_MESSAGE) {
+            libmpv::mpv_event_client_message* event_message =
+                (libmpv::mpv_event_client_message*)event->data;
+            if (event_message->num_args > 1 &&
+                strcmp(event_message->args[0], "foobar") == 0) {
+              if (event_message->num_args > 2 &&
+                  strcmp(event_message->args[1], "seek") == 0) {
+                const char* time_str = event_message->args[2];
+                try {
+                  double time = std::stod(time_str);
+                  fb2k::inMainThread([time]() {
+                    playback_control::get()->playback_seek(time);
+                  });
+                } catch (...) {
+                  FB2K_console_formatter()
+                      << "mpv: Could not process seek script-message: "
+                         "invalid argument "
+                      << time_str << ", ignoring";
+                }
+              } else if (event_message->num_args > 2 &&
+                         strcmp(event_message->args[1], "context") == 0) {
+                pfc::string8 menu_cmd(event_message->args[2]);
+                for (int i = 3; i < event_message->num_args; i++) {
+                  menu_cmd << " " << event_message->args[i];
+                }
+                fb2k::inMainThread([this, menu_cmd]() {
+                  metadb_handle_list list;
+                  list.add_item(current_display_item);
+                  menu_utils::run_contextmenu_item(menu_cmd, list);
+                });
+              } else if (event_message->num_args > 2 &&
+                         strcmp(event_message->args[1], "menu") == 0) {
+                pfc::string8 menu_cmd(event_message->args[2]);
+                for (int i = 3; i < event_message->num_args; i++) {
+                  menu_cmd << " " << event_message->args[i];
+                }
+                fb2k::inMainThread([this, menu_cmd]() {
+                  menu_utils::run_mainmenu_item(menu_cmd);
+                });
+              } else if (event_message->num_args > 3 &&
+                         strcmp(event_message->args[1],
+                                "register-titleformat") == 0) {
+                pfc::string8 id(event_message->args[2]);
+                pfc::string8 format(event_message->args[3]);
+                for (int i = 4; i < event_message->num_args; i++) {
+                  format << " " << event_message->args[i];
+                }
+                static titleformat_object::ptr object;
+                if (titleformat_compiler::get()->compile(object, format)) {
+                  titleformat_subscription sub = {id, object};
+                  titleformat_subscriptions.push_back(sub);
+                  publish_titleformatting_subscriptions();
+                }
+              }
+            }
+          } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
+            mpv_state = mpv_state_t::Shutdown;
+            return;
+          } else if (event->event_id == libmpv::MPV_EVENT_PROPERTY_CHANGE) {
+            libmpv::mpv_event_property* event_property =
+                (libmpv::mpv_event_property*)event->data;
+
+            if (event->reply_userdata == time_pos_userdata &&
+                event_property->format == libmpv::MPV_FORMAT_DOUBLE) {
+              mpv_timepos = *(double*)(event_property->data);
+            } else if (event->reply_userdata == seeking_userdata ||
+                       event->reply_userdata == idle_active_userdata ||
+                       event->reply_userdata == path_userdata) {
+              bool idle = get_bool("idle-active");
+              const char* path = get_string("path");
+              bool showing_art =
+                  path != NULL && strcmp(path, "artwork://") == 0;
+              bool seeking = get_bool("seeking");
+
+              mpv_state_t new_state =
+                  showing_art ? mpv_state_t::Artwork
+                              : seeking ? mpv_state_t::Seeking
+                                        : idle ? mpv_state_t::Idle
+                                               : mpv_state_t::Active;
+
+              if ((mpv_state == mpv_state_t::Unloaded ||
+                   mpv_state == mpv_state_t::Preload) &&
+                  new_state == mpv_state_t::Idle) {
+                new_state = mpv_state_t::Preload;
+              }
+
+              if (mpv_state != new_state) {
+                if (new_state == mpv_state_t::Idle &&
+                    mpv_state != mpv_state_t::Artwork) {
+                  request_artwork();
+                }
+
+                set_state(new_state);
+              }
+            }
+          }
+        }
+
+        control_thread_cv.notify_all();
+        event_cv.notify_all();
+      }
+    });
+
+    if (cfg_gpuhq) {
+      const char* cmd_profile[] = {"apply-profile", "gpu-hq", NULL};
+      if (command(cmd_profile) < 0 && cfg_logging) {
+        FB2K_console_formatter() << "mpv: Error applying gpu-hq profile";
+      }
+    }
+
+    if (cfg_latency) {
+      const char* cmd_profile[] = {"apply-profile", "low-latency", NULL};
+      if (command(cmd_profile) < 0 && cfg_logging) {
+        FB2K_console_formatter() << "mpv: Error applying low-latency profile";
+      }
+    }
+
+    // load profiles list
+    char* profiles_str =
+        libmpv::get()->get_property_string(mpv_handle, "profile-list");
+
+    auto profiles_json = nlohmann::json::parse(profiles_str);
+    for (auto it = profiles_json.rbegin(); it != profiles_json.rend(); ++it) {
+      std::string name = (*it)["name"];
+      auto profilecond = (*it)["profile-cond"];
+      // ignore built-in profiles; list might change in future
+      if (profilecond.is_null() && name.compare("default") != 0 &&
+          name.compare("gpu-hq") != 0 && name.compare("low-latency") != 0 &&
+          name.compare("pseudo-gui") != 0 &&
+          name.compare("builtin-pseudo-gui") != 0 &&
+          name.compare("libmpv") != 0 && name.compare("encoding") != 0 &&
+          name.compare("video") != 0 && name.compare("albumart") != 0 &&
+          name.compare("sw-fast") != 0 && name.compare("opengl-hq") != 0) {
+        profiles.push_back(pfc::string8(name.c_str()));
+      }
+    }
+  }
+
+  return true;
 }
 
 bool player::check_queue_any() { return !task_queue.empty(); }
@@ -198,6 +434,84 @@ void player::queue_task(task t) {
   }
   control_thread_cv.notify_all();
   event_cv.notify_all();
+}
+
+void player::add_menu_items(uie::menu_hook_impl& menu_hook) {
+  if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork ||
+      mpv_state == mpv_state_t::Unloaded) {
+    menu_hook.add_node(new menu_utils::menu_node_disabled("Idle"));
+  } else if (mpv_state == mpv_state_t::Loading ||
+             mpv_state == mpv_state_t::Preload) {
+    menu_hook.add_node(new menu_utils::menu_node_disabled("Loading..."));
+  } else {
+    pfc::string8 codec_info;
+    codec_info << get_string("video-codec") << " "
+               << get_string("video-params/pixelformat");
+    menu_hook.add_node(new menu_utils::menu_node_disabled(codec_info));
+
+    pfc::string8 display_info;
+    display_info << get_string("width") << "x" << get_string("height") << " "
+                 << pfc::format_float(get_double("container-fps"), 0, 3)
+                 << "fps (display "
+                 << pfc::format_float(get_double("estimated-vf-fps"), 0, 3)
+                 << "fps)";
+    menu_hook.add_node(new menu_utils::menu_node_disabled(display_info));
+
+    pfc::string8 hwdec = get_string("hwdec-current");
+    if (!hwdec.equals("no")) {
+      hwdec.insert_chars(0, "Hardware decoding: ");
+      menu_hook.add_node(new menu_utils::menu_node_disabled(hwdec));
+    }
+  }
+
+  menu_hook.add_node(new uie::menu_node_separator_t());
+
+  if (profiles.size() > 0) {
+    std::vector<ui_extension::menu_node_ptr> profile_children;
+    for (auto& profile : profiles) {
+      profile_children.emplace_back(
+          new menu_utils::menu_node_run(profile, false, [this, profile]() {
+            const char* cmd_profile[] = {"apply-profile", profile, NULL};
+            if (command(cmd_profile) < 0 && cfg_logging) {
+              FB2K_console_formatter() << "mpv: Error loading video profile";
+            }
+          }));
+    }
+    menu_hook.add_node(
+        new menu_utils::menu_node_popup("Profile", profile_children));
+
+    menu_hook.add_node(new uie::menu_node_separator_t());
+  }
+
+  if (cfg_artwork &&
+      (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork)) {
+    menu_hook.add_node(new uie::menu_node_separator_t());
+
+    std::vector<ui_extension::menu_node_ptr> artwork_children;
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Front", cfg_artwork_type == 0, []() {
+          cfg_artwork_type = 0;
+          reload_artwork();
+        }));
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Back", cfg_artwork_type == 1, []() {
+          cfg_artwork_type = 1;
+          reload_artwork();
+        }));
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Disc", cfg_artwork_type == 2, []() {
+          cfg_artwork_type = 2;
+          reload_artwork();
+        }));
+    artwork_children.emplace_back(
+        new menu_utils::menu_node_run("Artist", cfg_artwork_type == 3, []() {
+          cfg_artwork_type = 3;
+          reload_artwork();
+        }));
+
+    menu_hook.add_node(
+        new menu_utils::menu_node_popup("Cover type", artwork_children));
+  }
 }
 
 void player::set_state(mpv_state_t mpv_state_t) {
@@ -233,567 +547,59 @@ void player::set_state(mpv_state_t mpv_state_t) {
   mpv_state = mpv_state_t;
 }
 
-BOOL player::on_erase_bg(CDCHandle dc) {
-  CRect rc;
-  WIN32_OP_D(GetClientRect(&rc));
-  CBrush brush;
-  WIN32_OP_D(brush.CreateSolidBrush(cfg_bg_color) != NULL);
-  WIN32_OP_D(dc.FillRect(&rc, brush));
-  return TRUE;
+void player::starting(bool paused) {
+  set_state(mpv_state_t::Preload);
+  task t1;
+  t1.type = task_type::Pause;
+  t1.flag = paused;
+  queue_task(t1);
 }
 
-void player::add_menu_items(uie::menu_hook_impl& menu_hook) {
-  if (g_player && g_player->mpv_handle) {
-    if (g_player->mpv_state == mpv_state_t::Idle ||
-        g_player->mpv_state == mpv_state_t::Artwork ||
-        g_player->mpv_state == mpv_state_t::Unloaded) {
-      menu_hook.add_node(new menu_utils::menu_node_disabled("Idle"));
-    } else if (g_player->mpv_state == mpv_state_t::Loading ||
-               g_player->mpv_state == mpv_state_t::Preload) {
-      menu_hook.add_node(new menu_utils::menu_node_disabled("Loading..."));
-    } else {
-      pfc::string8 codec_info;
-      codec_info << g_player->get_string("video-codec") << " "
-                 << g_player->get_string("video-params/pixelformat");
-      menu_hook.add_node(new menu_utils::menu_node_disabled(codec_info));
-
-      pfc::string8 display_info;
-      display_info << g_player->get_string("width") << "x"
-                   << g_player->get_string("height") << " "
-                   << pfc::format_float(g_player->get_double("container-fps"),
-                                        0, 3)
-                   << "fps (display "
-                   << pfc::format_float(
-                          g_player->get_double("estimated-vf-fps"), 0, 3)
-                   << "fps)";
-      menu_hook.add_node(new menu_utils::menu_node_disabled(display_info));
-
-      pfc::string8 hwdec = g_player->get_string("hwdec-current");
-      if (!hwdec.equals("no")) {
-        hwdec.insert_chars(0, "Hardware decoding: ");
-        menu_hook.add_node(new menu_utils::menu_node_disabled(hwdec));
-      }
-    }
-
-    menu_hook.add_node(new uie::menu_node_separator_t());
-
-    if (g_player->profiles.size() > 0) {
-      std::vector<ui_extension::menu_node_ptr> profile_children;
-      for (auto& profile : g_player->profiles) {
-        profile_children.emplace_back(
-            new menu_utils::menu_node_run(profile, false, [profile]() {
-              const char* cmd_profile[] = {"apply-profile", profile, NULL};
-              if (g_player->command(cmd_profile) < 0 && cfg_logging) {
-                FB2K_console_formatter() << "mpv: Error loading video profile";
-              }
-            }));
-      }
-      menu_hook.add_node(
-          new menu_utils::menu_node_popup("Profile", profile_children));
-
-      menu_hook.add_node(new uie::menu_node_separator_t());
-    }
-
-    menu_hook.add_node(new menu_utils::menu_node_run(
-        "Enable video", "Enable/disable video playback", cfg_video_enabled,
-        []() {
-          cfg_video_enabled = !cfg_video_enabled;
-          g_player->update();
-        }));
-
-    menu_hook.add_node(new menu_utils::menu_node_run(
-        "Fullscreen", "Toggle fullscreen video",
-        g_player->container->is_fullscreen(),
-        []() { g_player->container->toggle_fullscreen(); }));
-  } else {
-    menu_hook.add_node(new menu_utils::menu_node_disabled("Unloaded"));
-  }
-
-  if (cfg_artwork &&
-      (!g_player->mpv_handle || g_player->mpv_state == mpv_state_t::Idle ||
-       g_player->mpv_state == mpv_state_t::Artwork)) {
-    menu_hook.add_node(new uie::menu_node_separator_t());
-
-    std::vector<ui_extension::menu_node_ptr> artwork_children;
-    artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Front", cfg_artwork_type == 0, []() {
-          cfg_artwork_type = 0;
-          reload_artwork();
-        }));
-    artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Back", cfg_artwork_type == 1, []() {
-          cfg_artwork_type = 1;
-          reload_artwork();
-        }));
-    artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Disc", cfg_artwork_type == 2, []() {
-          cfg_artwork_type = 2;
-          reload_artwork();
-        }));
-    artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Artist", cfg_artwork_type == 3, []() {
-          cfg_artwork_type = 3;
-          reload_artwork();
-        }));
-
-    menu_hook.add_node(
-        new menu_utils::menu_node_popup("Cover type", artwork_children));
-  }
+void player::set_volume(float new_vol) {
+  std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
+  const char* cmd[] = {"script-message", "foobar", "volume-changed",
+                       vol.c_str(), NULL};
+  command(cmd);
 }
 
-void player::on_context_menu(CWindow wnd, CPoint point) {
-  const char* old_value = "1000";
-  if (mpv_handle) {
-    old_value =
-        libmpv::get()->get_property_string(mpv_handle, "cursor-autohide");
-  }
-  set_property_string("cursor-autohide", "no");
-  container->on_context_menu(wnd, point);
-  set_property_string("cursor-autohide", old_value);
+void player::play(metadb_handle_ptr metadb, double start_time) {
+  timing_info::refresh(false);
+  task t;
+  t.type = task_type::Play;
+  t.play_file = metadb;
+  t.time = start_time;
+  queue_task(t);
 }
 
-void player::on_destroy() { command_string("quit"); }
-
-LRESULT player::on_create(LPCREATESTRUCT lpcreate) {
-  video_enabled =
-      cfg_video_enabled && (container->is_fullscreen() ||
-                            container->is_visible() || !cfg_stop_hidden);
-  if (video_enabled && playback_control::get()->is_playing()) {
-    metadb_handle_ptr handle;
-    playback_control::get()->get_now_playing(handle);
-    if (handle.is_valid()) {
-      timing_info::refresh(false);
-      task t;
-      t.type = task_type::Play;
-      t.play_file = handle;
-      t.time = playback_control::get()->playback_get_position();
-      queue_task(t);
-    }
-  } else {
-    mpv_state = mpv_state_t::Idle;
-    request_artwork();
-  }
-
-  return 0;
+void player::stop() {
+  task t;
+  t.type = task_type::Stop;
+  queue_task(t);
 }
 
-void player::on_mouse_move(UINT, CPoint point) {
-  if (!mpv_handle) return;
-  find_window();
+void player::pause(bool p_state) {
+  task t;
+  t.type = task_type::Pause;
+  t.flag = p_state;
+  queue_task(t);
 }
 
-void player::send_message(UINT msg, UINT wp, UINT lp) {
-  if (g_player && g_player->find_window()) {
-    SendMessage(g_player->mpv_window_hwnd, msg, wp, lp);
-  }
-}
+void player::seek(double time, bool is_hard_sync) {
+  timing_info::refresh(true);
 
-bool player::find_window() {
-  if (!mpv_window_hwnd) {
-    mpv_window_hwnd = FindWindowEx(m_hWnd, NULL, L"mpv", NULL);
-  }
-  if (mpv_window_hwnd) {
-    ::EnableWindow(mpv_window_hwnd, 1);
-  }
-
-  return mpv_window_hwnd;
-}
-
-void player::update() {
-  player_container* new_container = player_container::get_main_container();
-  player_container* old_container = container;
   {
-    std::lock_guard<std::mutex> lock_init(init_mutex);
-    container = new_container;
+    std::lock_guard<std::mutex> lock(sync_lock);
+    last_sync_time = (int)floor(time);
   }
 
-  if (container == NULL) {
-    DestroyWindow();
-
-    return;
-  } else {
-    // wine is less buggy if we resize before changing parent
-    ResizeClient(container->cx, container->cy);
-
-    if (GetParent() != container->container_wnd()) {
-      SetParent(container->container_wnd());
-      player_container::invalidate_all_containers();
-    }
-  }
-
-  if (old_container != new_container && old_container) {
-    old_container->on_lose_player();
-  }
-
-  if (old_container != new_container && new_container) {
-    new_container->on_gain_player();
-  }
-
-  const char* osc_cmd_1[] = {
-      "script-message", "foobar", "osc-enabled-changed",
-      cfg_osc && container->is_osc_enabled() ? "yes" : "no", NULL};
-  command(osc_cmd_1);
-
-  set_property_string("fullscreen", container->is_fullscreen() ? "yes" : "no");
-
-  bool vis = container->is_visible();
-  if (cfg_video_enabled && (container->is_fullscreen() ||
-                            container->is_visible() || !cfg_stop_hidden)) {
-    bool starting = !video_enabled;
-    video_enabled = true;
-
-    if (starting && playback_control::get()->is_playing()) {
-      metadb_handle_ptr handle;
-      playback_control::get()->get_now_playing(handle);
-      if (handle.is_valid()) {
-        timing_info::refresh(false);
-        task t;
-        t.type = task_type::Play;
-        t.play_file = handle;
-        t.time = playback_control::get()->playback_get_position();
-        queue_task(t);
-      }
-    }
-  } else {
-    bool stopping = video_enabled;
-    video_enabled = false;
-
-    if (stopping && mpv_state != mpv_state_t::Artwork) {
-      task t;
-      t.type = task_type::Stop;
-      queue_task(t);
-    }
-  }
-
-  set_background();
-  update_title();
+  task t;
+  t.type = task_type::Seek;
+  t.time = time;
+  t.flag = is_hard_sync;
+  queue_task(t);
 }
 
-bool player::contained_in(player_container* p_container) {
-  return container == p_container;
-}
-
-void player::update_title() {
-  pfc::string8 title;
-  format_player_title(title, current_display_item);
-
-  const char* osc_cmd_1[] = {"script-message", "foobar", "title-changed",
-                             title.c_str(), NULL};
-  command(osc_cmd_1);
-  uSetWindowText(m_hWnd, title);
-  container->set_title(title);
-}
-
-void player::set_background() {
-  if (!mpv_handle) return;
-
-  std::stringstream colorstrings;
-  colorstrings << "#";
-  t_uint32 bgcolor =
-      container->is_fullscreen() && cfg_black_fullscreen ? 0 : cfg_bg_color;
-  colorstrings << std::setfill('0') << std::setw(2) << std::hex
-               << (unsigned)GetRValue(bgcolor);
-  colorstrings << std::setfill('0') << std::setw(2) << std::hex
-               << (unsigned)GetGValue(bgcolor);
-  colorstrings << std::setfill('0') << std::setw(2) << std::hex
-               << (unsigned)GetBValue(bgcolor);
-  std::string colorstring = colorstrings.str();
-  set_option_string("background", colorstring.c_str());
-}
-
-bool player::mpv_init() {
-  if (!libmpv::get()->ready) return false;
-  std::lock_guard<std::mutex> lock_init(init_mutex);
-
-  if (!mpv_handle && m_hWnd && container) {
-    pfc::string_formatter path;
-    filesystem::g_get_native_path(core_api::get_profile_path(), path);
-    path.add_filename("mpv");
-    mpv_handle = libmpv::get()->create();
-
-    int64_t l_wid = (intptr_t)(m_hWnd);
-    set_option("wid", libmpv::MPV_FORMAT_INT64, &l_wid);
-
-    set_option_string("config", "yes");
-    set_option_string("config-dir", path.c_str());
-
-    set_option_string("ytdl", "yes");
-    set_option_string("ytdl-format", "bestvideo/best");
-    set_option_string("osc", "no");
-    set_option_string("load-stats-overlay", "yes");
-    set_option_string("load-scripts", "yes");
-    set_option_string("alpha", "blend");
-
-    set_background();
-
-    if (cfg_mpv_logfile) {
-      path.add_filename("mpv.log");
-      set_option_string("log-file", path.c_str());
-    }
-
-    // no display for music
-    set_option_string("audio-display", "no");
-
-    // everything syncs to foobar
-    set_option_string("video-sync", "audio");
-    set_option_string("untimed", "no");
-
-    // seek fast
-    set_option_string("hr-seek-framedrop", "yes");
-    set_option_string("hr-seek-demuxer-offset", "0");
-    set_option_string("initial-audio-sync", "no");
-
-    // input
-    set_option_string("window-dragging", "no");
-
-    // foobar plays the audio
-    set_option_string("audio", "no");
-
-    // keep the renderer initialised
-    set_option_string("force-window", "yes");
-    set_option_string("idle", "yes");
-
-    // don't unload the file when finished, maybe fb is still playing and we
-    // could be asked to seek backwards
-    set_option_string("keep-open", "yes");
-    set_option_string("keep-open-pause", "no");
-    set_option_string("cache-pause", "no");
-
-    // user settings
-    if (cfg_deint) {
-      set_option_string("vf-append", "@foompvdeint:bwdif:deint=1");
-    }
-
-    if (cfg_hwdec) {
-      set_option_string("hwdec", "auto-safe");
-    }
-
-    // load the OSC if no custom one is set
-    pfc::string_formatter custom_osc_path;
-    filesystem::g_get_native_path(core_api::get_profile_path(),
-                                  custom_osc_path);
-    custom_osc_path.add_filename("mpv");
-    custom_osc_path.add_filename("scripts");
-    custom_osc_path.add_filename("osc.lua");
-    if (!filesystem::g_exists(custom_osc_path.c_str(), fb2k::noAbort)) {
-      pfc::string_formatter osc_path = core_api::get_my_full_path();
-      osc_path.truncate(osc_path.scan_filename());
-      osc_path << "mpv\\osc.lua";
-      osc_path.replace_char('\\', '/', 0);
-      set_option_string("scripts", osc_path.c_str());
-    }
-
-    // apply OSC settings
-    std::stringstream opts;
-    opts << "osc-layout=";
-    switch (cfg_osc_layout) {
-      case 0:
-        opts << "bottombar";
-        break;
-      case 1:
-        opts << "topbar";
-        break;
-      case 2:
-        opts << "box";
-        break;
-      case 3:
-        opts << "slimbox";
-        break;
-    }
-
-    opts << ",osc-seekbarstyle=";
-    switch (cfg_osc_seekbarstyle) {
-      case 0:
-        opts << "bar";
-        break;
-      case 1:
-        opts << "diamond";
-        break;
-      case 2:
-        opts << "knob";
-        break;
-    }
-
-    opts << ",osc-boxalpha=" << ((255 * cfg_osc_transparency) / 100);
-    opts << ",osc-hidetimeout=" << cfg_osc_timeout;
-    opts << ",osc-fadeduration=" << cfg_osc_fadeduration;
-    opts << ",osc-deadzonesize=" << (0.01 * cfg_osc_deadzone);
-    opts << ",osc-scalewindowed=" << (0.01 * cfg_osc_scalewindowed);
-    opts << ",osc-scalefullscreen=" << (0.01 * cfg_osc_scalefullscreen);
-    opts << ",osc-vidscale=" << (cfg_osc_scalewithvideo ? "yes" : "no");
-
-    std::string opts_str = opts.str();
-    set_option_string("script-opts", opts_str.c_str());
-
-    libmpv::get()->stream_cb_add_ro(mpv_handle, "artwork", this,
-                                    artwork_protocol_open);
-    set_option_string("image-display-duration", "inf");
-
-    libmpv::get()->observe_property(mpv_handle, seeking_userdata, "seeking",
-                                    libmpv::MPV_FORMAT_FLAG);
-    libmpv::get()->observe_property(mpv_handle, idle_active_userdata,
-                                    "idle-active", libmpv::MPV_FORMAT_FLAG);
-    libmpv::get()->observe_property(mpv_handle, path_userdata, "path",
-                                    libmpv::MPV_FORMAT_STRING);
-
-    if (libmpv::get()->initialize(mpv_handle) != 0) {
-      libmpv::get()->terminate_destroy(mpv_handle);
-      mpv_handle = NULL;
-    } else {
-      event_listener = std::thread([this]() {
-        if (!mpv_handle) {
-          FB2K_console_formatter()
-              << "mpv: libmpv event listener started but mpv wasn't running";
-          return;
-        }
-
-        while (true) {
-          libmpv::mpv_event* event = libmpv::get()->wait_event(mpv_handle, -1);
-
-          {
-            std::lock_guard<std::mutex> lock(mutex);
-
-            if (event->event_id == libmpv::MPV_EVENT_CLIENT_MESSAGE) {
-              libmpv::mpv_event_client_message* event_message =
-                  (libmpv::mpv_event_client_message*)event->data;
-              if (event_message->num_args > 1 &&
-                  strcmp(event_message->args[0], "foobar") == 0) {
-                if (event_message->num_args > 2 &&
-                    strcmp(event_message->args[1], "seek") == 0) {
-                  const char* time_str = event_message->args[2];
-                  try {
-                    double time = std::stod(time_str);
-                    fb2k::inMainThread([time]() {
-                      playback_control::get()->playback_seek(time);
-                    });
-                  } catch (...) {
-                    FB2K_console_formatter()
-                        << "mpv: Could not process seek script-message: "
-                           "invalid argument "
-                        << time_str << ", ignoring";
-                  }
-                } else if (event_message->num_args > 2 &&
-                           strcmp(event_message->args[1], "context") == 0) {
-                  pfc::string8 menu_cmd(event_message->args[2]);
-                  for (int i = 3; i < event_message->num_args; i++) {
-                    menu_cmd << " " << event_message->args[i];
-                  }
-                  fb2k::inMainThread([this, menu_cmd]() {
-                    metadb_handle_list list;
-                    list.add_item(current_display_item);
-                    menu_utils::run_contextmenu_item(menu_cmd, list);
-                  });
-                } else if (event_message->num_args > 2 &&
-                           strcmp(event_message->args[1], "menu") == 0) {
-                  pfc::string8 menu_cmd(event_message->args[2]);
-                  for (int i = 3; i < event_message->num_args; i++) {
-                    menu_cmd << " " << event_message->args[i];
-                  }
-                  fb2k::inMainThread([this, menu_cmd]() {
-                    menu_utils::run_mainmenu_item(menu_cmd);
-                  });
-                } else if (event_message->num_args > 3 &&
-                           strcmp(event_message->args[1],
-                                  "register-titleformat") == 0) {
-                  pfc::string8 id(event_message->args[2]);
-                  pfc::string8 format(event_message->args[3]);
-                  for (int i = 4; i < event_message->num_args; i++) {
-                    format << " " << event_message->args[i];
-                  }
-                  static titleformat_object::ptr object;
-                  if (titleformat_compiler::get()->compile(object, format)) {
-                    titleformat_subscription sub = {id, object};
-                    titleformat_subscriptions.push_back(sub);
-                    publish_titleformatting_subscriptions();
-                  }
-                }
-              }
-            } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
-              mpv_state = mpv_state_t::Shutdown;
-              return;
-            } else if (event->event_id == libmpv::MPV_EVENT_PROPERTY_CHANGE) {
-              libmpv::mpv_event_property* event_property =
-                  (libmpv::mpv_event_property*)event->data;
-
-              if (event->reply_userdata == time_pos_userdata &&
-                  event_property->format == libmpv::MPV_FORMAT_DOUBLE) {
-                mpv_timepos = *(double*)(event_property->data);
-              } else if (event->reply_userdata == seeking_userdata ||
-                         event->reply_userdata == idle_active_userdata ||
-                         event->reply_userdata == path_userdata) {
-                bool idle = get_bool("idle-active");
-                const char* path = get_string("path");
-                bool showing_art =
-                    path != NULL && strcmp(path, "artwork://") == 0;
-                bool seeking = get_bool("seeking");
-
-                mpv_state_t new_state =
-                    showing_art ? mpv_state_t::Artwork
-                                : seeking ? mpv_state_t::Seeking
-                                          : idle ? mpv_state_t::Idle
-                                                 : mpv_state_t::Active;
-
-                if ((mpv_state == mpv_state_t::Unloaded ||
-                     mpv_state == mpv_state_t::Preload) &&
-                    new_state == mpv_state_t::Idle) {
-                  new_state = mpv_state_t::Preload;
-                }
-
-                if (mpv_state != new_state) {
-                  if (new_state == mpv_state_t::Idle &&
-                      mpv_state != mpv_state_t::Artwork) {
-                    request_artwork();
-                  }
-
-                  set_state(new_state);
-                }
-              }
-            }
-          }
-
-          control_thread_cv.notify_all();
-          event_cv.notify_all();
-        }
-      });
-
-      if (cfg_gpuhq) {
-        const char* cmd_profile[] = {"apply-profile", "gpu-hq", NULL};
-        if (command(cmd_profile) < 0 && cfg_logging) {
-          FB2K_console_formatter() << "mpv: Error applying gpu-hq profile";
-        }
-      }
-
-      if (cfg_latency) {
-        const char* cmd_profile[] = {"apply-profile", "low-latency", NULL};
-        if (command(cmd_profile) < 0 && cfg_logging) {
-          FB2K_console_formatter() << "mpv: Error applying low-latency profile";
-        }
-      }
-
-      // load profiles list
-      char* profiles_str =
-          libmpv::get()->get_property_string(mpv_handle, "profile-list");
-
-      auto profiles_json = nlohmann::json::parse(profiles_str);
-      for (auto it = profiles_json.rbegin(); it != profiles_json.rend(); ++it) {
-        std::string name = (*it)["name"];
-        auto profilecond = (*it)["profile-cond"];
-        // ignore built-in profiles; list might change in future
-        if (profilecond.is_null() && name.compare("default") != 0 &&
-            name.compare("gpu-hq") != 0 && name.compare("low-latency") != 0 &&
-            name.compare("pseudo-gui") != 0 &&
-            name.compare("builtin-pseudo-gui") != 0 &&
-            name.compare("libmpv") != 0 && name.compare("encoding") != 0 &&
-            name.compare("video") != 0 && name.compare("albumart") != 0 &&
-            name.compare("sw-fast") != 0 && name.compare("opengl-hq") != 0) {
-          profiles.push_back(pfc::string8(name.c_str()));
-        }
-      }
-    }
-  }
-
-  return mpv_handle != NULL;
-}
+void player::load_artwork() {}
 
 void player::publish_titleformatting_subscriptions() {
   for (const auto& sub : titleformat_subscriptions) {
@@ -808,108 +614,24 @@ void player::publish_titleformatting_subscriptions() {
   }
 }
 
-void player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
-  if (metadb_handle_list_helper::bsearch_by_pointer(
-          changed, current_display_item) < UINT_MAX) {
-    publish_titleformatting_subscriptions();
-
-    if (mpv_state == mpv_state_t::Artwork) {
-      reload_artwork();
-    }
-  }
-}
-
 void player::set_display_item(metadb_handle_ptr item) {
   current_display_item = item;
   publish_titleformatting_subscriptions();
-  update_title();
+  // update_title();
 }
 
-void player::on_selection_changed(metadb_handle_list_cref p_selection) {
-  if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork ||
-      mpv_state == mpv_state_t::Unloaded) {
-    request_artwork(p_selection);
+void player::publish_title(pfc::string8 title) {
+  const char* osc_cmd_1[] = {"script-message", "foobar", "title-changed",
+                             title.c_str(), NULL};
+  command(osc_cmd_1);
+}
+
+void player::activate_window() {
+  if (!mpv_window_hwnd) {
+    mpv_window_hwnd = FindWindowEx(parent_window_hwnd, NULL, L"mpv", NULL);
   }
-}
-
-void player::on_volume_change(float new_vol) {
-  std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
-  const char* cmd[] = {"script-message", "foobar", "volume-changed",
-                       vol.c_str(), NULL};
-  if (g_player) {
-    g_player->command(cmd);
-  }
-}
-
-void player::on_playback_starting(play_control::t_track_command p_command,
-                                  bool p_paused) {
-  if (g_player) {
-    g_player->set_state(mpv_state_t::Preload);
-    task t1;
-    t1.type = task_type::Pause;
-    t1.flag = p_paused;
-    g_player->queue_task(t1);
-  }
-}
-void player::on_playback_new_track(metadb_handle_ptr p_track) {
-  if (g_player) {
-    timing_info::refresh(false);
-
-    {
-      std::lock_guard<std::mutex> lock(g_player->sync_lock);
-      g_player->last_sync_time = 0;
-    }
-
-    task t;
-    t.type = task_type::Play;
-    t.play_file = p_track;
-    t.time = 0.0;
-    g_player->queue_task(t);
-  }
-}
-void player::on_playback_stop(play_control::t_stop_reason p_reason) {
-  if (g_player) {
-    g_player->update_title();
-
-    if (g_player->mpv_state != mpv_state_t::Artwork) {
-      task t;
-      t.type = task_type::Stop;
-      g_player->queue_task(t);
-    }
-  }
-}
-void player::on_playback_seek(double p_time) {
-  if (g_player) {
-    g_player->update_title();
-
-    timing_info::refresh(true);
-
-    {
-      std::lock_guard<std::mutex> lock(g_player->sync_lock);
-      g_player->last_sync_time = (int)floor(p_time);
-    }
-
-    task t;
-    t.type = task_type::Seek;
-    t.time = p_time;
-    t.flag = false;
-    g_player->queue_task(t);
-  }
-}
-void player::on_playback_pause(bool p_state) {
-  if (g_player) {
-    g_player->update_title();
-    task t;
-    t.type = task_type::Pause;
-    t.flag = p_state;
-    g_player->queue_task(t);
-  }
-}
-void player::on_playback_time(double p_time) {
-  if (g_player) {
-    g_player->update_title();
-    g_player->update();
-    g_player->sync(p_time);
+  if (mpv_window_hwnd) {
+    ::EnableWindow(mpv_window_hwnd, 1);
   }
 }
 
@@ -938,13 +660,12 @@ bool player::should_play_this(metadb_handle_ptr metadb, pfc::string8& out) {
   return play_this;
 }
 
-void player::play(metadb_handle_ptr metadb, double time) {
+void player::run_play(metadb_handle_ptr metadb, double time) {
   if (metadb.is_empty()) return;
-  if (!mpv_handle && !mpv_init()) return;
 
   pfc::string8 path;
 
-  if (video_enabled && should_play_this(metadb, path)) {
+  if (should_play_this(metadb, path)) {
     apply_seek_offset = path.has_prefix("ytdl://");
 
     if (cfg_logging) {
@@ -1073,9 +794,7 @@ void player::play(metadb_handle_ptr metadb, double time) {
   }
 }
 
-void player::stop() {
-  if (!mpv_handle) return;
-
+void player::run_stop() {
   sync_on_unpause = false;
 
   if (command_string("stop") < 0 && cfg_logging) {
@@ -1083,20 +802,20 @@ void player::stop() {
   }
 }
 
-void player::pause(bool mpv_state_t) {
-  if (!mpv_handle || !video_enabled || mpv_state == mpv_state_t::Idle) return;
+void player::run_pause(bool state) {
+  if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork)
+    return;
 
   if (cfg_logging) {
     FB2K_console_formatter()
-        << (mpv_state_t ? "mpv: Pause -> yes" : "mpv: Pause -> no");
+        << (state ? "mpv: Pause -> yes" : "mpv: Pause -> no");
   }
 
-  if (set_property_string("pause", mpv_state_t ? "yes" : "no") < 0 &&
-      cfg_logging) {
+  if (set_property_string("pause", state ? "yes" : "no") < 0 && cfg_logging) {
     FB2K_console_formatter() << "mpv: Error pausing";
   }
 
-  if (!mpv_state_t && sync_on_unpause) {
+  if (!state && sync_on_unpause) {
     sync_on_unpause = false;
     task t;
     t.type = task_type::FirstFrameSync;
@@ -1104,8 +823,9 @@ void player::pause(bool mpv_state_t) {
   }
 }
 
-void player::seek(double time, bool is_hard_sync) {
-  if (!mpv_handle || !video_enabled || mpv_state == mpv_state_t::Idle) return;
+void player::run_seek(double time, bool is_hard_sync) {
+  if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork)
+    return;
 
   double seek_offset = apply_seek_offset ? (double)cfg_remote_offset : 0.0;
   if (cfg_logging) {
@@ -1194,7 +914,7 @@ void player::sync(double debug_time) {
   }
 
   double mpv_time = -1.0;
-  if (!mpv_handle || !video_enabled || mpv_state != mpv_state_t::Active ||
+  if (mpv_state != mpv_state_t::Active ||
       playback_control::get()->is_paused() ||
       get_property("time-pos", libmpv::MPV_FORMAT_DOUBLE, &mpv_time) < 0) {
     return;
@@ -1204,7 +924,7 @@ void player::sync(double debug_time) {
   double desync = time_base + fb_time - mpv_time;
   double new_speed = 1.0;
 
-  if (running_ffs) {
+  if (running_initial_sync) {
     if (cfg_logging) {
       FB2K_console_formatter()
           << "mpv: Skipping regular sync at " << debug_time;
@@ -1248,21 +968,7 @@ void player::sync(double debug_time) {
   }
 }
 
-void player::on_new_artwork() {
-  if (g_player && (g_player->mpv_state == mpv_state_t::Artwork ||
-                   g_player->mpv_state == mpv_state_t::Idle ||
-                   g_player->mpv_state == mpv_state_t::Unloaded)) {
-    task t;
-    t.type = task_type::LoadArtwork;
-    g_player->queue_task(t);
-  } else if (cfg_logging) {
-    FB2K_console_formatter() << "mpv: Ignoring loaded artwork";
-  }
-}
-
-void player::load_artwork() {
-  if (!mpv_handle && !mpv_init()) return;
-
+void player::run_load_artwork() {
   if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork) {
     if (artwork_loaded()) {
       const char* cmd_profile[] = {"apply-profile", "albumart", NULL};
@@ -1291,8 +997,8 @@ void player::load_artwork() {
   }
 }
 
-void player::initial_sync() {
-  if (!mpv_handle || !video_enabled) return;
+void player::run_initial_sync() {
+  if (mpv_state == mpv_state_t::Artwork) return;
 
   {
     std::lock_guard<std::mutex> queuelock(mutex);
@@ -1330,6 +1036,7 @@ void player::initial_sync() {
     event_cv.wait(lock, [this]() {
       return check_queue_any() || mpv_state == mpv_state_t::Idle ||
              mpv_state == mpv_state_t::Shutdown ||
+             mpv_state == mpv_state_t::Artwork ||
              (mpv_state != mpv_state_t::Seeking && mpv_timepos > last_mpv_seek);
     });
 
@@ -1342,7 +1049,7 @@ void player::initial_sync() {
       return;
     }
 
-    if (mpv_state == mpv_state_t::Idle) {
+    if (mpv_state == mpv_state_t::Idle || mpv_state == mpv_state_t::Artwork) {
       libmpv::get()->unobserve_property(mpv_handle, time_pos_userdata);
       if (cfg_logging) {
         FB2K_console_formatter() << "mpv: Abort initial sync - idle";
@@ -1407,7 +1114,7 @@ void player::initial_sync() {
     }
     fb2k::inMainThread([this]() {
       cfg_video_enabled = false;
-      update();
+      player_window::on_containers_change();
     });
     return;
   }
@@ -1510,7 +1217,7 @@ void player::initial_sync() {
       FB2K_console_formatter() << "mpv: Error setting speed";
     }
     // unset before we release the lock so the next sync isn't missed
-    running_ffs = false;
+    running_initial_sync = false;
     return;
   } else if (cfg_logging) {
     FB2K_console_formatter()

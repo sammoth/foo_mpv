@@ -134,6 +134,7 @@
     <ClCompile Include="artwork_protocol.cpp" />
     <ClCompile Include="menu_utils.cpp" />
     <ClCompile Include="fullscreen_window.cpp" />
+    <ClCompile Include="player_window.cpp" />
     <ClCompile Include="play_callback.cpp" />
     <ClCompile Include="thumbnail_chooser.cpp" />
     <ClCompile Include="thumbnailer.cpp" />
@@ -156,6 +157,7 @@
     <ClInclude Include="artwork_protocol.h" />
     <ClInclude Include="menu_utils.h" />
     <ClInclude Include="fullscreen_window.h" />
+    <ClInclude Include="player_window.h" />
     <ClInclude Include="popup_window.h" />
     <ClInclude Include="thumbnailer.h" />
     <ClInclude Include="preferences.h" />
