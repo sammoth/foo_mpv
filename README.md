@@ -48,4 +48,4 @@ There is an example of using this to customise the OSC [in the source code](../m
 
 ### Issues
 
-Some files will not synchronise well, if foobar and mpv have a different idea of what the timestamps are for the audio in a file. If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge with the default settings. Some ffmpeg-muxed mkv files seem problematic in foobar. Files with split FLAC streams (which used to be allowed in older mkvmerge versions) also seem problematic.
+Some files will not synchronise well, if foobar and mpv have a different idea of what the timestamps are for the audio in a file, or sometimes if the audio starts at a different time to the video (it should be possible to improve this in future). If an mkv file (or something that can fit into one) doesn't seem to synchronize well, try remuxing with mkvmerge with the default settings. Some ffmpeg-muxed mkv files seem problematic in foobar. Files with split FLAC streams (which used to be allowed in older mkvmerge versions) also seem problematic.
