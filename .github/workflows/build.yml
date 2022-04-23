@@ -18,6 +18,10 @@ jobs:
       with:
           submodules: recursive
 
+    - name: Patch dav1d
+      run: |
+          (Get-Content .\vcpkg\ports\dav1d\vcpkg.json) -replace ' \| x86', '' | Out-File .\vcpkg\ports\dav1d\vcpkg.json
+
     - name: Restore from cache and run vcpkg
       uses: lukka/run-vcpkg@v4
       with:
