@@ -38,7 +38,7 @@ jobs:
           dir
           Install-Module 7Zip4PowerShell -Force -Verbose
           Expand-7Zip -ArchiveFileName .\mpv.7z -TargetPath .\libmpv
-          mv .\libmpv\mpv-1.dll .\out\mpv\mpv-1.dll
+          mv .\libmpv\mpv-2.dll .\out\mpv\mpv-2.dll
           $Version = '${{ github.ref }}'
           $Version = $Version -replace "refs/tags/v"
           $Version = $Version -replace "-", " "

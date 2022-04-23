@@ -15,7 +15,7 @@ pfc::string8 get_version() {
   pfc::string_formatter path = core_api::get_my_full_path();
   path.truncate(path.scan_filename());
   std::wstringstream wpath_mpv;
-  wpath_mpv << path << "mpv\\mpv-1.dll";
+  wpath_mpv << path << "mpv\\mpv-2.dll";
 
   DWORD verHandle = 0;
   UINT size = 0;
@@ -47,13 +47,13 @@ class libmpv_loader : public initquit {
     pfc::string_formatter path = core_api::get_my_full_path();
     path.truncate(path.scan_filename());
     std::wstringstream wpath_mpv;
-    wpath_mpv << path << "mpv\\mpv-1.dll";
+    wpath_mpv << path << "mpv\\mpv-2.dll";
     dll_module = LoadLibraryExW(wpath_mpv.str().c_str(), NULL,
                                 LOAD_WITH_ALTERED_SEARCH_PATH);
 
     if (dll_module == NULL) {
       FB2K_console_formatter()
-          << "mpv: Could not load mpv-1.dll: error code " << GetLastError();
+          << "mpv: Could not load mpv-2.dll: error code " << GetLastError();
       return;
     }
 
