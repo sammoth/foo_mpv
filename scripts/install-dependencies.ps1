@@ -42,10 +42,12 @@ try {
         $portManifest = Join-Path $overlayPort 'vcpkg.json'
         $manifest = Get-Content -LiteralPath $portManifest -Raw
         $restriction = '!(windows & x86 & !static)'
-        if (-not $manifest.Contains($restriction)) {
+        $portDefinition = $manifest | ConvertFrom-Json
+        if ($portDefinition.supports -ne $restriction) {
             throw 'The expected dav1d x86 support restriction was not found.'
         }
-        $manifest.Replace($restriction, 'true') |
+        $portDefinition.PSObject.Properties.Remove('supports')
+        $portDefinition | ConvertTo-Json -Depth 100 |
             Set-Content -LiteralPath $portManifest -NoNewline
         $arguments += "--overlay-ports=$overlayRoot"
     }
