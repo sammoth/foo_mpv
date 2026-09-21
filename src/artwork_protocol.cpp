@@ -29,7 +29,7 @@ struct artwork_request {
 
 static std::unique_ptr<artwork_request> g_request;
 static std::mutex mutex;
-static abort_callback_impl abort_loading;
+static std::unique_ptr<abort_callback_impl> abort_loading;
 static std::thread artwork_loader;
 static std::condition_variable cv;
 static std::atomic_bool artwork_loader_terminate = false;
@@ -57,7 +57,7 @@ void reload_artwork() {
   {
     std::lock_guard<std::mutex> lock(mutex);
     if (g_request) {
-      abort_loading.abort();
+      abort_loading->abort();
       long id = g_request ? g_request->id + 1 : 0;
       g_request.reset(new artwork_request(g_request->items, id));
     }
@@ -69,7 +69,7 @@ void reload_artwork() {
 void request_artwork() {
   {
     std::lock_guard<std::mutex> lock(mutex);
-    abort_loading.abort();
+    abort_loading->abort();
     metadb_handle_list selection;
     ui_selection_manager::get()->get_selection(selection);
     long id = g_request ? g_request->id + 1 : 0;
@@ -82,7 +82,7 @@ void request_artwork() {
 void request_artwork(metadb_handle_list_cref p_items) {
   {
     std::lock_guard<std::mutex> lock(mutex);
-    abort_loading.abort();
+    abort_loading->abort();
     long id = g_request ? g_request->id + 1 : 0;
     g_request.reset(new artwork_request(p_items, id));
   }
@@ -93,11 +93,12 @@ void request_artwork(metadb_handle_list_cref p_items) {
 class artwork_register : public initquit {
  public:
   void on_init() override {
+    abort_loading = std::make_unique<abort_callback_impl>();
     artwork_loader = std::thread([this]() {
       while (true) {
         std::unique_lock<std::mutex> lock(mutex);
         cv.wait(lock, [this] {
-          return artwork_loader_terminate || abort_loading.is_aborting() ||
+          return artwork_loader_terminate || abort_loading->is_aborting() ||
                  (g_request && !g_request->loaded);
         });
         if (artwork_loader_terminate) {
@@ -105,8 +106,8 @@ class artwork_register : public initquit {
           return;
         }
 
-        if (abort_loading.is_aborting()) {
-          abort_loading.reset();
+        if (abort_loading->is_aborting()) {
+          abort_loading->reset();
           lock.unlock();
         } else if (!cfg_artwork) {
           g_request->loaded = true;
@@ -143,12 +144,12 @@ class artwork_register : public initquit {
             try {
               album_art_extractor_instance::ptr extractor =
                   album_art_manager_v2::get()->open(req_items, types,
-                                                    abort_loading);
-              result = extractor->query(type, abort_loading);
+                                                    *abort_loading);
+              result = extractor->query(type, *abort_loading);
             } catch (exception_album_art_not_found e) {
               album_art_extractor_instance::ptr extractor =
-                  album_art_manager_v2::get()->open_stub(abort_loading);
-              result = extractor->query(type, abort_loading);
+                  album_art_manager_v2::get()->open_stub(*abort_loading);
+              result = extractor->query(type, *abort_loading);
             }
 
             {
@@ -184,6 +185,7 @@ class artwork_register : public initquit {
 
     std::lock_guard<std::mutex> lock2(mutex);
     g_request.reset();
+    abort_loading.reset();
   }
 };
 
