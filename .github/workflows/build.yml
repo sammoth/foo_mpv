@@ -1,52 +1,74 @@
 name: build-ci
+
 on:
   push:
-    branches:
-    - master
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  Windows:
-    name: build-windows
-    runs-on: windows-latest
+  windows:
+    name: Windows ${{ matrix.platform }}
+    runs-on: windows-2025-vs2026
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Win32
+            triplet: x86-mpv
+          - platform: x64
+            triplet: x64-mpv
 
     steps:
-    - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v1.0.2
-
-    - name: Checkout
-      uses: actions/checkout@v1
-      with:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
           submodules: recursive
 
-    - name: Patch dav1d
-      run: |
-          (Get-Content .\vcpkg\ports\dav1d\vcpkg.json) -replace ' \| x86', '' | Out-File .\vcpkg\ports\dav1d\vcpkg.json
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v3
+        with:
+          vs-version: '[18.0,19.0)'
+          msbuild-architecture: x64
 
-    - name: Restore from cache and run vcpkg
-      uses: lukka/run-vcpkg@v4
-      with:
-          vcpkgArguments: '@${{ github.workspace }}/vcpkg.txt --overlay-triplets=${{ github.workspace }}/triplet'
+      - name: Configure vcpkg cache
+        uses: lukka/run-vcpkg@v11.5
+        with:
           vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-          appendedCacheKey: ${{ hashFiles(env.vcpkgResponseFile) }}
 
-    - name: Build Solution (windows)
-      run: |
-          .\vcpkg\vcpkg.exe integrate install
-          $Revision = (git rev-list --count HEAD)
-          $Revision
-          (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "99.99.99 alpha ' + $Revision + '"') | Out-File .\src\main.cpp
-          MSBuild.exe /t:Build /p:Configuration=Release .\src\foo_mpv.sln
-          mkdir .\out
-          mkdir .\out\mpv
-          mv .\src\Release\foo_mpv\foo_mpv.dll .\out\foo_mpv.dll
-          mv .\src\Release\foo_mpv\foo_mpv.pdb .\out\foo_mpv.pdb
-          mv .\src\lua\osc.lua .\out\mpv\osc.lua
+      - name: Install dependencies
+        shell: pwsh
+        run: .\scripts\install-dependencies.ps1 -Triplet '${{ matrix.triplet }}'
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: build
-        path: |
-          out/foo_mpv.dll
-          out/foo_mpv.pdb
-          out/mpv/osc.lua
+      - name: Set development version
+        shell: pwsh
+        run: |
+          $revision = git rev-list --count HEAD
+          (Get-Content .\src\main.cpp) `
+            -replace '#define VERSION_NO.*$', "#define VERSION_NO \"99.99.99 alpha $revision\"" |
+            Set-Content .\src\main.cpp
+
+      - name: Build Debug
+        run: >-
+          msbuild .\src\foo_mpv.sln /m /t:Build
+          /p:Configuration=Debug /p:Platform=${{ matrix.platform }} /v:minimal
+
+      - name: Build Release
+        run: >-
+          msbuild .\src\foo_mpv.sln /m /t:Build
+          /p:Configuration=Release /p:Platform=${{ matrix.platform }} /v:minimal
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: foo_mpv-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            src/build/${{ matrix.platform }}/Debug/foo_mpv/foo_mpv.dll
+            src/build/${{ matrix.platform }}/Debug/foo_mpv/foo_mpv.pdb
+            src/build/${{ matrix.platform }}/Release/foo_mpv/foo_mpv.dll
+            src/build/${{ matrix.platform }}/Release/foo_mpv/foo_mpv.pdb
 

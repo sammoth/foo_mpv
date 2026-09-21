@@ -129,8 +129,9 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
       SetWindowLongPtr(GWLP_HWNDPARENT, (LONG_PTR)core_api::get_main_window());
     }
 
-    SetClassLong(get_wnd(), GCL_HICON,
-                 (LONG)ui_control::get()->get_main_icon());
+    SetClassLongPtr(get_wnd(), GCLP_HICON,
+                    reinterpret_cast<LONG_PTR>(
+                        ui_control::get()->get_main_icon()));
 
     update_title();
 

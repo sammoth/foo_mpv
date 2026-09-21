@@ -164,7 +164,7 @@ LRESULT MpvCuiWindow::on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) {
       wnd_child->set_osc_enabled(cfg_osc_enabled);
       break;
     case WM_SHOWWINDOW:
-      wnd_child->ShowWindow(wp);
+      wnd_child->ShowWindow(static_cast<int>(wp));
       break;
     case WM_SIZE:
       wnd_child->SetWindowPos(0, 0, 0, LOWORD(lp), HIWORD(lp), SWP_NOZORDER);

@@ -1,106 +1,108 @@
 name: release
+
 on:
   push:
     tags:
-    - 'v*'
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  create_release:
-    name: build-windows
-    runs-on: windows-latest
+  release:
+    name: Build and package Windows component
+    runs-on: windows-2025-vs2026
 
     steps:
-    - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v1.0.2
-
-    - name: Checkout
-      uses: actions/checkout@v1
-      with:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
           submodules: recursive
 
-    - name: Restore from cache and run vcpkg
-      uses: lukka/run-vcpkg@v4
-      with:
-          vcpkgArguments: '@${{ github.workspace }}/vcpkg.txt --overlay-triplets=${{ github.workspace }}/triplet'
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v3
+        with:
+          vs-version: '[18.0,19.0)'
+          msbuild-architecture: x64
+
+      - name: Configure vcpkg cache
+        uses: lukka/run-vcpkg@v11.5
+        with:
           vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-          appendedCacheKey: ${{ hashFiles(env.vcpkgResponseFile) }}
 
-    - name: Build Solution (windows)
-      run: |
-          .\vcpkg\vcpkg.exe integrate install
-          mkdir .\out
-          mkdir .\out\mpv
-          $rss = Invoke-WebRequest -UseBasicParsing -Uri 'https://sourceforge.net/projects/mpv-player-windows/rss?path=/libmpv'
-          $rss -match '<link>[^<]*mpv-dev-i686[^<]*\/download<\/link>'
-          $Matches[0] -replace '</?link>',''
-          $UserAgent = 'Wget/1.0'
-          Invoke-WebRequest -Uri ($Matches[0] -replace '</?link>','') -Outfile .\mpv.7z -UserAgent $UserAgent
-          dir
-          Install-Module 7Zip4PowerShell -Force -Verbose
-          Expand-7Zip -ArchiveFileName .\mpv.7z -TargetPath .\libmpv
-          mv .\libmpv\mpv-2.dll .\out\mpv\mpv-2.dll
-          $Version = '${{ github.ref }}'
-          $Version = $Version -replace "refs/tags/v"
-          $Version = $Version -replace "-", " "
-          (Get-Content .\src\main.cpp) -replace '#define VERSION_NO.*$', ('#define VERSION_NO "' + $Version + '"') | Out-File .\src\main.cpp
-          MSBuild.exe /t:Build /p:Configuration=Release .\src\foo_mpv.sln
-          mv .\src\Release\foo_mpv\foo_mpv.dll .\out\foo_mpv.dll
-          mv .\src\Release\foo_mpv\foo_mpv.pdb .\out\foo_mpv.pdb
-          mv .\src\lua\osc.lua .\out\mpv\osc.lua
-          Compress-Archive -Path '.\out\mpv','.\out\foo_mpv.dll' -DestinationPath .\release.zip
-          mv .\release.zip .\foo_mpv.fb2k-component
-          Compress-Archive -Path '.\out\foo_mpv.pdb' -DestinationPath .\pdb.zip
+      - name: Install Win32 dependencies
+        shell: pwsh
+        run: .\scripts\install-dependencies.ps1 -Triplet x86-mpv
 
-    - name: Create Release
-      id: create_release
-      uses: actions/create-release@latest
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: ${{ github.ref }}
-        body: |
-          Automated release
-        draft: true
-        prerelease: false
+      - name: Install x64 dependencies
+        shell: pwsh
+        run: .\scripts\install-dependencies.ps1 -Triplet x64-mpv
 
-    - name: Upload Release Asset Component
-      id: upload-release-asset-component
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./foo_mpv.fb2k-component
-        asset_name: foo_mpv.fb2k-component
-        asset_content_type: application/octet-stream
+      - name: Set release version
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', '' -replace '-', ' '
+          (Get-Content .\src\main.cpp) `
+            -replace '#define VERSION_NO.*$', "#define VERSION_NO \"$version\"" |
+            Set-Content .\src\main.cpp
 
-    - name: Upload Release Asset PDB
-      id: upload-release-asset-pdb
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./pdb.zip
-        asset_name: pdb.zip
-        asset_content_type: application/octet-stream
+      - name: Build Win32 Release
+        run: >-
+          msbuild .\src\foo_mpv.sln /m /t:Build
+          /p:Configuration=Release /p:Platform=Win32 /v:minimal
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: foo_mpv.dll
-        path: |
-          out/foo_mpv.dll
+      - name: Build x64 Release
+        run: >-
+          msbuild .\src\foo_mpv.sln /m /t:Build
+          /p:Configuration=Release /p:Platform=x64 /v:minimal
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: foo_mpv.pdb
-        path: |
-          out/foo_mpv.pdb
+      - name: Download Win32 libmpv
+        shell: pwsh
+        run: >-
+          .\scripts\download-libmpv.ps1 -Architecture i686
+          -Destination .\artifacts\runtime\Win32\mpv-2.dll
 
-    - uses: actions/upload-artifact@v2
-      with:
-        name: osc.lua
-        path: |
-          out/mpv/osc.lua
+      - name: Download x64 libmpv
+        shell: pwsh
+        run: >-
+          .\scripts\download-libmpv.ps1 -Architecture x86_64
+          -Destination .\artifacts\runtime\x64\mpv-2.dll
 
+      - name: Package component
+        shell: pwsh
+        run: |
+          .\scripts\package-component.ps1 `
+            -Win32Dll .\src\build\Win32\Release\foo_mpv\foo_mpv.dll `
+            -X64Dll .\src\build\x64\Release\foo_mpv\foo_mpv.dll `
+            -Win32Libmpv .\artifacts\runtime\Win32\mpv-2.dll `
+            -X64Libmpv .\artifacts\runtime\x64\mpv-2.dll
+          7z l .\artifacts\foo_mpv.fb2k-component
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: foo_mpv-release
+          if-no-files-found: error
+          path: |
+            artifacts/foo_mpv.fb2k-component
+            artifacts/foo_mpv-symbols.zip
+
+      - name: Create draft release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(
+            '.\artifacts\foo_mpv.fb2k-component',
+            '.\artifacts\foo_mpv-symbols.zip'
+          )
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:GITHUB_REF_NAME @assets --clobber
+          } else {
+            gh release create $env:GITHUB_REF_NAME @assets `
+              --draft --title $env:GITHUB_REF_NAME --notes 'Automated release'
+          }
