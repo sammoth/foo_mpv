@@ -11,6 +11,7 @@
 #include <libavformat/version.h>
 #include <libavutil/version.h>
 
+#include <SDK/coreDarkMode.h>
 #include "resource.h"
 // resource.h first
 #include "../foobar2000-sdk/libPPUI/CListControlSimple.h"
@@ -508,6 +509,7 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   void set_controls_enabled();
 
   const preferences_page_callback::ptr m_callback;
+  fb2k::CCoreDarkModeHooks m_dark;
   CListControlSimple m_list;
   COLORREF bg_col = 0;
   HFONT sep_font = NULL;
@@ -559,6 +561,7 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_panelmetric.SetCurSel(cfg_panel_metric);
 
   m_list.CreateInDialog(*this, IDC_LIST1);
+  m_dark.AddDialogWithControls(*this);
   auto DPI = m_list.GetDPI();
   // m_list.AddColumn("Library", MulDiv(100, DPI.cx, 96));
   // m_list.AddColumn("Version", MulDiv(150, DPI.cx, 96));
@@ -615,7 +618,8 @@ void CMpvPlayerPreferences::OnScroll(UINT, int, CWindow) {
 }
 
 t_uint32 CMpvPlayerPreferences::get_state() {
-  t_uint32 state = preferences_state::resettable;
+  t_uint32 state =
+      preferences_state::resettable | preferences_state::dark_mode_supported;
   if (HasChanged()) state |= preferences_state::changed;
   return state;
 }
@@ -737,6 +741,7 @@ class CMpvThumbnailPreferences : public CDialogImpl<CMpvThumbnailPreferences>,
   void set_controls_enabled();
 
   const preferences_page_callback::ptr m_callback;
+  fb2k::CCoreDarkModeHooks m_dark;
 
   HFONT sep_font = NULL;
 };
@@ -801,6 +806,7 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   slider_seek.SetRangeMax(90);
   slider_seek.SetPos(cfg_thumb_seek);
 
+  m_dark.AddDialogWithControls(*this);
   set_controls_enabled();
 
   dirty = false;
@@ -819,7 +825,8 @@ void CMpvThumbnailPreferences::OnScroll(UINT, int, CWindow) {
 }
 
 t_uint32 CMpvThumbnailPreferences::get_state() {
-  t_uint32 state = preferences_state::resettable;
+  t_uint32 state =
+      preferences_state::resettable | preferences_state::dark_mode_supported;
   if (HasChanged()) state |= preferences_state::changed;
   return state;
 }
@@ -940,6 +947,7 @@ class CMpvOscPreferences : public CDialogImpl<CMpvOscPreferences>,
   bool dirty = false;
 
   const preferences_page_callback::ptr m_callback;
+  fb2k::CCoreDarkModeHooks m_dark;
 
   HFONT sep_font = NULL;
 };
@@ -1006,6 +1014,7 @@ BOOL CMpvOscPreferences::OnInitDialog(CWindow, LPARAM) {
   slider.SetRangeMax(100);
   slider.SetPos(cfg_osc_deadzone);
 
+  m_dark.AddDialogWithControls(*this);
   dirty = false;
 
   return FALSE;
@@ -1022,7 +1031,8 @@ void CMpvOscPreferences::OnScroll(UINT, int, CWindow) {
 }
 
 t_uint32 CMpvOscPreferences::get_state() {
-  t_uint32 state = preferences_state::resettable;
+  t_uint32 state =
+      preferences_state::resettable | preferences_state::dark_mode_supported;
   if (HasChanged()) state |= preferences_state::changed;
   return state;
 }
@@ -1106,6 +1116,7 @@ class CMpvConfPreferences : public CDialogImpl<CMpvConfPreferences>,
   bool dirty = false;
 
   const preferences_page_callback::ptr m_callback;
+  fb2k::CCoreDarkModeHooks m_dark;
 
   HFONT sep_font = NULL;
 };
@@ -1145,6 +1156,7 @@ BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
   edit.SetLimitText(0);
   uSetWindowText(edit, contents.c_str());
 
+  m_dark.AddDialogWithControls(*this);
   dirty = false;
 
   return FALSE;
@@ -1165,7 +1177,8 @@ void CMpvConfPreferences::OnEditChange(UINT, int, CWindow) {
 }
 
 t_uint32 CMpvConfPreferences::get_state() {
-  t_uint32 state = preferences_state::resettable;
+  t_uint32 state =
+      preferences_state::resettable | preferences_state::dark_mode_supported;
   if (HasChanged()) state |= preferences_state::changed;
   return state;
 }
@@ -1227,10 +1240,12 @@ class CMpvMenuChooser : public CDialogImpl<CMpvMenuChooser> {
   END_MSG_MAP()
  private:
   std::vector<menu_utils::menu_entry>& items;
+  fb2k::CCoreDarkModeHooks m_dark;
   CListControlSimple m_list;
 
   BOOL OnInitDialog(CWindow, LPARAM) {
     m_list.CreateInDialog(*this, IDC_LIST_MENU);
+    m_dark.AddDialogWithControls(*this);
     auto DPI = m_list.GetDPI();
     m_list.SetItemCount(items.size());
     m_list.SetSelectionModeSingle();
@@ -1288,6 +1303,7 @@ class CMpvInputPreferences : public CDialogImpl<CMpvInputPreferences>,
   std::list<pfc::string8> context_commands;
 
   const preferences_page_callback::ptr m_callback;
+  fb2k::CCoreDarkModeHooks m_dark;
 
   HFONT sep_font = NULL;
 };
@@ -1396,6 +1412,7 @@ BOOL CMpvInputPreferences::OnInitDialog(CWindow, LPARAM) {
   edit.SetLimitText(0);
   uSetWindowText(edit, contents.c_str());
 
+  m_dark.AddDialogWithControls(*this);
   dirty = false;
 
   return FALSE;
@@ -1407,7 +1424,8 @@ void CMpvInputPreferences::OnEditChange(UINT, int, CWindow) {
 }
 
 t_uint32 CMpvInputPreferences::get_state() {
-  t_uint32 state = preferences_state::resettable;
+  t_uint32 state =
+      preferences_state::resettable | preferences_state::dark_mode_supported;
   if (HasChanged()) state |= preferences_state::changed;
   return state;
 }

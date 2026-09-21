@@ -3,6 +3,7 @@
 
 #include <../helpers/WindowPositionUtils.h>
 #include <../helpers/atl-misc.h>
+#include <SDK/coreDarkMode.h>
 
 #include <sstream>
 
@@ -186,6 +187,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
       mpv_handle;
 
   BOOL OnInitDialog(CWindow wnd, LPARAM lp) {
+    m_dark.AddDialogWithControls(*this);
     update_title();
 
     CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER1);
@@ -282,6 +284,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
   HWND get_wnd() { return m_hWnd; }
 
  private:
+  fb2k::CCoreDarkModeHooks m_dark;
   double time_base;
 
   int set_option_string(const char* name, const char* data) {
