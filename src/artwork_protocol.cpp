@@ -35,6 +35,13 @@ static std::condition_variable cv;
 static std::atomic_bool artwork_loader_terminate = false;
 static std::atomic_bool load;
 
+static abort_callback_impl& get_abort_loading() {
+  if (!abort_loading) {
+    abort_loading = std::make_unique<abort_callback_impl>();
+  }
+  return *abort_loading;
+}
+
 bool artwork_loaded() {
   std::lock_guard<std::mutex> lock(mutex);
   bool ret = g_request && g_request->art_data.is_valid();
@@ -57,7 +64,7 @@ void reload_artwork() {
   {
     std::lock_guard<std::mutex> lock(mutex);
     if (g_request) {
-      abort_loading->abort();
+      get_abort_loading().abort();
       long id = g_request ? g_request->id + 1 : 0;
       g_request.reset(new artwork_request(g_request->items, id));
     }
@@ -69,7 +76,7 @@ void reload_artwork() {
 void request_artwork() {
   {
     std::lock_guard<std::mutex> lock(mutex);
-    abort_loading->abort();
+    get_abort_loading().abort();
     metadb_handle_list selection;
     ui_selection_manager::get()->get_selection(selection);
     long id = g_request ? g_request->id + 1 : 0;
@@ -82,7 +89,7 @@ void request_artwork() {
 void request_artwork(metadb_handle_list_cref p_items) {
   {
     std::lock_guard<std::mutex> lock(mutex);
-    abort_loading->abort();
+    get_abort_loading().abort();
     long id = g_request ? g_request->id + 1 : 0;
     g_request.reset(new artwork_request(p_items, id));
   }
@@ -93,12 +100,16 @@ void request_artwork(metadb_handle_list_cref p_items) {
 class artwork_register : public initquit {
  public:
   void on_init() override {
-    abort_loading = std::make_unique<abort_callback_impl>();
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      get_abort_loading();
+    }
     artwork_loader = std::thread([this]() {
       while (true) {
         std::unique_lock<std::mutex> lock(mutex);
         cv.wait(lock, [this] {
-          return artwork_loader_terminate || abort_loading->is_aborting() ||
+          return artwork_loader_terminate ||
+                 get_abort_loading().is_aborting() ||
                  (g_request && !g_request->loaded);
         });
         if (artwork_loader_terminate) {
@@ -106,8 +117,8 @@ class artwork_register : public initquit {
           return;
         }
 
-        if (abort_loading->is_aborting()) {
-          abort_loading->reset();
+        if (get_abort_loading().is_aborting()) {
+          get_abort_loading().reset();
           lock.unlock();
         } else if (!cfg_artwork) {
           g_request->loaded = true;
