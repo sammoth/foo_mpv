@@ -47,8 +47,9 @@ jobs:
         shell: pwsh
         run: |
           $revision = git rev-list --count HEAD
+          $versionDefinition = '#define VERSION_NO "{0}"' -f "99.99.99 alpha $revision"
           (Get-Content .\src\main.cpp) `
-            -replace '#define VERSION_NO.*$', "#define VERSION_NO \"99.99.99 alpha $revision\"" |
+            -replace '#define VERSION_NO.*$', $versionDefinition |
             Set-Content .\src\main.cpp
 
       - name: Build Debug
@@ -71,4 +72,3 @@ jobs:
             src/build/${{ matrix.platform }}/Debug/foo_mpv/foo_mpv.pdb
             src/build/${{ matrix.platform }}/Release/foo_mpv/foo_mpv.dll
             src/build/${{ matrix.platform }}/Release/foo_mpv/foo_mpv.pdb
-

@@ -44,8 +44,9 @@ jobs:
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF_NAME -replace '^v', '' -replace '-', ' '
+          $versionDefinition = '#define VERSION_NO "{0}"' -f $version
           (Get-Content .\src\main.cpp) `
-            -replace '#define VERSION_NO.*$', "#define VERSION_NO \"$version\"" |
+            -replace '#define VERSION_NO.*$', $versionDefinition |
             Set-Content .\src\main.cpp
 
       - name: Build Win32 Release
