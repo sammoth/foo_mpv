@@ -407,7 +407,7 @@ void format_player_title(pfc::string8& s, metadb_handle_ptr item) {
     std::lock_guard<std::mutex> lock_guard(filters_mutex);
     if (popup_titleformat_script.is_empty()) {
       static_api_ptr_t<titleformat_compiler>()->compile_safe(
-          popup_titleformat_script, cfg_popup_titleformat);
+          popup_titleformat_script, cfg_popup_titleformat.get().c_str());
     }
   }
 
@@ -424,7 +424,7 @@ bool test_thumb_pattern(metadb_handle_ptr metadb) {
     if (thumb_filter.is_empty()) {
       try {
         thumb_filter = static_api_ptr_t<search_filter_manager>()->create(
-            cfg_thumb_pattern);
+            cfg_thumb_pattern.get().c_str());
       } catch (std::exception e) {
         return false;
       }
@@ -446,7 +446,7 @@ bool test_video_pattern(metadb_handle_ptr metadb) {
     if (video_filter.is_empty()) {
       try {
         video_filter = static_api_ptr_t<search_filter_manager>()->create(
-            cfg_video_pattern);
+            cfg_video_pattern.get().c_str());
       } catch (std::exception e) {
         return false;
       }
@@ -535,8 +535,10 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
 
   ((CStatic)GetDlgItem(IDC_STATIC_SECTION1)).SetFont(sep_font);
 
-  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat);
-  uSetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN, cfg_video_pattern);
+  uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP,
+                  cfg_popup_titleformat.get().c_str());
+  uSetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN,
+                  cfg_video_pattern.get().c_str());
 
   bg_col = cfg_bg_color.get_value();
   button_brush = CreateSolidBrush(bg_col);
@@ -653,23 +655,22 @@ void CMpvPlayerPreferences::apply() {
   cfg_gpuhq = IsDlgButtonChecked(IDC_CHECK_GPUHQ);
 
   pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_POPUP);
-  cfg_popup_titleformat.reset();
-  cfg_popup_titleformat.set_string(format.get_ptr());
+  cfg_popup_titleformat = format.get_ptr();
 
   {
     std::lock_guard<std::mutex> lock_guard(filters_mutex);
     static_api_ptr_t<titleformat_compiler>()->compile_safe(
-        popup_titleformat_script, cfg_popup_titleformat);
+        popup_titleformat_script, cfg_popup_titleformat.get().c_str());
   }
 
   pfc::string video_pattern = uGetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN);
-  cfg_video_pattern.reset();
-  cfg_video_pattern.set_string(video_pattern.get_ptr());
+  cfg_video_pattern = video_pattern.get_ptr();
   {
     std::lock_guard<std::mutex> lock_guard(filters_mutex);
     try {
       video_filter =
-          static_api_ptr_t<search_filter_manager>()->create(cfg_video_pattern);
+          static_api_ptr_t<search_filter_manager>()->create(
+              cfg_video_pattern.get().c_str());
     } catch (std::exception ex) {
       video_filter.reset();
     }
@@ -756,7 +757,8 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   ((CStatic)GetDlgItem(IDC_STATIC_SECTION4)).SetFont(sep_font);
   ((CStatic)GetDlgItem(IDC_STATIC_SECTION3)).SetFont(sep_font);
 
-  uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN, cfg_thumb_pattern);
+  uSetDlgItemText(m_hWnd, IDC_EDIT_PATTERN,
+                  cfg_thumb_pattern.get().c_str());
 
   CheckDlgButton(IDC_CHECK_THUMBNAILS, cfg_thumbs);
   CheckDlgButton(IDC_CHECK_HISTOGRAM, cfg_thumb_histogram);
@@ -845,14 +847,14 @@ void CMpvThumbnailPreferences::reset() {
 
 void CMpvThumbnailPreferences::apply() {
   pfc::string format = uGetDlgItemText(m_hWnd, IDC_EDIT_PATTERN);
-  cfg_thumb_pattern.reset();
-  cfg_thumb_pattern.set_string(format.get_ptr());
+  cfg_thumb_pattern = format.get_ptr();
 
   {
     std::lock_guard<std::mutex> lock_guard(filters_mutex);
     try {
       thumb_filter =
-          static_api_ptr_t<search_filter_manager>()->create(cfg_thumb_pattern);
+          static_api_ptr_t<search_filter_manager>()->create(
+              cfg_thumb_pattern.get().c_str());
     } catch (std::exception ex) {
       thumb_filter.reset();
     }

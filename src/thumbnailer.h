@@ -30,7 +30,7 @@ class thumbnailer {
   double time_end_in_file;
 
   AVFormatContext* p_format_context = NULL;
-  AVCodec* codec = NULL;
+  const AVCodec* codec = NULL;
   AVCodecParameters* params = NULL;
   AVCodecContext* p_codec_context = NULL;
   AVPacket* p_packet = NULL;
@@ -45,7 +45,7 @@ class thumbnailer {
   AVFrame* measurement_frame = NULL;
   AVFrame* best_frame = NULL;
 
-  AVCodec* output_encoder = NULL;
+  const AVCodec* output_encoder = NULL;
   AVCodecContext* output_codeccontext = NULL;
   AVPacket* output_packet = NULL;
   AVFrame* output_frame = NULL;

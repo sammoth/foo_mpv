@@ -31,7 +31,7 @@ static const GUID guid_cfg_mpv_popup_separate = {
     0x4e23,
     {0xac, 0x24, 0xab, 0x34, 0x78, 0x65, 0x8b, 0xa5}};
 
-static cfg_struct_t<RECT> cfg_mpv_popup_rect(guid_cfg_mpv_popup_rect, 0);
+static cfg_struct_t<RECT> cfg_mpv_popup_rect(guid_cfg_mpv_popup_rect, RECT{});
 static cfg_bool cfg_mpv_popup_alwaysontop(guid_cfg_mpv_popup_alwaysontop,
                                           false);
 static cfg_bool cfg_mpv_popup_separate(guid_cfg_mpv_popup_separate, true);

@@ -165,8 +165,7 @@ std::vector<menu_entry> get_contextmenu_items() {
       GUID parent = ptr->get_parent_();
       contextmenu_group::ptr group;
       while (parent != contextmenu_groups::root) {
-        for (auto e = FB2K_ENUMERATE(contextmenu_group); !e.finished(); ++e) {
-          auto srv = *e;
+        for (auto srv : contextmenu_group::enumerate()) {
           if (srv->get_guid() == parent) {
             group = srv;
             contextmenu_group_popup::ptr popup;
@@ -222,8 +221,7 @@ std::vector<menu_entry> get_mainmenu_items() {
       while (parent != pfc::guid_null) {
         pfc::string8 parentname;
 
-        for (auto e = FB2K_ENUMERATE(mainmenu_group); !e.finished(); ++e) {
-          auto srv = *e;
+        for (auto srv : mainmenu_group::enumerate()) {
           if (srv->get_guid() == parent) {
             group = srv;
             mainmenu_group_popup::ptr popup;

@@ -43,7 +43,7 @@ void mpv_player::restart() {
 }
 
 void mpv_player::get_title(pfc::string8& out) {
-  if (g_player && g_player->current_display_item != NULL) {
+  if (g_player && g_player->current_display_item.is_valid()) {
     format_player_title(out, g_player->current_display_item);
   }
 }
@@ -564,7 +564,7 @@ bool mpv_player::mpv_init() {
       pfc::string_formatter osc_path = core_api::get_my_full_path();
       osc_path.truncate(osc_path.scan_filename());
       osc_path << "mpv\\osc.lua";
-      osc_path.replace_char('\\', '/', 0);
+      osc_path.replace_char('\\', '/');
       set_option_string("scripts", osc_path.c_str());
     }
 
