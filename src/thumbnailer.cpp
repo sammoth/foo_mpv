@@ -857,14 +857,8 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
     if (!ret.is_empty()) return ret;
 
     pfc::string8 filename;
-    filename.add_filename(item->get_path());
-    if (filename.has_prefix("\\file://")) {
-      filename.remove_chars(0, 8);
-
-      if (filename.is_empty()) {
-        throw exception_album_art_not_found();
-      }
-    } else {
+    if (!filesystem::g_get_native_path(item->get_path(), filename, p_abort) ||
+        filename.is_empty()) {
       throw exception_album_art_not_found();
     }
 

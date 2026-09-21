@@ -202,10 +202,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
                  max(0, (pos / metadb->get_length()) * seek_resolution)));
 
     pfc::string8 filename;
-    filename.add_filename(metadb->get_path());
-    if (filename.has_prefix("\\file://")) {
-      filename.remove_chars(0, 8);
-
+    if (filesystem::g_get_native_path(metadb->get_path(), filename)) {
       double time_base_l = 0.0;
       if (metadb->get_subsong_index() > 1) {
         for (t_uint32 s = 0; s < metadb->get_subsong_index(); s++) {

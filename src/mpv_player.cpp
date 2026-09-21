@@ -887,15 +887,19 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   if (!mpv_handle && !mpv_init()) return;
 
   pfc::string8 filename;
-  filename.add_filename(metadb->get_path());
+  const bool is_local =
+      filesystem::g_get_native_path(metadb->get_path(), filename);
+  if (!is_local) {
+    filename.reset();
+    filename.add_filename(metadb->get_path());
+  }
 
   apply_seek_offset = false;
   bool play_this = false;
   if (enabled) {
-    if (filename.has_prefix("\\file://")) {
+    if (is_local) {
       if (test_video_pattern(metadb)) {
         play_this = true;
-        filename.replace_string("\\file://", "");
       }
     } else if (cfg_foo_youtube && filename.has_prefix("\\fy+")) {
       if (cfg_remote_always_play || test_video_pattern(metadb)) {
