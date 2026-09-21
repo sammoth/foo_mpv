@@ -35,7 +35,7 @@ jobs:
           msbuild-architecture: x64
 
       - name: Configure vcpkg cache
-        uses: lukka/run-vcpkg@v11.5
+        uses: lukka/run-vcpkg@v11.6
         with:
           vcpkgDirectory: '${{ github.workspace }}/vcpkg'
 
