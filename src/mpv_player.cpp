@@ -1287,6 +1287,15 @@ void mpv_player::load_artwork() {
 void mpv_player::initial_sync() {
   if (!mpv_handle || !enabled) return;
 
+  const std::optional<timing_info::timing_info> timing = timing_info::get();
+  if (!timing) {
+    if (cfg_logging) {
+      FB2K_console_formatter()
+          << "mpv: Abort initial sync - audio timing unavailable";
+    }
+    return;
+  }
+
   {
     std::lock_guard<std::mutex> queuelock(mutex);
     if (check_queue_any()) {
@@ -1406,18 +1415,26 @@ void mpv_player::initial_sync() {
     });
     return;
   }
-  vis_stream->get_absolute_time(vis_time);
+  if (!vis_stream->get_absolute_time(vis_time)) {
+    if (cfg_logging) {
+      FB2K_console_formatter()
+          << "mpv: Abort initial sync - audio timing unavailable";
+    }
+    if (set_property_string("pause", "no") < 0 && cfg_logging) {
+      FB2K_console_formatter() << "mpv: Error unpausing";
+    }
+    return;
+  }
 
   if (cfg_logging) {
     FB2K_console_formatter()
         << "mpv: Audio time "
-        << time_base + timing_info::get().last_fb_seek + vis_time -
-               timing_info::get().last_seek_vistime;
+        << time_base + timing->last_fb_seek + vis_time -
+               timing->last_seek_vistime;
   }
 
-  int count = 0;
-  while (time_base + timing_info::get().last_fb_seek + vis_time -
-             timing_info::get().last_seek_vistime <
+  while (time_base + timing->last_fb_seek + vis_time -
+             timing->last_seek_vistime <
          mpv_timepos) {
     {
       std::lock_guard<std::mutex> queuelock(mutex);
@@ -1432,8 +1449,7 @@ void mpv_player::initial_sync() {
       }
     }
     Sleep(10);
-    vis_stream->get_absolute_time(vis_time);
-    if (count++ > 1000 && !vis_stream->get_absolute_time(vis_time)) {
+    if (!vis_stream->get_absolute_time(vis_time)) {
       FB2K_console_formatter()
           << "mpv: Initial sync failed, maybe this output does not "
              "have accurate "
@@ -1448,8 +1464,8 @@ void mpv_player::initial_sync() {
     }
   }
 
-  double fb_time = timing_info::get().last_fb_seek + vis_time -
-                   timing_info::get().last_seek_vistime;
+  double fb_time =
+      timing->last_fb_seek + vis_time - timing->last_seek_vistime;
 
   if (cfg_logging) {
     FB2K_console_formatter()

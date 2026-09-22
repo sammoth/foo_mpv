@@ -1,7 +1,7 @@
 #pragma once
 #include "stdafx.h"
 // PCH ^
-#include <atomic>
+#include <optional>
 
 namespace timing_info {
 struct timing_info {
@@ -9,6 +9,6 @@ struct timing_info {
   double last_seek_vistime;
 };
 
-timing_info get();
-void refresh(bool resetting);
-}  // namespace mpv
+std::optional<timing_info> get();
+bool refresh(bool resetting);
+}  // namespace timing_info
