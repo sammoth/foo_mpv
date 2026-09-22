@@ -2,6 +2,8 @@
 // PCH ^
 
 #include <algorithm>
+#include <cstdint>
+#include <tuple>
 
 #include "columns_ui-sdk/ui_extension.h"
 #include "mpv_container.h"
@@ -24,33 +26,32 @@ bool mpv_container::owns_player() {
   return mpv_container::get_main_container() == this;
 }
 
-static bool container_compare(mpv_container* a, mpv_container* b) {
-  if (a->is_fullscreen()) return true;
-  if (b->is_fullscreen()) return false;
-  if (a->is_pinned()) return true;
-  if (b->is_pinned()) return false;
-  if (a->is_popup()) return true;
-  if (b->is_popup()) return false;
-  if (!a->is_visible()) return false;
-  if (!b->is_visible()) return true;
-
+static int64_t container_metric(const mpv_container& container) {
   switch (cfg_panel_metric) {
     case 0:
-      return (a->cx * a->cy > b->cx * b->cy);
+      return static_cast<int64_t>(container.cx) * container.cy;
     case 1:
-      return (a->cx > b->cx);
+      return container.cx;
     case 2:
-      return (a->cy > b->cy);
+      return container.cy;
     default:
       uBugCheck();
   }
 }
 
+static auto container_priority(mpv_container* container) {
+  return std::tuple(container->is_fullscreen(), container->is_pinned(),
+                    container->is_popup(), container->is_visible(),
+                    container_metric(*container));
+}
+
 mpv_container* mpv_container::get_main_container() {
-  if (g_containers.empty()) return NULL;
-  mpv_container* main = NULL;
-  std::sort(g_containers.begin(), g_containers.end(), container_compare);
-  return *g_containers.begin();
+  const auto main = std::max_element(
+      g_containers.begin(), g_containers.end(),
+      [](mpv_container* a, mpv_container* b) {
+        return container_priority(a) < container_priority(b);
+      });
+  return main == g_containers.end() ? nullptr : *main;
 }
 
 bool mpv_container::is_pinned() { return pinned_container == this; }
