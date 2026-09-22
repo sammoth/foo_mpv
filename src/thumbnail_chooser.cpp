@@ -223,6 +223,11 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     if (!libmpv::get()->ready) return false;
 
     mpv_handle = {libmpv::get()->create(), libmpv::get()->terminate_destroy};
+    if (!mpv_handle) {
+      FB2K_console_formatter()
+          << "mpv: Could not create libmpv thumbnail chooser context";
+      return false;
+    }
 
     int64_t l_wid = (intptr_t)(uGetDlgItem(IDC_STATIC_pic).m_hWnd);
     libmpv::get()->set_option(mpv_handle.get(), "wid", libmpv::MPV_FORMAT_INT64,

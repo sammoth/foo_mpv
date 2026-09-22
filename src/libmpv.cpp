@@ -7,7 +7,19 @@
 
 namespace libmpv {
 static function_table functions = {};
+// Kept loaded for the component's lifetime. initquit callback ordering is
+// undefined, so unloading this in on_quit() could invalidate function pointers
+// still in use by another shutdown callback. The OS releases it at process exit.
+static HMODULE dll_module = NULL;
 function_table *get() { return &functions; }
+
+template <typename T>
+static bool require_export(T symbol, const char* name) {
+  if (symbol != nullptr) return true;
+  FB2K_console_formatter() << "mpv: mpv-2.dll is missing required export "
+                           << name;
+  return false;
+}
 
 pfc::string8 get_version() {
   pfc::string8 ret;
@@ -43,7 +55,7 @@ pfc::string8 get_version() {
 class libmpv_loader : public initquit {
  public:
   void on_init() override {
-    HMODULE dll_module;
+    functions = {};
     pfc::string_formatter path = core_api::get_my_full_path();
     path.truncate(path.scan_filename());
     std::wstringstream wpath_mpv;
@@ -137,6 +149,41 @@ class libmpv_loader : public initquit {
         (mpv_hook_continue)GetProcAddress(dll_module, "mpv_hook_continue");
     functions.stream_cb_add_ro = (mpv_stream_cb_add_ro)GetProcAddress(
         dll_module, "mpv_stream_cb_add_ro");
+
+    bool compatible = true;
+    compatible &= require_export(functions.free, "mpv_free");
+    compatible &= require_export(functions.create, "mpv_create");
+    compatible &= require_export(functions.initialize, "mpv_initialize");
+    compatible &= require_export(functions.terminate_destroy,
+                                 "mpv_terminate_destroy");
+    compatible &= require_export(functions.set_option, "mpv_set_option");
+    compatible &=
+        require_export(functions.set_option_string, "mpv_set_option_string");
+    compatible &= require_export(functions.command, "mpv_command");
+    compatible &=
+        require_export(functions.command_string, "mpv_command_string");
+    compatible &= require_export(functions.set_property_string,
+                                 "mpv_set_property_string");
+    compatible &= require_export(functions.get_property, "mpv_get_property");
+    compatible &= require_export(functions.get_property_string,
+                                 "mpv_get_property_string");
+    compatible &=
+        require_export(functions.observe_property, "mpv_observe_property");
+    compatible &=
+        require_export(functions.unobserve_property, "mpv_unobserve_property");
+    compatible &= require_export(functions.wait_event, "mpv_wait_event");
+    compatible &= require_export(functions.wakeup, "mpv_wakeup");
+    compatible &=
+        require_export(functions.stream_cb_add_ro, "mpv_stream_cb_add_ro");
+
+    if (!compatible) {
+      functions = {};
+      FreeLibrary(dll_module);
+      dll_module = NULL;
+      FB2K_console_formatter()
+          << "mpv: Incompatible mpv-2.dll; video support disabled";
+      return;
+    }
 
     functions.ready = true;
   }

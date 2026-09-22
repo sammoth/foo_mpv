@@ -496,6 +496,10 @@ bool mpv_player::mpv_init() {
     filesystem::g_get_native_path(core_api::get_profile_path(), path);
     path.add_filename("mpv");
     mpv_handle = libmpv::get()->create();
+    if (!mpv_handle) {
+      FB2K_console_formatter() << "mpv: Could not create libmpv context";
+      return false;
+    }
 
     int64_t l_wid = (intptr_t)(m_hWnd);
     set_option("wid", libmpv::MPV_FORMAT_INT64, &l_wid);
