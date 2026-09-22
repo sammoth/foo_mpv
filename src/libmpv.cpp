@@ -1,8 +1,6 @@
 #include "stdafx.h"
 // PCH ^
 
-#include <sstream>
-
 #include "libmpv.h"
 
 namespace libmpv {
@@ -12,6 +10,13 @@ static function_table functions = {};
 // still in use by another shutdown callback. The OS releases it at process exit.
 static HMODULE dll_module = NULL;
 function_table *get() { return &functions; }
+
+static pfc::string8 get_dll_path() {
+  pfc::string8 path = core_api::get_my_full_path();
+  path.truncate(path.scan_filename());
+  path << "mpv\\mpv-2.dll";
+  return path;
+}
 
 template <typename T>
 static bool require_export(T symbol, const char* name) {
@@ -24,21 +29,18 @@ static bool require_export(T symbol, const char* name) {
 pfc::string8 get_version() {
   pfc::string8 ret;
 
-  pfc::string_formatter path = core_api::get_my_full_path();
-  path.truncate(path.scan_filename());
-  std::wstringstream wpath_mpv;
-  wpath_mpv << path << "mpv\\mpv-2.dll";
+  const pfc::string8 path = get_dll_path();
+  const pfc::stringcvt::string_wide_from_utf8 wide_path(path);
 
   DWORD verHandle = 0;
   UINT size = 0;
   LPBYTE lpBuffer = NULL;
-  DWORD verSize = GetFileVersionInfoSize(wpath_mpv.str().c_str(), &verHandle);
+  DWORD verSize = GetFileVersionInfoSizeW(wide_path.get_ptr(), &verHandle);
 
   if (verSize != NULL) {
     LPSTR verData = new char[verSize];
 
-    if (GetFileVersionInfo(wpath_mpv.str().c_str(), verHandle, verSize,
-                           verData)) {
+    if (GetFileVersionInfoW(wide_path.get_ptr(), verHandle, verSize, verData)) {
       if (VerQueryValue(verData, _T("\\StringFileInfo\\000004b0\\FileVersion"),
                         (LPVOID*)&lpBuffer, &size)) {
         if (size) {
@@ -56,11 +58,9 @@ class libmpv_loader : public initquit {
  public:
   void on_init() override {
     functions = {};
-    pfc::string_formatter path = core_api::get_my_full_path();
-    path.truncate(path.scan_filename());
-    std::wstringstream wpath_mpv;
-    wpath_mpv << path << "mpv\\mpv-2.dll";
-    dll_module = LoadLibraryExW(wpath_mpv.str().c_str(), NULL,
+    const pfc::string8 path = get_dll_path();
+    const pfc::stringcvt::string_wide_from_utf8 wide_path(path);
+    dll_module = LoadLibraryExW(wide_path.get_ptr(), NULL,
                                 LOAD_WITH_ALTERED_SEARCH_PATH);
 
     if (dll_module == NULL) {
