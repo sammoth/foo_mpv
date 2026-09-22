@@ -5,6 +5,7 @@
 #include <SQLiteCpp/SQLiteCpp.h>
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <cmath>
@@ -428,6 +429,12 @@ static void libavtry(int error, const char* cmd) {
   }
 }
 
+static void require_ffmpeg_object(const void* object, const char* name) {
+  if (object != nullptr) return;
+  FB2K_console_formatter() << "mpv: Could not allocate " << name;
+  throw exception_album_art_unsupported_entry();
+}
+
 static int ffmpeg_interrupt_cb(void* ctx) {
   abort_callback* abort = reinterpret_cast<abort_callback*>(ctx);
   if (abort->is_aborting()) {
@@ -461,14 +468,21 @@ void thumbnailer::load_stream() {
   time_end_in_file = time_start_in_file + metadb->get_length();
 
   p_format_context = avformat_alloc_context();
+  require_ffmpeg_object(p_format_context, "format context");
   p_format_context->interrupt_callback.callback = ffmpeg_interrupt_cb;
   p_format_context->interrupt_callback.opaque = &abort;
   p_format_context->protocol_whitelist = av_strdup("file");
   p_format_context->format_whitelist = av_strdup(
       "aa,apng,asf,concat,gif,image2,mov,mp4,2gp,mpegts,mpjpeg,rawvideo,"
       "vapoursynth,aiff,avi,flv,matroska,ogg,webm");
+  require_ffmpeg_object(p_format_context->protocol_whitelist,
+                        "protocol whitelist");
+  require_ffmpeg_object(p_format_context->format_whitelist,
+                        "format whitelist");
   p_packet = av_packet_alloc();
   p_frame = av_frame_alloc();
+  require_ffmpeg_object(p_packet, "input packet");
+  require_ffmpeg_object(p_frame, "input frame");
 
   // open file and find video stream and codec
   abort.check();
@@ -499,8 +513,12 @@ void thumbnailer::load_stream() {
   p_format_start_time = p_format_context->streams[stream_index]->start_time;
   if (p_format_start_time == AV_NOPTS_VALUE) p_format_start_time = 0;
   p_stream_time_base = p_format_context->streams[stream_index]->time_base;
+  if (p_stream_time_base.num <= 0 || p_stream_time_base.den <= 0) {
+    throw exception_album_art_unsupported_entry();
+  }
 
   p_codec_context = avcodec_alloc_context3(codec);
+  require_ffmpeg_object(p_codec_context, "decoder context");
   libavtry(avcodec_parameters_to_context(p_codec_context, params),
            "make codec context");
   libavtry(avcodec_open2(p_codec_context, codec, NULL), "open codec");
@@ -508,17 +526,23 @@ void thumbnailer::load_stream() {
   // init output encoding
   output_packet = av_packet_alloc();
   output_frame = av_frame_alloc();
+  require_ffmpeg_object(output_packet, "output packet");
+  require_ffmpeg_object(output_frame, "output frame");
   if (cfg_thumb_cache_format == 0) {
     output_frame->format = AV_PIX_FMT_YUVJ444P;
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
+    require_ffmpeg_object(output_encoder, "MJPEG encoder");
     output_codeccontext = avcodec_alloc_context3(output_encoder);
+    require_ffmpeg_object(output_codeccontext, "MJPEG encoder context");
     output_codeccontext->flags |= AV_CODEC_FLAG_QSCALE;
     output_codeccontext->global_quality = FF_QP2LAMBDA;
     output_frame->quality = output_codeccontext->global_quality;
   } else if (cfg_thumb_cache_format == 1) {
     output_frame->format = AV_PIX_FMT_RGB24;
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_PNG);
+    require_ffmpeg_object(output_encoder, "PNG encoder");
     output_codeccontext = avcodec_alloc_context3(output_encoder);
+    require_ffmpeg_object(output_codeccontext, "PNG encoder context");
   } else {
     FB2K_console_formatter()
         << "mpv: Could not determine target thumbnail format";
@@ -542,15 +566,24 @@ thumbnailer::~thumbnailer() {
 }
 
 void thumbnailer::init_measurement_context() {
-  best_frame = av_frame_alloc();
+  if (p_frame->width <= 0 || p_frame->height <= 0) {
+    throw exception_album_art_unsupported_entry();
+  }
+  libavtry(av_image_check_size(p_frame->width, p_frame->height, 0, nullptr),
+           "validate source dimensions");
 
+  best_frame = av_frame_alloc();
   measurement_frame = av_frame_alloc();
+  require_ffmpeg_object(best_frame, "thumbnail candidate frame");
+  require_ffmpeg_object(measurement_frame, "measurement frame");
   measurement_frame->format = AV_PIX_FMT_RGB24;
   if (p_frame->width > p_frame->height) {
     measurement_frame->width = 40;
-    measurement_frame->height = (40 * p_frame->height) / p_frame->width;
+    measurement_frame->height = (std::max)(
+        1, static_cast<int>((int64_t{40} * p_frame->height) / p_frame->width));
   } else {
-    measurement_frame->width = (40 * p_frame->width) / p_frame->height;
+    measurement_frame->width = (std::max)(
+        1, static_cast<int>((int64_t{40} * p_frame->width) / p_frame->height));
     measurement_frame->height = 40;
   }
 
@@ -569,6 +602,9 @@ void thumbnailer::init_measurement_context() {
   rgb_buf_size = av_image_get_buffer_size(
       (AVPixelFormat)measurement_frame->format, measurement_frame->width,
       measurement_frame->height, 1);
+  if (rgb_buf_size <= 0) {
+    throw exception_album_art_unsupported_entry();
+  }
 }
 
 bool thumbnailer::seek_stream(int64_t min_timestamp, int64_t timestamp,
@@ -674,16 +710,26 @@ bool thumbnailer::seek_exact_and_decode(double time) {
 }
 
 album_art_data_ptr thumbnailer::encode_output() {
+  if (p_frame == nullptr || p_frame->width <= 0 || p_frame->height <= 0 ||
+      output_frame == nullptr || output_codeccontext == nullptr ||
+      output_encoder == nullptr || output_packet == nullptr) {
+    throw exception_album_art_unsupported_entry();
+  }
+
   AVRational aspect_ratio = av_guess_sample_aspect_ratio(
       p_format_context, p_format_context->streams[stream_index], p_frame);
 
-  int scale_to_width = p_frame->width;
-  int scale_to_height = p_frame->height;
-  if (aspect_ratio.num != 0) {
-    scale_to_width = scale_to_width * aspect_ratio.num / aspect_ratio.den;
+  int64_t scale_to_width = p_frame->width;
+  int64_t scale_to_height = p_frame->height;
+  if (aspect_ratio.num > 0 && aspect_ratio.den > 0) {
+    scale_to_width = av_rescale(scale_to_width, aspect_ratio.num,
+                                aspect_ratio.den);
+  }
+  if (scale_to_width <= 0 || scale_to_height <= 0) {
+    throw exception_album_art_unsupported_entry();
   }
 
-  int target_size = 1;
+  int64_t target_size = 0;
   switch (cfg_thumb_size) {
     case 0:
       target_size = 200;
@@ -698,20 +744,30 @@ album_art_data_ptr thumbnailer::encode_output() {
       target_size = 1000;
       break;
     case 4:
-      target_size = max(scale_to_width, scale_to_height);
+      target_size = (std::max)(scale_to_width, scale_to_height);
       break;
+    default:
+      throw exception_album_art_unsupported_entry();
   }
 
+  constexpr int64_t max_thumbnail_dimension = 4096;
+  target_size = std::clamp<int64_t>(target_size, 1, max_thumbnail_dimension);
+
   if (scale_to_width > scale_to_height) {
-    scale_to_height = target_size * scale_to_height / scale_to_width;
+    scale_to_height = std::max<int64_t>(
+        1, av_rescale(target_size, scale_to_height, scale_to_width));
     scale_to_width = target_size;
   } else {
-    scale_to_width = target_size * scale_to_width / scale_to_height;
+    scale_to_width = std::max<int64_t>(
+        1, av_rescale(target_size, scale_to_width, scale_to_height));
     scale_to_height = target_size;
   }
 
-  output_frame->width = scale_to_width;
-  output_frame->height = scale_to_height;
+  output_frame->width = static_cast<int>(scale_to_width);
+  output_frame->height = static_cast<int>(scale_to_height);
+  libavtry(av_image_check_size(output_frame->width, output_frame->height, 0,
+                               nullptr),
+           "validate output dimensions");
   libavtry(av_frame_get_buffer(output_frame, 32), "get output frame buffer");
 
   abort.check();
@@ -724,10 +780,13 @@ album_art_data_ptr thumbnailer::encode_output() {
     throw exception_album_art_not_found();
   }
 
-  sws_scale(swscontext, p_frame->data, p_frame->linesize, 0, p_frame->height,
-            output_frame->data, output_frame->linesize);
-
+  const int scaled_height =
+      sws_scale(swscontext, p_frame->data, p_frame->linesize, 0,
+                p_frame->height, output_frame->data, output_frame->linesize);
   sws_freeContext(swscontext);
+  if (scaled_height != output_frame->height) {
+    throw exception_album_art_unsupported_entry();
+  }
 
   output_codeccontext->width = output_frame->width;
   output_codeccontext->height = output_frame->height;
@@ -743,6 +802,10 @@ album_art_data_ptr thumbnailer::encode_output() {
   abort.check();
   libavtry(avcodec_receive_packet(output_codeccontext, output_packet),
            "receive output packet");
+
+  if (output_packet->data == nullptr || output_packet->size <= 0) {
+    throw exception_album_art_unsupported_entry();
+  }
 
   return album_art_data_impl::g_create(output_packet->data,
                                        output_packet->size);
@@ -818,16 +881,20 @@ bool thumbnailer::decode_frame(bool to_keyframe) {
 }
 
 double thumbnailer::frame_quality() {
-  sws_scale(measurement_context, p_frame->data, p_frame->linesize, 0,
-            p_frame->height, measurement_frame->data,
-            measurement_frame->linesize);
+  const int scaled_height = sws_scale(
+      measurement_context, p_frame->data, p_frame->linesize, 0,
+      p_frame->height, measurement_frame->data, measurement_frame->linesize);
+  if (scaled_height != measurement_frame->height) {
+    throw exception_album_art_unsupported_entry();
+  }
 
   abort.check();
   auto rgb_buf = std::make_unique<unsigned char[]>(rgb_buf_size);
-  av_image_copy_to_buffer(rgb_buf.get(), rgb_buf_size, measurement_frame->data,
-                          measurement_frame->linesize, AV_PIX_FMT_RGB24,
-                          measurement_frame->width, measurement_frame->height,
-                          1);
+  libavtry(av_image_copy_to_buffer(
+               rgb_buf.get(), rgb_buf_size, measurement_frame->data,
+               measurement_frame->linesize, AV_PIX_FMT_RGB24,
+               measurement_frame->width, measurement_frame->height, 1),
+           "copy measurement image");
 
 #define BUCKETS 10
   int64_t hist[BUCKETS] = {};
@@ -868,7 +935,7 @@ album_art_data_ptr thumbnailer::get_art() {
       if (!decode_frame(true)) throw exception_album_art_not_found();
       // init after decoding first frame
       init_measurement_context();
-      av_frame_ref(best_frame, p_frame);
+      libavtry(av_frame_ref(best_frame, p_frame), "retain thumbnail frame");
 
       const int tries = 12;
       double max_quality = frame_quality();
@@ -896,12 +963,13 @@ album_art_data_ptr thumbnailer::get_art() {
           max_quality = quality;
           best_seektime = l_seektime;
           av_frame_unref(best_frame);
-          av_frame_ref(best_frame, p_frame);
+          libavtry(av_frame_ref(best_frame, p_frame),
+                   "retain thumbnail frame");
         }
       }
 
       av_frame_unref(p_frame);
-      av_frame_ref(p_frame, best_frame);
+      libavtry(av_frame_ref(p_frame, best_frame), "restore thumbnail frame");
       av_frame_unref(best_frame);
       if (cfg_logging && cfg_thumb_histogram) {
         FB2K_console_formatter() << "mpv: Quality is now " << frame_quality();

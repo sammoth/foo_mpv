@@ -5,6 +5,8 @@
 #include <../helpers/atl-misc.h>
 #include <SDK/coreDarkMode.h>
 
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 
 #include "libmpv.h"
@@ -196,10 +198,15 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
 
     double pos = 0.0;
     thumb_time_store_get(metadb, pos);
-    if (pos > metadb->get_length()) pos = 0.0;
-    slider_seek.SetPos(
-        (int)min(seek_resolution,
-                 max(0, (pos / metadb->get_length()) * seek_resolution)));
+    const double duration = metadb->get_length();
+    if (!std::isfinite(pos) || pos < 0.0 || !std::isfinite(duration) ||
+        duration <= 0.0 || pos > duration) {
+      pos = 0.0;
+    }
+    const double fraction = duration > 0.0 ? pos / duration : 0.0;
+    slider_seek.SetPos(static_cast<int>(std::clamp(
+        fraction * seek_resolution, 0.0,
+        static_cast<double>(seek_resolution))));
 
     pfc::string8 filename;
     if (filesystem::g_get_native_path(metadb->get_path(), filename)) {
