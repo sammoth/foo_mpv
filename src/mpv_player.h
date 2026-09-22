@@ -34,6 +34,7 @@ class mpv_player : play_callback_impl_base,
 
   // thread for dispatching libmpv events
   std::thread event_listener;
+  std::atomic_bool event_listener_stop = false;
   std::condition_variable event_cv;
   std::mutex mutex;
   std::atomic<double> mpv_timepos;

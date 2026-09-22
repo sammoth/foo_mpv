@@ -174,7 +174,11 @@ mpv_player::~mpv_player() {
   control_thread_cv.notify_all();
 
   if (control_thread.joinable()) control_thread.join();
+
+  event_listener_stop = true;
+  if (mpv_handle) libmpv::get()->wakeup(mpv_handle);
   if (event_listener.joinable()) event_listener.join();
+
   if (mpv_handle) {
     libmpv::get()->terminate_destroy(mpv_handle);
     mpv_handle = NULL;
@@ -632,8 +636,9 @@ bool mpv_player::mpv_init() {
           return;
         }
 
-        while (true) {
+        while (!event_listener_stop) {
           libmpv::mpv_event* event = libmpv::get()->wait_event(mpv_handle, -1);
+          if (event_listener_stop) return;
 
           {
             std::lock_guard<std::mutex> lock(mutex);
