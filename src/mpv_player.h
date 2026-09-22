@@ -8,6 +8,7 @@
 #include <condition_variable>
 #include <functional>
 #include <map>
+#include <memory>
 #include <queue>
 #include <sstream>
 #include <thread>
@@ -27,6 +28,7 @@ class mpv_player : play_callback_impl_base,
   libmpv::mpv_handle* mpv_handle;
   HWND mpv_window_hwnd;
   bool enabled;
+  std::shared_ptr<void> lifetime_token = std::make_shared<int>(0);
 
   // start mpv within the window
   bool mpv_init();

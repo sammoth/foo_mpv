@@ -179,8 +179,12 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
         "Always on-top", "Keep the video window above other windows",
         cfg_mpv_popup_alwaysontop, [this]() {
           cfg_mpv_popup_alwaysontop = !cfg_mpv_popup_alwaysontop;
-          fb2k::inMainThread([this]() {
-            DestroyWindow();
+          HWND window = m_hWnd;
+          fb2k::inMainThread([window]() {
+            if (g_open_mpv_popup != nullptr &&
+                g_open_mpv_popup->get_wnd() == window) {
+              g_open_mpv_popup->DestroyWindow();
+            }
             RunMpvPopupWindow();
           });
         }));
@@ -189,8 +193,12 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
         "Allow window to separate from the foobar2000 main window",
         cfg_mpv_popup_separate, [this]() {
           cfg_mpv_popup_separate = !cfg_mpv_popup_separate;
-          fb2k::inMainThread([this]() {
-            DestroyWindow();
+          HWND window = m_hWnd;
+          fb2k::inMainThread([window]() {
+            if (g_open_mpv_popup != nullptr &&
+                g_open_mpv_popup->get_wnd() == window) {
+              g_open_mpv_popup->DestroyWindow();
+            }
             RunMpvPopupWindow();
           });
         }));

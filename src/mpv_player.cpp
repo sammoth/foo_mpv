@@ -668,9 +668,12 @@ bool mpv_player::mpv_init() {
                   for (int i = 3; i < event_message->num_args; i++) {
                     menu_cmd << " " << event_message->args[i];
                   }
-                  fb2k::inMainThread([this, menu_cmd]() {
+                  metadb_handle_ptr display_item = current_display_item;
+                  std::weak_ptr<void> lifetime(lifetime_token);
+                  fb2k::inMainThread([lifetime, menu_cmd, display_item]() {
+                    if (lifetime.expired()) return;
                     metadb_handle_list list;
-                    list.add_item(current_display_item);
+                    list.add_item(display_item);
                     menu_utils::run_contextmenu_item(menu_cmd, list);
                   });
                 } else if (event_message->num_args > 2 &&
@@ -679,7 +682,9 @@ bool mpv_player::mpv_init() {
                   for (int i = 3; i < event_message->num_args; i++) {
                     menu_cmd << " " << event_message->args[i];
                   }
-                  fb2k::inMainThread([this, menu_cmd]() {
+                  std::weak_ptr<void> lifetime(lifetime_token);
+                  fb2k::inMainThread([lifetime, menu_cmd]() {
+                    if (lifetime.expired()) return;
                     menu_utils::run_mainmenu_item(menu_cmd);
                   });
                 } else if (event_message->num_args > 3 &&
@@ -1008,12 +1013,14 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
                                finish.c_str(), NULL};
     command(osc_cmd_2);
 
-    fb2k::inMainThread([this]() {
+    std::weak_ptr<void> lifetime(lifetime_token);
+    fb2k::inMainThread([lifetime]() {
+      if (lifetime.expired() || !g_player) return;
       std::string vol = std::to_string(
           VolumeMap::DBToSlider(playback_control::get()->get_volume()));
       const char* osc_cmd_3[] = {"script-message", "foobar", "volume-changed",
                                  vol.c_str(), NULL};
-      command(osc_cmd_3);
+      g_player->command(osc_cmd_3);
     });
 
     if (!next_chapter) {
@@ -1379,9 +1386,11 @@ void mpv_player::initial_sync() {
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Abort initial sync - timing";
     }
-    fb2k::inMainThread([this]() {
+    std::weak_ptr<void> lifetime(lifetime_token);
+    fb2k::inMainThread([lifetime]() {
+      if (lifetime.expired()) return;
       cfg_video_enabled = false;
-      update();
+      if (g_player) g_player->update();
     });
     return;
   }

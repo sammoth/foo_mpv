@@ -123,7 +123,13 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
   bool is_fullscreen() override { return true; }
 
   void toggle_fullscreen() override {
-    fb2k::inMainThread([this]() { DestroyWindow(); });
+    HWND window = m_hWnd;
+    fb2k::inMainThread([window]() {
+      if (g_open_mpv_fullscreen != nullptr &&
+          g_open_mpv_fullscreen->get_wnd() == window) {
+        g_open_mpv_fullscreen->DestroyWindow();
+      }
+    });
   }
 
   HWND container_wnd() override { return get_wnd(); }
