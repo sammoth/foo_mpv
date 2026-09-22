@@ -1,8 +1,6 @@
 #include "stdafx.h"
 // PCH ^
 
-#include <thread>
-
 #include "mpv_player.h"
 #include "thumbnailer.h"
 #include "resource.h"
@@ -228,13 +226,13 @@ class mainmenu_mpv_thumbs : public mainmenu_commands {
                service_ptr_t<service_base> p_callback) override {
     switch (p_index) {
       case cmd_clear:
-        std::thread([]() { mpv::clear_thumbnail_cache(); }).detach();
+        mpv::clear_thumbnail_cache();
         break;
       case cmd_compact:
-        std::thread([]() { mpv::compact_thumbnail_cache(); }).detach();
+        mpv::compact_thumbnail_cache();
         break;
       case cmd_removedead:
-        std::thread([]() { mpv::clean_thumbnail_cache(); }).detach();
+        mpv::clean_thumbnail_cache();
         break;
       default:
         uBugCheck();

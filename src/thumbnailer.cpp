@@ -8,8 +8,11 @@
 #include <atomic>
 #include <cerrno>
 #include <cmath>
+#include <condition_variable>
+#include <deque>
 #include <mutex>
 #include <sstream>
+#include <thread>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -84,8 +87,110 @@ static std::unique_ptr<SQLite::Statement> query_trim;
 static std::unique_ptr<SQLite::Statement> query_delete;
 static std::atomic_int64_t db_size;
 
+enum class cache_maintenance_task { Clear, Compact, Clean, Count };
+
+static void clear_thumbnail_cache_now();
+static void clean_thumbnail_cache_now();
+static void compact_thumbnail_cache_now();
+
+static std::mutex cache_worker_mutex;
+static std::condition_variable cache_worker_cv;
+static std::deque<cache_maintenance_task> cache_worker_queue;
+static bool cache_worker_pending[
+    static_cast<size_t>(cache_maintenance_task::Count)] = {};
+static bool cache_worker_stopping = true;
+static bool cache_worker_started = false;
+static std::thread cache_worker;
+
+static void run_cache_maintenance_task(cache_maintenance_task task) {
+  switch (task) {
+    case cache_maintenance_task::Clear:
+      clear_thumbnail_cache_now();
+      break;
+    case cache_maintenance_task::Compact:
+      compact_thumbnail_cache_now();
+      break;
+    case cache_maintenance_task::Clean:
+      clean_thumbnail_cache_now();
+      break;
+    default:
+      uBugCheck();
+  }
+}
+
+static void start_cache_worker() {
+  std::lock_guard<std::mutex> lock(cache_worker_mutex);
+  if (cache_worker.joinable()) return;
+  cache_worker_stopping = false;
+  try {
+    cache_worker = std::thread([]() {
+      while (true) {
+        cache_maintenance_task task;
+        {
+          std::unique_lock<std::mutex> lock(cache_worker_mutex);
+          cache_worker_cv.wait(lock, []() {
+            return cache_worker_stopping || !cache_worker_queue.empty();
+          });
+          if (cache_worker_stopping) return;
+          task = cache_worker_queue.front();
+          cache_worker_queue.pop_front();
+        }
+
+        try {
+          run_cache_maintenance_task(task);
+        } catch (const std::exception& e) {
+          FB2K_console_formatter()
+              << "mpv: Thumbnail cache maintenance failed: " << e.what();
+        } catch (...) {
+          FB2K_console_formatter()
+              << "mpv: Thumbnail cache maintenance failed";
+        }
+
+        {
+          std::lock_guard<std::mutex> lock(cache_worker_mutex);
+          cache_worker_pending[static_cast<size_t>(task)] = false;
+        }
+      }
+    });
+    cache_worker_started = true;
+  } catch (const std::system_error& e) {
+    cache_worker_stopping = true;
+    FB2K_console_formatter()
+        << "mpv: Could not start thumbnail cache worker: " << e.what();
+  }
+}
+
+static void stop_cache_worker() {
+  {
+    std::lock_guard<std::mutex> lock(cache_worker_mutex);
+    cache_worker_stopping = true;
+    cache_worker_started = false;
+    cache_worker_queue.clear();
+    for (bool& pending : cache_worker_pending) pending = false;
+  }
+  if (db_ptr) sqlite3_interrupt(db_ptr->getHandle());
+  cache_worker_cv.notify_all();
+  if (cache_worker.joinable()) cache_worker.join();
+}
+
+static void queue_cache_maintenance(cache_maintenance_task task) {
+  {
+    std::lock_guard<std::mutex> lock(cache_worker_mutex);
+    if (!cache_worker_started || cache_worker_stopping) return;
+    const size_t index = static_cast<size_t>(task);
+    if (cache_worker_pending[index]) return;
+    cache_worker_pending[index] = true;
+    cache_worker_queue.push_back(task);
+  }
+  cache_worker_cv.notify_one();
+}
+
 class db_loader : public initquit {
  public:
+  ~db_loader() override {
+    stop_cache_worker();
+  }
+
   void on_init() override {
     pfc::string8 db_path = core_api::get_profile_path();
     db_path.add_filename("thumbcache.db");
@@ -123,12 +228,18 @@ class db_loader : public initquit {
       FB2K_console_formatter()
           << "mpv: Error accessing thumbnail cache: " << e.what();
     }
+
+    start_cache_worker();
+  }
+
+  void on_quit() override {
+    stop_cache_worker();
   }
 };
 
 static initquit_factory_t<db_loader> g_db_loader;
 
-void clear_thumbnail_cache() {
+static void clear_thumbnail_cache_now() {
   if (db_ptr) {
     try {
       std::lock_guard<std::mutex> lock(db_mutex);
@@ -163,7 +274,7 @@ void sqlitefunction_missing(sqlite3_context* context, int num,
   sqlite3_result_int(context, 0);
 }
 
-void clean_thumbnail_cache() {
+static void clean_thumbnail_cache_now() {
   if (db_ptr) {
     try {
       std::lock_guard<std::mutex> lock(db_mutex);
@@ -187,7 +298,7 @@ void clean_thumbnail_cache() {
   }
 }
 
-void compact_thumbnail_cache() {
+static void compact_thumbnail_cache_now() {
   if (db_ptr) {
     try {
       std::lock_guard<std::mutex> lock(db_mutex);
@@ -204,6 +315,18 @@ void compact_thumbnail_cache() {
   } else {
     FB2K_console_formatter() << "mpv: Thumbnail cache not loaded";
   }
+}
+
+void clear_thumbnail_cache() {
+  queue_cache_maintenance(cache_maintenance_task::Clear);
+}
+
+void clean_thumbnail_cache() {
+  queue_cache_maintenance(cache_maintenance_task::Clean);
+}
+
+void compact_thumbnail_cache() {
+  queue_cache_maintenance(cache_maintenance_task::Compact);
 }
 
 void trim_db(int64_t newbytes) {
