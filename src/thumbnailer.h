@@ -38,6 +38,7 @@ class thumbnailer {
   AVRational p_frame_time_base;
   AVRational p_stream_time_base;
   int64_t p_format_start_time;
+  bool decoder_draining = false;
 
   void init_measurement_context();
   int rgb_buf_size = 0;
@@ -53,6 +54,8 @@ class thumbnailer {
   int stream_index;
 
   void load_stream();
+  bool seek_stream(int64_t min_timestamp, int64_t timestamp,
+                   int64_t max_timestamp);
   bool seek(double percent);
   bool seek_exact_and_decode(double percent);
   double get_frame_time();

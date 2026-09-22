@@ -6,6 +6,8 @@
 #include <sqlite3.h>
 
 #include <atomic>
+#include <cerrno>
+#include <cmath>
 #include <mutex>
 #include <sstream>
 
@@ -14,6 +16,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/mathematics.h>
 #include <libswscale/swscale.h>
 }
 
@@ -371,6 +374,7 @@ void thumbnailer::load_stream() {
   }
 
   p_format_start_time = p_format_context->streams[stream_index]->start_time;
+  if (p_format_start_time == AV_NOPTS_VALUE) p_format_start_time = 0;
   p_stream_time_base = p_format_context->streams[stream_index]->time_base;
 
   p_codec_context = avcodec_alloc_context3(codec);
@@ -444,38 +448,53 @@ void thumbnailer::init_measurement_context() {
       measurement_frame->height, 1);
 }
 
+bool thumbnailer::seek_stream(int64_t min_timestamp, int64_t timestamp,
+                              int64_t max_timestamp) {
+  if (avformat_seek_file(p_format_context, stream_index, min_timestamp,
+                         timestamp, max_timestamp, 0) < 0) {
+    return false;
+  }
+
+  avcodec_flush_buffers(p_codec_context);
+  av_packet_unref(p_packet);
+  av_frame_unref(p_frame);
+  decoder_draining = false;
+  return true;
+}
+
 bool thumbnailer::seek(double fraction) {
   double seek_time =
       time_start_in_file + fraction * (time_end_in_file - time_start_in_file);
 
-  int64_t seek_pts = p_format_start_time +
-                     (int64_t)(seek_time * (double)p_stream_time_base.den /
-                               (double)p_stream_time_base.num);
+  int64_t seek_pts =
+      p_format_start_time +
+      av_rescale_q(static_cast<int64_t>(std::llround(seek_time * AV_TIME_BASE)),
+                   AV_TIME_BASE_Q, p_stream_time_base);
 
-  return avformat_seek_file(p_format_context, stream_index, INT64_MIN, seek_pts,
-                            INT64_MAX, 0) >= 0;
+  return seek_stream(INT64_MIN, seek_pts, INT64_MAX);
 }
 
 double thumbnailer::get_frame_time() {
-  int64_t pts = p_frame->pts;
-  if (p_format_start_time != AV_NOPTS_VALUE) {
-    pts -= p_format_start_time;
-  }
+  int64_t pts = p_frame->best_effort_timestamp;
+  if (pts == AV_NOPTS_VALUE) return 0.0;
+  pts -= p_format_start_time;
 
-  return ((double)pts) * p_frame_time_base.num / p_frame_time_base.den;
+  return static_cast<double>(pts) * p_frame_time_base.num /
+         p_frame_time_base.den;
 }
 
 bool thumbnailer::seek_exact_and_decode(double time) {
   double target = time_start_in_file + time;
 
   abort.check();
-  int64_t seek_time = (int64_t)(target * (double)p_stream_time_base.den /
-                                (double)p_stream_time_base.num);
-  seek_time = seek_time + p_format_start_time;
-  int64_t min_seek_time = seek_time - (int64_t)((double)p_stream_time_base.den /
-                                                (double)p_stream_time_base.num);
-  if (avformat_seek_file(p_format_context, stream_index, min_seek_time,
-                         seek_time, seek_time, 0) < 0 ||
+  int64_t seek_time =
+      p_format_start_time +
+      av_rescale_q(static_cast<int64_t>(std::llround(target * AV_TIME_BASE)),
+                   AV_TIME_BASE_Q, p_stream_time_base);
+  const int64_t one_second =
+      av_rescale_q(AV_TIME_BASE, AV_TIME_BASE_Q, p_stream_time_base);
+  int64_t min_seek_time = seek_time - one_second;
+  if (!seek_stream(min_seek_time, seek_time, seek_time) ||
       !decode_frame(false)) {
     return false;
   }
@@ -494,18 +513,15 @@ bool thumbnailer::seek_exact_and_decode(double time) {
       }
       break;
     } else {
-      seek_time -= (int64_t)(2 * (double)p_stream_time_base.den /
-                             (double)p_stream_time_base.num);
-      min_seek_time = seek_time - (int64_t)((double)p_stream_time_base.den /
-                                            (double)p_stream_time_base.num);
+      seek_time -= 2 * one_second;
+      min_seek_time = seek_time - one_second;
       if (cfg_logging) {
         FB2K_console_formatter()
             << "mpv: Seek unsuccessful, got " << get_frame_time() << ", trying "
             << seek_time;
       }
-      if (seek_time < 0 ||
-          avformat_seek_file(p_format_context, stream_index, min_seek_time,
-                             seek_time, seek_time, 0) < 0 ||
+      if (seek_time < p_format_start_time ||
+          !seek_stream(min_seek_time, seek_time, seek_time) ||
           !decode_frame(false)) {
         return false;
       }
@@ -610,47 +626,72 @@ album_art_data_ptr thumbnailer::encode_output() {
 }
 
 bool thumbnailer::decode_frame(bool to_keyframe) {
+  (void)to_keyframe;
+
   while (true) {
-    av_packet_unref(p_packet);
     abort.check();
 
-    int err = av_read_frame(p_format_context, p_packet);
-    if (err < 0) {
-      if (cfg_logging) {
-        FB2K_console_formatter() << "mpv: Error reading video frame";
-      }
-      return 0;
-    }
-
-    if (p_packet->stream_index != stream_index) continue;
-
-    err = avcodec_send_packet(p_codec_context, p_packet);
-    if (err < 0) {
-      continue;
-    }
-
     av_frame_unref(p_frame);
-    if (avcodec_receive_frame(p_codec_context, p_frame) < 0) continue;
+    int err = avcodec_receive_frame(p_codec_context, p_frame);
+    if (err == 0) {
+      p_frame_time_base = p_stream_time_base;
+      return p_frame->width > 0 && p_frame->height > 0 &&
+             output_frame != NULL;
+    }
+    if (err == AVERROR_EOF) return false;
+    if (err != AVERROR(EAGAIN)) {
+      if (cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Error receiving decoded video frame: " << err;
+      }
+      return false;
+    }
+    if (decoder_draining) return false;
 
-    // if (to_keyframe && p_frame->pict_type != AV_PICTURE_TYPE_I) {
-    //  continue;
-    //}
+    while (true) {
+      av_packet_unref(p_packet);
+      abort.check();
 
-    p_frame_time_base =
-        p_format_context->streams[p_packet->stream_index]->time_base;
+      err = av_read_frame(p_format_context, p_packet);
+      if (err == AVERROR_EOF) {
+        err = avcodec_send_packet(p_codec_context, nullptr);
+        if (err < 0 && err != AVERROR_EOF) {
+          if (cfg_logging) {
+            FB2K_console_formatter()
+                << "mpv: Error draining video decoder: " << err;
+          }
+          return false;
+        }
+        decoder_draining = true;
+        break;
+      }
+      if (err < 0) {
+        if (cfg_logging) {
+          FB2K_console_formatter() << "mpv: Error reading video frame: " << err;
+        }
+        return false;
+      }
 
-    break;
+      if (p_packet->stream_index != stream_index) continue;
+
+      err = avcodec_send_packet(p_codec_context, p_packet);
+      if (err == 0) break;
+      if (err == AVERROR(EAGAIN)) {
+        if (cfg_logging) {
+          FB2K_console_formatter()
+              << "mpv: Decoder rejected a packet while requesting input";
+        }
+        return false;
+      }
+      if (err == AVERROR_EOF) return false;
+
+      if (cfg_logging) {
+        FB2K_console_formatter()
+            << "mpv: Error sending packet to video decoder: " << err;
+      }
+      // A bad packet does not necessarily make the rest of the stream bad.
+    }
   }
-
-  if (p_frame->width == 0 || p_frame->height == 0) {
-    return false;
-  }
-
-  if (output_frame == NULL) {
-    return false;
-  }
-
-  return true;
 }
 
 double thumbnailer::frame_quality() {
