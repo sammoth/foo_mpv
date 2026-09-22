@@ -11,7 +11,9 @@
 #include <memory>
 #include <queue>
 #include <sstream>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "libmpv.h"
 #include "mpv_container.h"
@@ -24,10 +26,13 @@ class mpv_player : play_callback_impl_base,
                    ui_selection_callback_impl_base,
                    metadb_io_callback_dynamic_impl_base,
                    public CWindowImpl<mpv_player> {
-  // player instance handle
+  // The control thread owns the libmpv handle and all mutating libmpv calls.
+  // The event thread only blocks in mpv_wait_event and publishes event data.
   libmpv::mpv_handle* mpv_handle;
+  std::recursive_mutex mpv_mutex;
+  std::atomic_bool mpv_loaded = false;
   HWND mpv_window_hwnd;
-  bool enabled;
+  std::atomic_bool enabled;
   std::shared_ptr<void> lifetime_token = std::make_shared<int>(0);
 
   // start mpv within the window
@@ -61,19 +66,28 @@ class mpv_player : play_callback_impl_base,
     Seek,
     Pause,
     Stop,
-    LoadArtwork
+    LoadArtwork,
+    Command,
+    Sync,
+    HideCursorForMenu,
+    RestoreCursorAfterMenu,
+    RefreshMediaInfo
   };
   struct task {
-    task_type type;
+    task_type type = task_type::Stop;
     metadb_handle_ptr play_file;
-    double time;
-    bool flag;
+    double time = 0.0;
+    bool flag = false;
+    std::vector<std::string> arguments;
   };
   std::thread control_thread;
   std::condition_variable control_thread_cv;
   std::atomic_bool running_ffs;
   std::deque<task> task_queue;
   void queue_task(task t);
+  void queue_command(std::initializer_list<std::string> arguments);
+  void run_command(const std::vector<std::string>& arguments);
+  void refresh_media_info();
   bool check_queue_any();
   bool check_queue_time_change_locking();
 
@@ -82,21 +96,26 @@ class mpv_player : play_callback_impl_base,
   void stop();
   void pause(bool p_state);
   void seek(double time, bool is_hard_sync);
-  void sync(double debug_time);
+  void sync(double debug_time, bool paused);
   void initial_sync();
   void load_artwork();
 
-  // state tracking
+  // Control-thread state. Atomics are read-only snapshots for the UI/event
+  // paths; writes happen on the control thread unless driven by an mpv event.
   std::atomic<double>
       time_base;  // start time of the current track/subsong within its file
   std::atomic<double> last_mpv_seek;
   std::atomic_bool sync_on_unpause;
   double last_hard_sync;
-  std::mutex sync_lock;
   long last_sync_time;
   bool apply_seek_offset = false;
+  pfc::string8 cursor_autohide_before_menu = "1000";
 
   std::vector<pfc::string8> profiles;
+  std::mutex published_state_mutex;
+  pfc::string8 media_codec_info;
+  pfc::string8 media_display_info;
+  pfc::string8 media_hwdec_info;
 
   // utils
   pfc::string8 get_string(const char* name);
@@ -123,17 +142,20 @@ class mpv_player : play_callback_impl_base,
   void on_selection_changed(metadb_handle_list_cref) override;
   void on_changed_sorted(metadb_handle_list_cref, bool) override;
   metadb_handle_ptr current_display_item;
+  std::mutex display_item_mutex;
   void set_display_item(metadb_handle_ptr item);
   struct titleformat_subscription {
     pfc::string8 id;
     titleformat_object::ptr object;
   };
   std::vector<titleformat_subscription> titleformat_subscriptions;
+  std::mutex titleformat_mutex;
   void publish_titleformatting_subscriptions();
 
   // windowing
   mpv_container* container;
   void update_title();
+  std::string get_background_color();
   void set_background();
 
   LRESULT on_create(LPCREATESTRUCT lpcreate);

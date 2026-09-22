@@ -43,8 +43,11 @@ void mpv_player::restart() {
 }
 
 void mpv_player::get_title(pfc::string8& out) {
-  if (g_player && g_player->current_display_item.is_valid()) {
-    format_player_title(out, g_player->current_display_item);
+  if (g_player) {
+    std::lock_guard<std::mutex> lock(g_player->display_item_mutex);
+    if (g_player->current_display_item.is_valid()) {
+      format_player_title(out, g_player->current_display_item);
+    }
   }
 }
 
@@ -140,6 +143,14 @@ mpv_player::mpv_player()
 
       switch (task.type) {
         case task_type::Quit:
+          {
+            std::lock_guard<std::recursive_mutex> mpv_lock(mpv_mutex);
+            if (mpv_handle) {
+              libmpv::get()->terminate_destroy(mpv_handle);
+              mpv_handle = nullptr;
+              mpv_loaded = false;
+            }
+          }
           return;
         case task_type::Play:
           play(task.play_file, task.time);
@@ -161,12 +172,38 @@ mpv_player::mpv_player()
         case task_type::LoadArtwork:
           load_artwork();
           break;
+        case task_type::Command:
+          run_command(task.arguments);
+          break;
+        case task_type::Sync:
+          sync(task.time, task.flag);
+          break;
+        case task_type::HideCursorForMenu:
+          cursor_autohide_before_menu = get_string("cursor-autohide");
+          if (cursor_autohide_before_menu.is_empty())
+            cursor_autohide_before_menu = "1000";
+          set_property_string("cursor-autohide", "no");
+          break;
+        case task_type::RestoreCursorAfterMenu:
+          set_property_string("cursor-autohide",
+                              cursor_autohide_before_menu.c_str());
+          break;
+        case task_type::RefreshMediaInfo:
+          refresh_media_info();
+          break;
       }
     }
   });
 }
 
 mpv_player::~mpv_player() {
+  {
+    std::lock_guard<std::mutex> init_lock(init_mutex);
+    event_listener_stop = true;
+    if (mpv_loaded) libmpv::get()->wakeup(mpv_handle);
+    if (event_listener.joinable()) event_listener.join();
+  }
+
   {
     std::lock_guard<std::mutex> lock(mutex);
     while (!task_queue.empty()) task_queue.pop_front();
@@ -175,21 +212,28 @@ mpv_player::~mpv_player() {
     task_queue.push_back(t);
   }
   control_thread_cv.notify_all();
+  event_cv.notify_all();
 
   if (control_thread.joinable()) control_thread.join();
-
-  event_listener_stop = true;
-  if (mpv_handle) libmpv::get()->wakeup(mpv_handle);
-  if (event_listener.joinable()) event_listener.join();
-
-  if (mpv_handle) {
-    libmpv::get()->terminate_destroy(mpv_handle);
-    mpv_handle = NULL;
-  }
   g_player = NULL;
 }
 
-bool mpv_player::check_queue_any() { return !task_queue.empty(); }
+bool mpv_player::check_queue_any() {
+  for (const auto& queued : task_queue) {
+    switch (queued.type) {
+      case task_type::Quit:
+      case task_type::Play:
+      case task_type::Seek:
+      case task_type::Pause:
+      case task_type::Stop:
+      case task_type::LoadArtwork:
+        return true;
+      default:
+        break;
+    }
+  }
+  return false;
+}
 
 bool mpv_player::check_queue_time_change_locking() {
   std::lock_guard<std::mutex> lock(mutex);
@@ -210,6 +254,52 @@ void mpv_player::queue_task(task t) {
   }
   control_thread_cv.notify_all();
   event_cv.notify_all();
+}
+
+void mpv_player::queue_command(
+    std::initializer_list<std::string> arguments) {
+  task t;
+  t.type = task_type::Command;
+  t.arguments.assign(arguments.begin(), arguments.end());
+  queue_task(std::move(t));
+}
+
+void mpv_player::run_command(const std::vector<std::string>& arguments) {
+  if (arguments.empty()) return;
+
+  std::vector<const char*> command_arguments;
+  command_arguments.reserve(arguments.size() + 1);
+  for (const auto& argument : arguments) {
+    command_arguments.push_back(argument.c_str());
+  }
+  command_arguments.push_back(nullptr);
+  if (command(command_arguments.data()) < 0 && cfg_logging) {
+    FB2K_console_formatter() << "mpv: Error running queued command";
+  }
+}
+
+void mpv_player::refresh_media_info() {
+  pfc::string8 codec_info;
+  codec_info << get_string("video-codec") << " "
+             << get_string("video-params/pixelformat");
+
+  pfc::string8 display_info;
+  display_info << get_string("width") << "x" << get_string("height") << " "
+               << pfc::format_float(get_double("container-fps"), 0, 3)
+               << "fps (display "
+               << pfc::format_float(get_double("estimated-vf-fps"), 0, 3)
+               << "fps)";
+
+  pfc::string8 hwdec_info = get_string("hwdec-current");
+  if (!hwdec_info.equals("no") && !hwdec_info.is_empty())
+    hwdec_info.insert_chars(0, "Hardware decoding: ");
+  else
+    hwdec_info.reset();
+
+  std::lock_guard<std::mutex> lock(published_state_mutex);
+  media_codec_info = codec_info;
+  media_display_info = display_info;
+  media_hwdec_info = hwdec_info;
 }
 
 void mpv_player::set_state(state state) {
@@ -255,7 +345,7 @@ BOOL mpv_player::on_erase_bg(CDCHandle dc) {
 }
 
 void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
-  if (g_player && g_player->mpv_handle) {
+  if (g_player && g_player->mpv_loaded) {
     if (g_player->mpv_state == state::Idle ||
         g_player->mpv_state == state::Artwork ||
         g_player->mpv_state == state::Unloaded) {
@@ -265,39 +355,35 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
       menu_hook.add_node(new menu_utils::menu_node_disabled("Loading..."));
     } else {
       pfc::string8 codec_info;
-      codec_info << g_player->get_string("video-codec") << " "
-                 << g_player->get_string("video-params/pixelformat");
-      menu_hook.add_node(new menu_utils::menu_node_disabled(codec_info));
-
       pfc::string8 display_info;
-      display_info << g_player->get_string("width") << "x"
-                   << g_player->get_string("height") << " "
-                   << pfc::format_float(g_player->get_double("container-fps"),
-                                        0, 3)
-                   << "fps (display "
-                   << pfc::format_float(
-                          g_player->get_double("estimated-vf-fps"), 0, 3)
-                   << "fps)";
-      menu_hook.add_node(new menu_utils::menu_node_disabled(display_info));
-
-      pfc::string8 hwdec = g_player->get_string("hwdec-current");
-      if (!hwdec.equals("no")) {
-        hwdec.insert_chars(0, "Hardware decoding: ");
-        menu_hook.add_node(new menu_utils::menu_node_disabled(hwdec));
+      pfc::string8 hwdec_info;
+      {
+        std::lock_guard<std::mutex> lock(g_player->published_state_mutex);
+        codec_info = g_player->media_codec_info;
+        display_info = g_player->media_display_info;
+        hwdec_info = g_player->media_hwdec_info;
       }
+      menu_hook.add_node(new menu_utils::menu_node_disabled(codec_info));
+      menu_hook.add_node(new menu_utils::menu_node_disabled(display_info));
+      if (!hwdec_info.is_empty())
+        menu_hook.add_node(new menu_utils::menu_node_disabled(hwdec_info));
     }
 
     menu_hook.add_node(new uie::menu_node_separator_t());
 
-    if (g_player->profiles.size() > 0) {
+    std::vector<pfc::string8> profiles;
+    {
+      std::lock_guard<std::mutex> lock(g_player->published_state_mutex);
+      profiles = g_player->profiles;
+    }
+    if (!profiles.empty()) {
       std::vector<ui_extension::menu_node_ptr> profile_children;
-      for (auto& profile : g_player->profiles) {
+      for (auto& profile : profiles) {
         profile_children.emplace_back(
             new menu_utils::menu_node_run(profile, false, [profile]() {
-              const char* cmd_profile[] = {"apply-profile", profile, NULL};
-              if (g_player->command(cmd_profile) < 0 && cfg_logging) {
-                FB2K_console_formatter() << "mpv: Error loading video profile";
-              }
+              if (g_player)
+                g_player->queue_command(
+                    {"apply-profile", profile.c_str()});
             }));
       }
       menu_hook.add_node(
@@ -322,7 +408,7 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
   }
 
   if (cfg_artwork &&
-      (!g_player->mpv_handle || g_player->mpv_state == state::Idle ||
+      (!g_player || !g_player->mpv_loaded || g_player->mpv_state == state::Idle ||
        g_player->mpv_state == state::Artwork)) {
     menu_hook.add_node(new uie::menu_node_separator_t());
 
@@ -354,15 +440,16 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
-  pfc::string8 old_value = "1000";
-  if (mpv_handle) old_value = get_string("cursor-autohide");
-  if (old_value.is_empty()) old_value = "1000";
-  set_property_string("cursor-autohide", "no");
+  task hide_cursor;
+  hide_cursor.type = task_type::HideCursorForMenu;
+  queue_task(std::move(hide_cursor));
   container->on_context_menu(wnd, point);
-  set_property_string("cursor-autohide", old_value.c_str());
+  task restore_cursor;
+  restore_cursor.type = task_type::RestoreCursorAfterMenu;
+  queue_task(std::move(restore_cursor));
 }
 
-void mpv_player::on_destroy() { command_string("quit"); }
+void mpv_player::on_destroy() {}
 
 LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
   update();
@@ -370,7 +457,7 @@ LRESULT mpv_player::on_create(LPCREATESTRUCT lpcreate) {
 }
 
 void mpv_player::on_mouse_move(UINT, CPoint point) {
-  if (!mpv_handle) return;
+  if (!mpv_loaded) return;
   find_window();
 }
 
@@ -421,12 +508,12 @@ void mpv_player::update() {
     new_container->on_gain_player();
   }
 
-  const char* osc_cmd_1[] = {
-      "script-message", "foobar", "osc-enabled-changed",
-      cfg_osc && container->is_osc_enabled() ? "yes" : "no", NULL};
-  command(osc_cmd_1);
-
-  set_property_string("fullscreen", container->is_fullscreen() ? "yes" : "no");
+  if (mpv_loaded) {
+    queue_command({"script-message", "foobar", "osc-enabled-changed",
+                   cfg_osc && container->is_osc_enabled() ? "yes" : "no"});
+    queue_command({"set", "fullscreen",
+                   container->is_fullscreen() ? "yes" : "no"});
+  }
 
   bool vis = container->is_visible();
   if (cfg_video_enabled && (container->is_fullscreen() ||
@@ -466,17 +553,17 @@ bool mpv_player::contained_in(mpv_container* p_container) {
 
 void mpv_player::update_title() {
   pfc::string8 title;
-  format_player_title(title, current_display_item);
+  {
+    std::lock_guard<std::mutex> lock(display_item_mutex);
+    format_player_title(title, current_display_item);
+  }
 
-  const char* osc_cmd_1[] = {"script-message", "foobar", "title-changed",
-                             title.c_str(), NULL};
-  command(osc_cmd_1);
+  queue_command(
+      {"script-message", "foobar", "title-changed", title.c_str()});
   uSetWindowText(m_hWnd, title);
 }
 
-void mpv_player::set_background() {
-  if (!mpv_handle) return;
-
+std::string mpv_player::get_background_color() {
   std::stringstream colorstrings;
   colorstrings << "#";
   t_uint32 bgcolor =
@@ -487,8 +574,12 @@ void mpv_player::set_background() {
                << (unsigned)GetGValue(bgcolor);
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
                << (unsigned)GetBValue(bgcolor);
-  std::string colorstring = colorstrings.str();
-  set_option_string("background", colorstring.c_str());
+  return colorstrings.str();
+}
+
+void mpv_player::set_background() {
+  if (mpv_loaded)
+    queue_command({"set", "background", get_background_color()});
 }
 
 bool mpv_player::mpv_init() {
@@ -518,7 +609,8 @@ bool mpv_player::mpv_init() {
     set_option_string("load-scripts", "yes");
     set_option_string("alpha", "blend");
 
-    set_background();
+    const std::string background = get_background_color();
+    set_option_string("background", background.c_str());
 
     if (cfg_mpv_logfile) {
       path.add_filename("mpv.log");
@@ -633,7 +725,9 @@ bool mpv_player::mpv_init() {
     if (libmpv::get()->initialize(mpv_handle) != 0) {
       libmpv::get()->terminate_destroy(mpv_handle);
       mpv_handle = NULL;
+      mpv_loaded = false;
     } else {
+      mpv_loaded = true;
       event_listener = std::thread([this]() {
         if (!mpv_handle) {
           FB2K_console_formatter()
@@ -641,14 +735,14 @@ bool mpv_player::mpv_init() {
           return;
         }
 
+        bool event_idle = true;
+        bool event_seeking = false;
+        std::string event_path;
         while (!event_listener_stop) {
           libmpv::mpv_event* event = libmpv::get()->wait_event(mpv_handle, -1);
           if (event_listener_stop) return;
 
-          {
-            std::lock_guard<std::mutex> lock(mutex);
-
-            if (event->event_id == libmpv::MPV_EVENT_CLIENT_MESSAGE) {
+          if (event->event_id == libmpv::MPV_EVENT_CLIENT_MESSAGE) {
               libmpv::mpv_event_client_message* event_message =
                   (libmpv::mpv_event_client_message*)event->data;
               if (event_message->num_args > 1 &&
@@ -673,7 +767,12 @@ bool mpv_player::mpv_init() {
                   for (int i = 3; i < event_message->num_args; i++) {
                     menu_cmd << " " << event_message->args[i];
                   }
-                  metadb_handle_ptr display_item = current_display_item;
+                  metadb_handle_ptr display_item;
+                  {
+                    std::lock_guard<std::mutex> display_lock(
+                        display_item_mutex);
+                    display_item = current_display_item;
+                  }
                   std::weak_ptr<void> lifetime(lifetime_token);
                   fb2k::inMainThread([lifetime, menu_cmd, display_item]() {
                     if (lifetime.expired()) return;
@@ -700,12 +799,20 @@ bool mpv_player::mpv_init() {
                   for (int i = 4; i < event_message->num_args; i++) {
                     format << " " << event_message->args[i];
                   }
-                  static titleformat_object::ptr object;
-                  if (titleformat_compiler::get()->compile(object, format)) {
+                  std::weak_ptr<void> lifetime(lifetime_token);
+                  fb2k::inMainThread([lifetime, id, format]() {
+                    if (lifetime.expired() || !g_player) return;
+                    titleformat_object::ptr object;
+                    if (!titleformat_compiler::get()->compile(object, format))
+                      return;
                     titleformat_subscription sub = {id, object};
-                    titleformat_subscriptions.push_back(sub);
-                    publish_titleformatting_subscriptions();
-                  }
+                    {
+                      std::lock_guard<std::mutex> titleformat_lock(
+                          g_player->titleformat_mutex);
+                      g_player->titleformat_subscriptions.push_back(sub);
+                    }
+                    g_player->publish_titleformatting_subscriptions();
+                  });
                 }
               }
             } else if (event->event_id == libmpv::MPV_EVENT_SHUTDOWN) {
@@ -716,20 +823,35 @@ bool mpv_player::mpv_init() {
                   (libmpv::mpv_event_property*)event->data;
 
               if (event->reply_userdata == time_pos_userdata &&
-                  event_property->format == libmpv::MPV_FORMAT_DOUBLE) {
+                  event_property->format == libmpv::MPV_FORMAT_DOUBLE &&
+                  event_property->data != nullptr) {
                 mpv_timepos = *(double*)(event_property->data);
               } else if (event->reply_userdata == seeking_userdata ||
-                         event->reply_userdata == idle_active_userdata ||
-                         event->reply_userdata == path_userdata) {
-                bool idle = get_bool("idle-active");
-                pfc::string8 path = get_string("path");
-                bool showing_art = path.equals("artwork://");
-                bool seeking = get_bool("seeking");
+                          event->reply_userdata == idle_active_userdata ||
+                          event->reply_userdata == path_userdata) {
+                if (event->reply_userdata == seeking_userdata &&
+                    event_property->format == libmpv::MPV_FORMAT_FLAG &&
+                    event_property->data != nullptr) {
+                  event_seeking = *(int*)(event_property->data) != 0;
+                } else if (event->reply_userdata == idle_active_userdata &&
+                           event_property->format == libmpv::MPV_FORMAT_FLAG &&
+                           event_property->data != nullptr) {
+                  event_idle = *(int*)(event_property->data) != 0;
+                } else if (event->reply_userdata == path_userdata &&
+                           event_property->format == libmpv::MPV_FORMAT_STRING) {
+                  const char* value = event_property->data == nullptr
+                                          ? nullptr
+                                          : *(char**)event_property->data;
+                  event_path = value == nullptr ? "" : value;
+                }
+
+                bool showing_art = event_path == "artwork://";
 
                 state new_state =
                     showing_art ? state::Artwork
-                                : seeking ? state::Seeking
-                                          : idle ? state::Idle : state::Active;
+                                : event_seeking
+                                      ? state::Seeking
+                                      : event_idle ? state::Idle : state::Active;
 
                 if (mpv_state == state::Preload && new_state == state::Idle) {
                   new_state = state::Preload;
@@ -737,13 +859,23 @@ bool mpv_player::mpv_init() {
 
                 if (mpv_state != new_state) {
                   if (new_state == state::Idle && mpv_state != state::Artwork) {
-                    request_artwork();
+                    std::weak_ptr<void> lifetime(lifetime_token);
+                    fb2k::inMainThread([lifetime]() {
+                      if (lifetime.expired() || !g_player ||
+                          g_player->mpv_state != state::Idle)
+                        return;
+                      request_artwork();
+                    });
                   }
 
                   set_state(new_state);
+                  if (new_state == state::Active) {
+                    task refresh;
+                    refresh.type = task_type::RefreshMediaInfo;
+                    queue_task(std::move(refresh));
+                  }
                 }
               }
-            }
           }
 
           control_thread_cv.notify_all();
@@ -786,6 +918,7 @@ bool mpv_player::mpv_init() {
                 name.compare("albumart") != 0 &&
                 name.compare("sw-fast") != 0 &&
                 name.compare("opengl-hq") != 0) {
+              std::lock_guard<std::mutex> lock(published_state_mutex);
               profiles.push_back(pfc::string8(name.c_str()));
             }
           }
@@ -796,6 +929,13 @@ bool mpv_player::mpv_init() {
           }
         }
       }
+
+      const char* osc_cmd[] = {
+          "script-message", "foobar", "osc-enabled-changed",
+          cfg_osc && container->is_osc_enabled() ? "yes" : "no", nullptr};
+      command(osc_cmd);
+      set_property_string("fullscreen",
+                          container->is_fullscreen() ? "yes" : "no");
     }
   }
 
@@ -803,21 +943,37 @@ bool mpv_player::mpv_init() {
 }
 
 void mpv_player::publish_titleformatting_subscriptions() {
-  for (const auto& sub : titleformat_subscriptions) {
+  std::vector<titleformat_subscription> subscriptions;
+  metadb_handle_ptr display_item;
+  {
+    std::lock_guard<std::mutex> lock(titleformat_mutex);
+    subscriptions = titleformat_subscriptions;
+  }
+  {
+    std::lock_guard<std::mutex> lock(display_item_mutex);
+    display_item = current_display_item;
+  }
+
+  for (const auto& sub : subscriptions) {
     pfc::string8 format;
-    if (current_display_item.is_valid()) {
-      current_display_item->format_title(NULL, format, sub.object, NULL);
+    if (display_item.is_valid()) {
+      display_item->format_title(NULL, format, sub.object, NULL);
     }
 
     const char* cmd[] = {"script-message", "foobar",       "titleformat",
                          sub.id.c_str(),   format.c_str(), NULL};
-    command(cmd);
+    queue_command({cmd[0], cmd[1], cmd[2], cmd[3], cmd[4]});
   }
 }
 
 void mpv_player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
+  metadb_handle_ptr display_item;
+  {
+    std::lock_guard<std::mutex> lock(display_item_mutex);
+    display_item = current_display_item;
+  }
   if (metadb_handle_list_helper::bsearch_by_pointer(
-          changed, current_display_item) < UINT_MAX) {
+          changed, display_item) < UINT_MAX) {
     publish_titleformatting_subscriptions();
 
     if (mpv_state == state::Artwork) {
@@ -827,7 +983,10 @@ void mpv_player::on_changed_sorted(metadb_handle_list_cref changed, bool) {
 }
 
 void mpv_player::set_display_item(metadb_handle_ptr item) {
-  current_display_item = item;
+  {
+    std::lock_guard<std::mutex> lock(display_item_mutex);
+    current_display_item = item;
+  }
   publish_titleformatting_subscriptions();
 }
 
@@ -840,9 +999,7 @@ void mpv_player::on_selection_changed(metadb_handle_list_cref p_selection) {
 
 void mpv_player::on_volume_change(float new_vol) {
   std::string vol = std::to_string(VolumeMap::DBToSlider(new_vol));
-  const char* cmd[] = {"script-message", "foobar", "volume-changed",
-                       vol.c_str(), NULL};
-  command(cmd);
+  queue_command({"script-message", "foobar", "volume-changed", vol});
 }
 
 void mpv_player::on_playback_starting(play_control::t_track_command p_command,
@@ -858,11 +1015,6 @@ void mpv_player::on_playback_new_track(metadb_handle_ptr p_track) {
   update();
 
   timing_info::refresh(false);
-
-  {
-    std::lock_guard<std::mutex> lock(sync_lock);
-    last_sync_time = 0;
-  }
 
   task t;
   t.type = task_type::Play;
@@ -884,11 +1036,6 @@ void mpv_player::on_playback_seek(double p_time) {
 
   timing_info::refresh(true);
 
-  {
-    std::lock_guard<std::mutex> lock(sync_lock);
-    last_sync_time = (int)floor(p_time);
-  }
-
   task t;
   t.type = task_type::Seek;
   t.time = p_time;
@@ -905,7 +1052,11 @@ void mpv_player::on_playback_pause(bool p_state) {
 void mpv_player::on_playback_time(double p_time) {
   update_title();
   update();
-  sync(p_time);
+  task t;
+  t.type = task_type::Sync;
+  t.time = p_time;
+  t.flag = playback_control::get()->is_paused();
+  queue_task(std::move(t));
 }
 
 void mpv_player::play(metadb_handle_ptr metadb, double time) {
@@ -944,6 +1095,7 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
   }
 
   if (play_this) {
+    if (time == 0.0) last_sync_time = 0;
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Playing URI " << filename;
     }
@@ -990,13 +1142,16 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       }
     }
 
+    metadb_handle_ptr display_item;
+    {
+      std::lock_guard<std::mutex> lock(display_item_mutex);
+      display_item = current_display_item;
+    }
     bool next_chapter =
-        mpv_state == state::Active && current_display_item.is_valid() &&
-        time == 0.0 && current_display_item->get_path() && metadb->get_path() &&
-        uStringCompare(current_display_item->get_path(), metadb->get_path()) ==
-            0 &&
-        current_display_item->get_subsong_index() + 1 ==
-            metadb->get_subsong_index();
+        mpv_state == state::Active && display_item.is_valid() && time == 0.0 &&
+        display_item->get_path() && metadb->get_path() &&
+        uStringCompare(display_item->get_path(), metadb->get_path()) == 0 &&
+        display_item->get_subsong_index() + 1 == metadb->get_subsong_index();
 
     // reset speed
     double unity = 1.0;
@@ -1034,9 +1189,8 @@ void mpv_player::play(metadb_handle_ptr metadb, double time) {
       if (lifetime.expired() || !g_player) return;
       std::string vol = std::to_string(
           VolumeMap::DBToSlider(playback_control::get()->get_volume()));
-      const char* osc_cmd_3[] = {"script-message", "foobar", "volume-changed",
-                                 vol.c_str(), NULL};
-      g_player->command(osc_cmd_3);
+      g_player->queue_command(
+          {"script-message", "foobar", "volume-changed", vol});
     });
 
     if (!next_chapter) {
@@ -1114,6 +1268,7 @@ void mpv_player::seek(double time, bool is_hard_sync) {
 
   last_mpv_seek = time_base + time + seek_offset;
   last_hard_sync = is_hard_sync ? time + seek_offset : -99;
+  if (!is_hard_sync) last_sync_time = static_cast<long>(std::floor(time));
   // reset speed
   double unity = 1.0;
   if (set_option("speed", libmpv::MPV_FORMAT_DOUBLE, &unity) < 0 &&
@@ -1178,8 +1333,7 @@ void mpv_player::seek(double time, bool is_hard_sync) {
   }
 }
 
-void mpv_player::sync(double debug_time) {
-  std::lock_guard<std::mutex> lock(sync_lock);
+void mpv_player::sync(double debug_time, bool paused) {
   last_sync_time = std::lround(debug_time);
 
   if (!get_bool("seekable") && mpv_state == state::Active) {
@@ -1191,8 +1345,7 @@ void mpv_player::sync(double debug_time) {
   }
 
   double mpv_time = -1.0;
-  if (!mpv_handle || !enabled || mpv_state != state::Active ||
-      playback_control::get()->is_paused() ||
+  if (!mpv_handle || !enabled || mpv_state != state::Active || paused ||
       get_property("time-pos", libmpv::MPV_FORMAT_DOUBLE, &mpv_time) < 0) {
     return;
   }
@@ -1495,8 +1648,6 @@ void mpv_player::initial_sync() {
     return;
   } else if (desync > 0) {
     // maybe soft sync
-    std::lock_guard<std::mutex> lock(sync_lock);
-
     double time_before_next_sync = last_sync_time + 1.0 - fb_time;
     // prefer to wait if next sync is soon instead of setting speed extremely
     // high
@@ -1534,38 +1685,45 @@ void mpv_player::initial_sync() {
 }
 
 int mpv_player::set_option_string(const char* name, const char* data) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->set_option_string(mpv_handle, name, data);
 }
 
 int mpv_player::set_property_string(const char* name, const char* data) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->set_property_string(mpv_handle, name, data);
 }
 
 int mpv_player::command_string(const char* args) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->command_string(mpv_handle, args);
 }
 
 int mpv_player::get_property(const char* name, libmpv::mpv_format format,
                              void* data) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->get_property(mpv_handle, name, format, data);
 }
 
 int mpv_player::command(const char** args) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->command(mpv_handle, args);
 }
 
 int mpv_player::set_option(const char* name, libmpv::mpv_format format,
                            void* data) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return libmpv::MPV_ERROR_UNINITIALIZED;
   return libmpv::get()->set_option(mpv_handle, name, format, data);
 }
 
 pfc::string8 mpv_player::get_string(const char* name) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   pfc::string8 result;
   if (!mpv_handle) return result;
 
@@ -1583,6 +1741,7 @@ pfc::string8 mpv_player::get_string(const char* name) {
 }
 
 bool mpv_player::get_bool(const char* name) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return false;
   int flag = 0;
   libmpv::get()->get_property(mpv_handle, name, libmpv::MPV_FORMAT_FLAG, &flag);
@@ -1590,6 +1749,7 @@ bool mpv_player::get_bool(const char* name) {
 }
 
 double mpv_player::get_double(const char* name) {
+  std::lock_guard<std::recursive_mutex> lock(mpv_mutex);
   if (!mpv_handle) return 0;
   double num = 0;
   libmpv::get()->get_property(mpv_handle, name, libmpv::MPV_FORMAT_DOUBLE,
