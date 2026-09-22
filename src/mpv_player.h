@@ -99,7 +99,7 @@ class mpv_player : play_callback_impl_base,
   std::vector<pfc::string8> profiles;
 
   // utils
-  const char* get_string(const char* name);
+  pfc::string8 get_string(const char* name);
   bool get_bool(const char* name);
   double get_double(const char* name);
   int command_string(const char* args);

@@ -351,14 +351,11 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
-  const char* old_value = "1000";
-  if (mpv_handle) {
-    old_value =
-        libmpv::get()->get_property_string(mpv_handle, "cursor-autohide");
-  }
+  pfc::string8 old_value = mpv_handle ? get_string("cursor-autohide") : "1000";
+  if (old_value.is_empty()) old_value = "1000";
   set_property_string("cursor-autohide", "no");
   container->on_context_menu(wnd, point);
-  set_property_string("cursor-autohide", old_value);
+  set_property_string("cursor-autohide", old_value.c_str());
 }
 
 void mpv_player::on_destroy() { command_string("quit"); }
@@ -717,9 +714,8 @@ bool mpv_player::mpv_init() {
                          event->reply_userdata == idle_active_userdata ||
                          event->reply_userdata == path_userdata) {
                 bool idle = get_bool("idle-active");
-                const char* path = get_string("path");
-                bool showing_art =
-                    path != NULL && strcmp(path, "artwork://") == 0;
+                pfc::string8 path = get_string("path");
+                bool showing_art = path.equals("artwork://");
                 bool seeking = get_bool("seeking");
 
                 state new_state =
@@ -762,22 +758,34 @@ bool mpv_player::mpv_init() {
       }
 
       // load profiles list
-      char* profiles_str =
-          libmpv::get()->get_property_string(mpv_handle, "profile-list");
-
-      auto profiles_json = nlohmann::json::parse(profiles_str);
-      for (auto it = profiles_json.rbegin(); it != profiles_json.rend(); ++it) {
-        std::string name = (*it)["name"];
-        auto profilecond = (*it)["profile-cond"];
-        // ignore built-in profiles; list might change in future
-        if (profilecond.is_null() && name.compare("default") != 0 &&
-            name.compare("gpu-hq") != 0 && name.compare("low-latency") != 0 &&
-            name.compare("pseudo-gui") != 0 &&
-            name.compare("builtin-pseudo-gui") != 0 &&
-            name.compare("libmpv") != 0 && name.compare("encoding") != 0 &&
-            name.compare("video") != 0 && name.compare("albumart") != 0 &&
-            name.compare("sw-fast") != 0 && name.compare("opengl-hq") != 0) {
-          profiles.push_back(pfc::string8(name.c_str()));
+      pfc::string8 profiles_str = get_string("profile-list");
+      if (!profiles_str.is_empty()) {
+        try {
+          auto profiles_json = nlohmann::json::parse(profiles_str.c_str());
+          for (auto it = profiles_json.rbegin(); it != profiles_json.rend();
+               ++it) {
+            std::string name = (*it)["name"];
+            auto profilecond = (*it)["profile-cond"];
+            // ignore built-in profiles; list might change in future
+            if (profilecond.is_null() && name.compare("default") != 0 &&
+                name.compare("gpu-hq") != 0 &&
+                name.compare("low-latency") != 0 &&
+                name.compare("pseudo-gui") != 0 &&
+                name.compare("builtin-pseudo-gui") != 0 &&
+                name.compare("libmpv") != 0 &&
+                name.compare("encoding") != 0 &&
+                name.compare("video") != 0 &&
+                name.compare("albumart") != 0 &&
+                name.compare("sw-fast") != 0 &&
+                name.compare("opengl-hq") != 0) {
+              profiles.push_back(pfc::string8(name.c_str()));
+            }
+          }
+        } catch (const std::exception& e) {
+          if (cfg_logging) {
+            FB2K_console_formatter()
+                << "mpv: Could not read profile list: " << e.what();
+          }
         }
       }
     }
@@ -1533,11 +1541,21 @@ int mpv_player::set_option(const char* name, libmpv::mpv_format format,
   return libmpv::get()->set_option(mpv_handle, name, format, data);
 }
 
-const char* mpv_player::get_string(const char* name) {
-  if (!mpv_handle) return "";
-  const char* ret = libmpv::get()->get_property_string(mpv_handle, name);
-  if (ret == NULL) return "";
-  return ret;
+pfc::string8 mpv_player::get_string(const char* name) {
+  pfc::string8 result;
+  if (!mpv_handle) return result;
+
+  char* value = libmpv::get()->get_property_string(mpv_handle, name);
+  if (value != nullptr) {
+    try {
+      result = value;
+    } catch (...) {
+      libmpv::get()->free(value);
+      throw;
+    }
+    libmpv::get()->free(value);
+  }
+  return result;
 }
 
 bool mpv_player::get_bool(const char* name) {
