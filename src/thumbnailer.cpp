@@ -187,7 +187,7 @@ static void queue_cache_maintenance(cache_maintenance_task task) {
 
 class db_loader : public initquit {
  public:
-  ~db_loader() override {
+  ~db_loader() {
     stop_cache_worker();
   }
 

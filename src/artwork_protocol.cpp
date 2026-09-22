@@ -221,7 +221,7 @@ static int64_t artworkreader_size(void* cookie) {
       return libmpv::MPV_ERROR_GENERIC;
 
     const auto size = stream->data->get_size();
-    if (size > static_cast<t_size>(std::numeric_limits<int64_t>::max()))
+    if (size > static_cast<t_size>((std::numeric_limits<int64_t>::max)()))
       return libmpv::MPV_ERROR_UNSUPPORTED;
     return static_cast<int64_t>(size);
   } catch (...) {
@@ -241,10 +241,10 @@ static int64_t artworkreader_read(void* cookie, char* buf, uint64_t nbytes) {
     const uint64_t size = stream->data->get_size();
     if (stream->cursor > size) return libmpv::MPV_ERROR_GENERIC;
 
-    const uint64_t to_read = std::min(
+    const uint64_t to_read = (std::min)(
         {size - stream->cursor, nbytes,
-         static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
-         static_cast<uint64_t>(std::numeric_limits<int64_t>::max())});
+         static_cast<uint64_t>((std::numeric_limits<size_t>::max)()),
+         static_cast<uint64_t>((std::numeric_limits<int64_t>::max)())});
     if (to_read != 0) {
       memcpy(buf, static_cast<const BYTE*>(stream->data->get_ptr()) +
                       static_cast<size_t>(stream->cursor),
