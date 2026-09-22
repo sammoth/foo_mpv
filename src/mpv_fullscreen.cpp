@@ -102,6 +102,7 @@ struct CMpvFullscreenWindow : public CWindowImpl<CMpvFullscreenWindow>,
     switch (wp) {
       case VK_ESCAPE:
         DestroyWindow();
+        return;
       default:
         mpv::mpv_player::send_message(WM_KEYDOWN, wp, MAKELPARAM(l, h));
         break;

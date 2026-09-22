@@ -70,17 +70,20 @@ struct monitor_result {
 static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor,
                                      LPRECT lprcMonitor, LPARAM dwData) {
   monitor_result* res = reinterpret_cast<monitor_result*>(dwData);
-  if ((*res).count == 0 && (*res).hmon == NULL) {
-    (*res).hmon = hMonitor;
+  if (res->count == 0) {
+    res->hmon = hMonitor;
+    return FALSE;
   }
-  (*res).count = (*res).count - 1;
-  return true;
+  --res->count;
+  return TRUE;
 }
 
 void mpv_player::fullscreen_on_monitor(int monitor) {
+  if (monitor < 0) return;
+
   monitor_result r;
   r.hmon = NULL;
-  r.count = monitor;
+  r.count = static_cast<unsigned>(monitor);
   EnumDisplayMonitors(NULL, NULL, MonitorEnumProc,
                       reinterpret_cast<LPARAM>(&r));
   if (r.hmon != NULL) {

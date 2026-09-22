@@ -158,7 +158,7 @@ struct CMpvDuiWindow : public ui_element_instance,
 
  private:
   ui_element_config::ptr m_config;
-  bool osc_enabled;
+  bool osc_enabled = true;
 
  protected:
   const ui_element_instance_callback_ptr m_callback;

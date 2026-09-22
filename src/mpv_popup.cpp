@@ -87,6 +87,7 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
     switch (wp) {
       case VK_ESCAPE:
         DestroyWindow();
+        return;
       default:
         mpv::mpv_player::send_message(WM_KEYDOWN, wp, MAKELPARAM(l, h));
         break;
@@ -137,8 +138,8 @@ struct CMpvPopupWindow : public CWindowImpl<CMpvPopupWindow>,
 
     RECT rect = cfg_mpv_popup_rect;
     if (standard_config_objects::query_remember_window_positions() &&
-            rect.bottom != 0 ||
-        rect.right != 0 || rect.left != 0 || rect.top != 0) {
+        (rect.bottom != 0 || rect.right != 0 || rect.left != 0 ||
+         rect.top != 0)) {
       SetWindowPos(NULL, &rect, SWP_NOZORDER | SWP_FRAMECHANGED);
     } else {
       MONITORINFO monitor_info;
