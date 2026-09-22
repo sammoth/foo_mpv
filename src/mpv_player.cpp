@@ -351,7 +351,8 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
 }
 
 void mpv_player::on_context_menu(CWindow wnd, CPoint point) {
-  pfc::string8 old_value = mpv_handle ? get_string("cursor-autohide") : "1000";
+  pfc::string8 old_value = "1000";
+  if (mpv_handle) old_value = get_string("cursor-autohide");
   if (old_value.is_empty()) old_value = "1000";
   set_property_string("cursor-autohide", "no");
   container->on_context_menu(wnd, point);
