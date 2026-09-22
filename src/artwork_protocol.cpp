@@ -2,6 +2,9 @@
 // PCH ^
 
 #include <atomic>
+#include <algorithm>
+#include <limits>
+#include <memory>
 #include <mutex>
 
 #include "artwork_protocol.h"
@@ -15,7 +18,7 @@ extern advconfig_checkbox_factory cfg_logging;
 
 struct artwork_request {
   artwork_request(metadb_handle_list_cref p_items, intptr_t newid)
-      : items(p_items), art_data(), cursor(0), loaded(false), id(newid) {
+      : items(p_items), art_data(), loaded(false), id(newid) {
     if (cfg_logging) {
       FB2K_console_formatter() << "mpv: Artwork request " << newid;
     }
@@ -23,8 +26,17 @@ struct artwork_request {
   metadb_handle_list items;
   album_art_data_ptr art_data = NULL;
   bool loaded;
-  size_t cursor;
   intptr_t id;
+};
+
+struct artwork_stream {
+  artwork_stream(album_art_data_ptr p_data, intptr_t p_request_id)
+      : data(std::move(p_data)), request_id(p_request_id) {}
+
+  album_art_data_ptr data;
+  uint64_t cursor = 0;
+  intptr_t request_id;
+  std::mutex mutex;
 };
 
 static std::unique_ptr<artwork_request> g_request;
@@ -33,7 +45,6 @@ static std::unique_ptr<abort_callback_impl> abort_loading;
 static std::thread artwork_loader;
 static std::condition_variable cv;
 static std::atomic_bool artwork_loader_terminate = false;
-static std::atomic_bool load;
 
 static abort_callback_impl& get_abort_loading() {
   if (!abort_loading) {
@@ -53,6 +64,7 @@ bool artwork_loaded() {
 }
 
 metadb_handle_ptr single_artwork_item() {
+  std::lock_guard<std::mutex> lock(mutex);
   if (g_request && g_request->items.get_count() == 1) {
     return g_request->items[0];
   } else {
@@ -203,86 +215,111 @@ class artwork_register : public initquit {
 static initquit_factory_t<artwork_register> g_np_register;
 
 static int64_t artworkreader_size(void* cookie) {
-  std::lock_guard<std::mutex> lock(mutex);
-  const intptr_t request_id = reinterpret_cast<intptr_t>(cookie);
-  if (!g_request || request_id != g_request->id) {
-    if (cfg_logging) {
-      FB2K_console_formatter()
-          << "mpv: Stale artwork reference [size, " << request_id << "]";
-    }
+  try {
+    const auto* stream = static_cast<artwork_stream*>(cookie);
+    if (stream == nullptr || stream->data.is_empty())
+      return libmpv::MPV_ERROR_GENERIC;
+
+    const auto size = stream->data->get_size();
+    if (size > static_cast<t_size>(std::numeric_limits<int64_t>::max()))
+      return libmpv::MPV_ERROR_UNSUPPORTED;
+    return static_cast<int64_t>(size);
+  } catch (...) {
     return libmpv::MPV_ERROR_GENERIC;
   }
-  if (g_request->art_data.is_empty()) {
-    return 0;
-  }
-  return g_request->art_data->get_size();
 }
 
 static int64_t artworkreader_read(void* cookie, char* buf, uint64_t nbytes) {
-  std::lock_guard<std::mutex> lock(mutex);
-  const intptr_t request_id = reinterpret_cast<intptr_t>(cookie);
-  if (!g_request || request_id != g_request->id) {
-    if (cfg_logging) {
-      FB2K_console_formatter()
-          << "mpv: Stale artwork reference [read, " << request_id << "]";
+  try {
+    auto* stream = static_cast<artwork_stream*>(cookie);
+    if (stream == nullptr || stream->data.is_empty() ||
+        (buf == nullptr && nbytes != 0)) {
+      return libmpv::MPV_ERROR_GENERIC;
     }
+
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    const uint64_t size = stream->data->get_size();
+    if (stream->cursor > size) return libmpv::MPV_ERROR_GENERIC;
+
+    const uint64_t to_read = std::min(
+        {size - stream->cursor, nbytes,
+         static_cast<uint64_t>(std::numeric_limits<size_t>::max()),
+         static_cast<uint64_t>(std::numeric_limits<int64_t>::max())});
+    if (to_read != 0) {
+      memcpy(buf, static_cast<const BYTE*>(stream->data->get_ptr()) +
+                      static_cast<size_t>(stream->cursor),
+             static_cast<size_t>(to_read));
+      stream->cursor += to_read;
+    }
+    return static_cast<int64_t>(to_read);
+  } catch (...) {
     return libmpv::MPV_ERROR_GENERIC;
   }
-  if (g_request->art_data.is_empty()) {
-    return libmpv::MPV_ERROR_GENERIC;
-  }
-  t_size to_read = (t_size)min(
-      (uint64_t)g_request->art_data->get_size() - (uint64_t)g_request->cursor,
-      nbytes);
-  memcpy(buf, (BYTE*)g_request->art_data->get_ptr() + g_request->cursor,
-         to_read);
-  g_request->cursor += to_read;
-  return to_read;
 }
 
 static int64_t artworkreader_seek(void* cookie, int64_t offset) {
-  std::lock_guard<std::mutex> lock(mutex);
-  const intptr_t request_id = reinterpret_cast<intptr_t>(cookie);
-  if (!g_request || request_id != g_request->id) {
-    if (cfg_logging) {
-      FB2K_console_formatter()
-          << "mpv: Stale artwork reference [size, " << request_id << "]";
+  try {
+    auto* stream = static_cast<artwork_stream*>(cookie);
+    if (stream == nullptr || stream->data.is_empty())
+      return libmpv::MPV_ERROR_GENERIC;
+
+    std::lock_guard<std::mutex> lock(stream->mutex);
+    if (offset < 0 ||
+        static_cast<uint64_t>(offset) > stream->data->get_size()) {
+      return libmpv::MPV_ERROR_UNSUPPORTED;
     }
+    stream->cursor = static_cast<uint64_t>(offset);
+    return offset;
+  } catch (...) {
     return libmpv::MPV_ERROR_GENERIC;
   }
-  if (g_request->art_data.is_empty()) {
-    return libmpv::MPV_ERROR_GENERIC;
-  }
-  if (offset < 0 || static_cast<uint64_t>(offset) >
-                        g_request->art_data->get_size()) {
-    return libmpv::MPV_ERROR_UNSUPPORTED;
-  }
-  g_request->cursor = (t_size)offset;
-  return g_request->cursor;
 }
 
-static void artworkreader_close(void* cookie) {}
+static void artworkreader_close(void* cookie) {
+  try {
+    delete static_cast<artwork_stream*>(cookie);
+  } catch (...) {
+    // Never allow C++ exceptions to cross the libmpv callback boundary.
+  }
+}
 
 int artwork_protocol_open(void* user_data, char* uri,
                           libmpv::mpv_stream_cb_info* info) {
-  {
-    std::lock_guard<std::mutex> lock(mutex);
-    if (!g_request || g_request->art_data.is_empty()) {
-      if (cfg_logging) {
-        FB2K_console_formatter() << "mpv: Can't open artwork - missing";
+  if (info == nullptr) return libmpv::MPV_ERROR_INVALID_PARAMETER;
+
+  try {
+    album_art_data_ptr data;
+    intptr_t request_id;
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (!g_request || g_request->art_data.is_empty()) {
+        if (cfg_logging) {
+          FB2K_console_formatter() << "mpv: Can't open artwork - missing";
+        }
+        return libmpv::MPV_ERROR_NOTHING_TO_PLAY;
       }
-      return libmpv::MPV_ERROR_NOTHING_TO_PLAY;
+      data = g_request->art_data;
+      request_id = g_request->id;
     }
-    info->cookie = reinterpret_cast<void*>(g_request->id);
+
+    auto stream =
+        std::make_unique<artwork_stream>(std::move(data), request_id);
     if (cfg_logging) {
       FB2K_console_formatter()
-          << "mpv: Opening artwork stream [" << g_request->id << "]";
+          << "mpv: Opening artwork stream [" << request_id << "]";
     }
+
+    info->cookie = stream.release();
+    info->close_fn = artworkreader_close;
+    info->size_fn = artworkreader_size;
+    info->read_fn = artworkreader_read;
+    info->seek_fn = artworkreader_seek;
+    info->cancel_fn = nullptr;
+    return 0;
+  } catch (const std::bad_alloc&) {
+    return libmpv::MPV_ERROR_NOMEM;
+  } catch (...) {
+    return libmpv::MPV_ERROR_GENERIC;
   }
-  info->close_fn = artworkreader_close;
-  info->size_fn = artworkreader_size;
-  info->read_fn = artworkreader_read;
-  info->seek_fn = artworkreader_seek;
-  return 0;
 }
 }  // namespace mpv
