@@ -244,6 +244,7 @@ struct CThumbnailChooserWindow : public CDialogImpl<CThumbnailChooserWindow> {
     set_option_string("ytdl", "no");
     set_option_string("load-stats-overlay", "no");
     set_option_string("load-osd-console", "no");
+    set_option_string("stop-screensaver", "no");
 
     std::stringstream time_sstring;
     time_sstring.setf(std::ios::fixed);

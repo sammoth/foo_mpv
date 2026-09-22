@@ -631,6 +631,7 @@ bool mpv_player::mpv_init() {
 
     // input
     set_option_string("window-dragging", "no");
+    set_option_string("stop-screensaver", "no");
 
     // foobar plays the audio
     set_option_string("audio", "no");
