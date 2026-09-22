@@ -466,7 +466,7 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
                               public preferences_page_instance {
  public:
   CMpvPlayerPreferences(preferences_page_callback::ptr callback)
-      : m_callback(callback), button_brush(CreateSolidBrush(cfg_bg_color)) {}
+      : m_callback(callback) {}
   ~CMpvPlayerPreferences() {
     if (sep_font != NULL) DeleteObject(sep_font);
   }
@@ -503,6 +503,7 @@ class CMpvPlayerPreferences : public CDialogImpl<CMpvPlayerPreferences>,
   bool HasChanged();
   void OnChanged();
   CBrush button_brush;
+  void set_button_brush(COLORREF color);
   HBRUSH on_color_button(HDC wp, HWND lp);
   bool dirty = false;
 
@@ -522,14 +523,17 @@ HBRUSH CMpvPlayerPreferences::on_color_button(HDC wp, HWND lp) {
   return NULL;
 }
 
+void CMpvPlayerPreferences::set_button_brush(COLORREF color) {
+  if (!button_brush.IsNull()) button_brush.DeleteObject();
+  button_brush.CreateSolidBrush(color);
+}
+
 BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
 
-  HDC hdc = GetDC();
-  if (hdc != NULL) {
-    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    header_size = (header_size * dpi) / 72;
-  }
+  CClientDC dc(m_hWnd);
+  UINT dpi = dc.GetDeviceCaps(LOGPIXELSY);
+  header_size = (header_size * dpi) / 72;
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                  DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -543,7 +547,7 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
                   cfg_video_pattern.get().c_str());
 
   bg_col = cfg_bg_color.get_value();
-  button_brush = CreateSolidBrush(bg_col);
+  set_button_brush(bg_col);
 
   CheckDlgButton(IDC_CHECK_VIDEO_FILTER, cfg_video_filter);
   CheckDlgButton(IDC_CHECK_ARTWORK, cfg_artwork);
@@ -600,7 +604,7 @@ void CMpvPlayerPreferences::OnBgClick(UINT, int, CWindow) {
 
   if (ChooseColor(&cc) == TRUE) {
     bg_col = cc.rgbResult;
-    button_brush = CreateSolidBrush(bg_col);
+    set_button_brush(bg_col);
     dirty = true;
     OnChanged();
     Invalidate();
@@ -626,7 +630,7 @@ t_uint32 CMpvPlayerPreferences::get_state() {
 
 void CMpvPlayerPreferences::reset() {
   bg_col = 0;
-  button_brush = CreateSolidBrush(bg_col);
+  set_button_brush(bg_col);
 
   uSetDlgItemText(m_hWnd, IDC_EDIT_POPUP, cfg_popup_titleformat_default);
   uSetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN, cfg_video_pattern_default);
@@ -749,11 +753,9 @@ class CMpvThumbnailPreferences : public CDialogImpl<CMpvThumbnailPreferences>,
 BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
 
-  HDC hdc = GetDC();
-  if (hdc != NULL) {
-    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    header_size = (header_size * dpi) / 72;
-  }
+  CClientDC dc(m_hWnd);
+  UINT dpi = dc.GetDeviceCaps(LOGPIXELSY);
+  header_size = (header_size * dpi) / 72;
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                  DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -955,11 +957,9 @@ class CMpvOscPreferences : public CDialogImpl<CMpvOscPreferences>,
 BOOL CMpvOscPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
 
-  HDC hdc = GetDC();
-  if (hdc != NULL) {
-    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    header_size = (header_size * dpi) / 72;
-  }
+  CClientDC dc(m_hWnd);
+  UINT dpi = dc.GetDeviceCaps(LOGPIXELSY);
+  header_size = (header_size * dpi) / 72;
   sep_font =
       CreateFont(header_size, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                  DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS,
@@ -1125,12 +1125,10 @@ BOOL CMpvConfPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
   UINT text_size = 11;
 
-  HDC hdc = GetDC();
-  if (hdc != NULL) {
-    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    text_size = (text_size * dpi) / 72;
-    header_size = (header_size * dpi) / 72;
-  }
+  CClientDC dc(m_hWnd);
+  UINT dpi = dc.GetDeviceCaps(LOGPIXELSY);
+  text_size = (text_size * dpi) / 72;
+  header_size = (header_size * dpi) / 72;
 
   CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT1));
 
@@ -1381,12 +1379,10 @@ BOOL CMpvInputPreferences::OnInitDialog(CWindow, LPARAM) {
   UINT header_size = pref_page_header_font_size;
   UINT text_size = 11;
 
-  HDC hdc = GetDC();
-  if (hdc != NULL) {
-    UINT dpi = GetDeviceCaps(hdc, LOGPIXELSY);
-    text_size = (text_size * dpi) / 72;
-    header_size = (header_size * dpi) / 72;
-  }
+  CClientDC dc(m_hWnd);
+  UINT dpi = dc.GetDeviceCaps(LOGPIXELSY);
+  text_size = (text_size * dpi) / 72;
+  header_size = (header_size * dpi) / 72;
 
   CEdit edit = ((CEdit)GetDlgItem(IDC_EDIT2));
 
