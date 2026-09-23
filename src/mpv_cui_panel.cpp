@@ -113,7 +113,7 @@ struct CMpvCuiWindow : public mpv_container, CWindowImpl<CMpvCuiWindow> {
   bool osc_enabled = true;
 };
 
-class MpvCuiWindow : public uie::container_ui_extension {
+class MpvCuiWindow : public uie::container_uie_window_v3 {
  public:
   const GUID& get_extension_guid() const override {
     return g_guid_mpv_cui_panel;
@@ -144,9 +144,11 @@ class MpvCuiWindow : public uie::container_ui_extension {
  private:
   bool cfg_pinned = false;
   bool cfg_osc_enabled = true;
-  class_data& get_class_data() const override {
-    __implement_get_class_data(_T("{EF25F318-A1F7-46CB-A86E-70F568ADDCE6}"),
-                               false);
+  uie::container_window_v3_config get_window_config() override {
+    uie::container_window_v3_config config(
+        L"{EF25F318-A1F7-46CB-A86E-70F568ADDCE6}", false);
+    config.class_background = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
+    return config;
   }
 
   LRESULT on_message(HWND wnd, UINT msg, WPARAM wp, LPARAM lp) override;
