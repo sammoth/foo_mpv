@@ -18,24 +18,6 @@ mpv video player UI element for foobar2000.
 - Mouse and keyboard input mostly supported thorough `mpv/input.conf` (editable in the UI).
 - Optional update notification via [foo_acfu](https://acfu.3dyd.com/home/)
 
-### Building
-
-Visual Studio configurations are provided for both 32-bit (`Win32`) and 64-bit
-(`x64`) foobar2000. Install the matching vcpkg dependencies before building:
-
-```powershell
-.\scripts\install-dependencies.ps1 -Triplet x86-mpv
-.\scripts\install-dependencies.ps1 -Triplet x64-mpv
-msbuild .\src\foo_mpv.sln /m /p:Configuration=Release /p:Platform=Win32
-msbuild .\src\foo_mpv.sln /m /p:Configuration=Release /p:Platform=x64
-```
-
-Release packages contain the Win32 component at the archive root and x64
-overrides in the `x64` directory, allowing one `.fb2k-component` file to work
-with either foobar2000 architecture. The GitHub release workflow downloads the
-matching libmpv runtimes and creates this package with
-`scripts/package-component.ps1`.
-
 ### Configuration
 
 The component is not a decoder, you will need to make sure foobar2000 can play the audio from whichever video files you want to play first. For anything not supported by default, you can install and configure the [ffmpeg decoder wrapper component](https://www.foobar2000.org/components/view/foo_input_ffmpeg).

@@ -10,9 +10,77 @@ permissions:
   contents: write
 
 jobs:
+  libmpv:
+    name: Build ${{ matrix.platform }} libmpv
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Win32
+            arch: i686
+            wine: wine32
+          - platform: x64
+            arch: x86_64
+            wine: wine64
+    env:
+      TARGET: ${{ matrix.arch }}-w64-mingw32
+      RUST_TARGET: ${{ matrix.arch }}-pc-windows-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Install upstream build tools
+        run: |
+          rustup target add "$RUST_TARGET"
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ccache g++-mingw-w64 gcc-multilib python3-pip nasm ninja-build pkgconf ${{ matrix.wine }} wine
+          python -m pip install meson
+
+      - name: Install upstream Meson wraps
+        working-directory: mpv
+        run: |
+          mkdir -p subprojects
+          meson wrap install mujs
+          meson subprojects download
+
+      - name: Build with upstream MinGW recipe
+        working-directory: mpv
+        run: |
+          ./ci/build-mingw64.sh
+          ./ci/build-mingw64.sh meson pack
+
+      - name: Print mpv Meson log
+        if: failure()
+        working-directory: mpv
+        run: |
+          if [ -f mingw_build/meson-logs/meson-log.txt ]; then
+            tail -n 250 mingw_build/meson-logs/meson-log.txt
+          fi
+
+      - name: Collect and test libmpv
+        run: |
+          test -f mpv/mingw_build/libmpv-2.dll
+          cp mpv/mingw_build/libmpv-2.dll mpv/artifact/mpv-2.dll
+          "$TARGET-gcc-posix" -I mpv/include scripts/smoke-libmpv.c -o mpv/artifact/smoke-libmpv.exe
+          cd mpv/artifact
+          wine ./smoke-libmpv.exe ./mpv-2.dll
+          rm smoke-libmpv.exe
+
+      - name: Upload libmpv runtime
+        uses: actions/upload-artifact@v7
+        with:
+          name: libmpv-${{ matrix.platform }}
+          if-no-files-found: error
+          path: mpv/artifact/*.dll
+
   release:
     name: Build and package Windows component
     runs-on: windows-2025-vs2026
+    needs: libmpv
 
     steps:
       - name: Checkout
@@ -26,6 +94,18 @@ jobs:
         with:
           vs-version: '[18.0,19.0)'
           msbuild-architecture: x64
+
+      - name: Download Win32 libmpv runtime
+        uses: actions/download-artifact@v8
+        with:
+          name: libmpv-Win32
+          path: artifacts/runtime/Win32
+
+      - name: Download x64 libmpv runtime
+        uses: actions/download-artifact@v8
+        with:
+          name: libmpv-x64
+          path: artifacts/runtime/x64
 
       - name: Configure vcpkg cache
         uses: lukka/run-vcpkg@v11.6
@@ -58,18 +138,6 @@ jobs:
         run: >-
           msbuild .\src\foo_mpv.sln /m /t:Build
           /p:Configuration=Release /p:Platform=x64 /v:minimal
-
-      - name: Download Win32 libmpv
-        shell: pwsh
-        run: >-
-          .\scripts\download-libmpv.ps1 -Architecture i686
-          -Destination .\artifacts\runtime\Win32\mpv-2.dll
-
-      - name: Download x64 libmpv
-        shell: pwsh
-        run: >-
-          .\scripts\download-libmpv.ps1 -Architecture x86_64
-          -Destination .\artifacts\runtime\x64\mpv-2.dll
 
       - name: Package component
         shell: pwsh

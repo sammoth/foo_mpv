@@ -46,10 +46,12 @@ foreach ($path in @($packageZip, $package, $symbols)) {
 New-Item -ItemType Directory -Path (Join-Path $stagingRoot 'mpv') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $stagingRoot 'x64\mpv') -Force | Out-Null
 Copy-Item -LiteralPath $Win32Dll -Destination (Join-Path $stagingRoot 'foo_mpv.dll')
-Copy-Item -LiteralPath $Win32Libmpv -Destination (Join-Path $stagingRoot 'mpv\mpv-2.dll')
+Get-ChildItem -LiteralPath (Split-Path -Parent $Win32Libmpv) -Filter '*.dll' -File |
+    Copy-Item -Destination (Join-Path $stagingRoot 'mpv')
 Copy-Item -LiteralPath $oscScript -Destination (Join-Path $stagingRoot 'mpv\osc.lua')
 Copy-Item -LiteralPath $X64Dll -Destination (Join-Path $stagingRoot 'x64\foo_mpv.dll')
-Copy-Item -LiteralPath $X64Libmpv -Destination (Join-Path $stagingRoot 'x64\mpv\mpv-2.dll')
+Get-ChildItem -LiteralPath (Split-Path -Parent $X64Libmpv) -Filter '*.dll' -File |
+    Copy-Item -Destination (Join-Path $stagingRoot 'x64\mpv')
 
 Compress-Archive -Path (Join-Path $stagingRoot '*') -DestinationPath $packageZip
 Move-Item -LiteralPath $packageZip -Destination $package

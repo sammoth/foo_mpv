@@ -5,3 +5,6 @@
 	path = vcpkg
 	url = https://github.com/microsoft/vcpkg.git
 	branch = master
+[submodule "mpv"]
+	path = mpv
+	url = https://github.com/mpv-player/mpv.git
