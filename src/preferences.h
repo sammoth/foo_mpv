@@ -11,6 +11,21 @@ constexpr thumbnail_format thumbnail_format_from_config(unsigned value) {
              : thumbnail_format::Jpeg;
 }
 
+enum class artwork_type : unsigned { Front = 0, Back = 1, Disc = 2, Artist = 3 };
+
+constexpr artwork_type artwork_type_from_config(unsigned value) {
+  switch (value) {
+    case static_cast<unsigned>(artwork_type::Back):
+      return artwork_type::Back;
+    case static_cast<unsigned>(artwork_type::Disc):
+      return artwork_type::Disc;
+    case static_cast<unsigned>(artwork_type::Artist):
+      return artwork_type::Artist;
+    default:
+      return artwork_type::Front;
+  }
+}
+
 void format_player_title(pfc::string8& s, metadb_handle_ptr metadb);
 bool test_thumb_pattern(metadb_handle_ptr metadb);
 bool test_video_pattern(metadb_handle_ptr metadb);

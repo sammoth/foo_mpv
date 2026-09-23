@@ -10,6 +10,7 @@
 #include "artwork_protocol.h"
 #include "libmpv.h"
 #include "mpv_player.h"
+#include "preferences.h"
 
 namespace mpv {
 extern cfg_uint cfg_artwork_type;
@@ -144,22 +145,19 @@ class artwork_register : public initquit {
           album_art_data_ptr result;
           try {
             pfc::list_t<GUID> types;
-            GUID type;
-            switch (cfg_artwork_type) {
-              case 0:
-                type = album_art_ids::cover_front;
+            GUID type = album_art_ids::cover_front;
+            switch (artwork_type_from_config(cfg_artwork_type)) {
+              case artwork_type::Front:
                 break;
-              case 1:
+              case artwork_type::Back:
                 type = album_art_ids::cover_back;
                 break;
-              case 2:
+              case artwork_type::Disc:
                 type = album_art_ids::disc;
                 break;
-              case 3:
+              case artwork_type::Artist:
                 type = album_art_ids::artist;
                 break;
-              default:
-                uBugCheck();
             }
 
             types.add_item(type);

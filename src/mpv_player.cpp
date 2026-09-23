@@ -412,25 +412,26 @@ void mpv_player::add_menu_items(uie::menu_hook_impl& menu_hook) {
        g_player->mpv_state == state::Artwork)) {
     menu_hook.add_node(new uie::menu_node_separator_t());
 
+    const auto selected = artwork_type_from_config(cfg_artwork_type);
     std::vector<ui_extension::menu_node_ptr> artwork_children;
     artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Front", cfg_artwork_type == 0, []() {
-          cfg_artwork_type = 0;
+        new menu_utils::menu_node_run("Front", selected == artwork_type::Front, []() {
+          cfg_artwork_type = static_cast<unsigned>(artwork_type::Front);
           reload_artwork();
         }));
     artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Back", cfg_artwork_type == 1, []() {
-          cfg_artwork_type = 1;
+        new menu_utils::menu_node_run("Back", selected == artwork_type::Back, []() {
+          cfg_artwork_type = static_cast<unsigned>(artwork_type::Back);
           reload_artwork();
         }));
     artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Disc", cfg_artwork_type == 2, []() {
-          cfg_artwork_type = 2;
+        new menu_utils::menu_node_run("Disc", selected == artwork_type::Disc, []() {
+          cfg_artwork_type = static_cast<unsigned>(artwork_type::Disc);
           reload_artwork();
         }));
     artwork_children.emplace_back(
-        new menu_utils::menu_node_run("Artist", cfg_artwork_type == 3, []() {
-          cfg_artwork_type = 3;
+        new menu_utils::menu_node_run("Artist", selected == artwork_type::Artist, []() {
+          cfg_artwork_type = static_cast<unsigned>(artwork_type::Artist);
           reload_artwork();
         }));
 
