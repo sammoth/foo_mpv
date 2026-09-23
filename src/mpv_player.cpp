@@ -1,6 +1,7 @@
 #include "stdafx.h"
 // PCH ^
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <mutex>
 #include <nlohmann/json.hpp>
@@ -1364,7 +1365,7 @@ void mpv_player::sync(double debug_time, bool paused) {
     return;
   }
 
-  if (abs(desync) > 0.001 * cfg_hard_sync_threshold &&
+  if (std::abs(desync) > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
     timing_info::refresh(false);
@@ -1381,7 +1382,7 @@ void mpv_player::sync(double debug_time, bool paused) {
     }
   } else {
     // soft sync
-    if (abs(desync) > 0.001 * cfg_max_drift) {
+    if (std::abs(desync) > 0.001 * cfg_max_drift) {
       // aim to correct mpv internal timer in 1 second, then let mpv catch up
       // the video
       new_speed = min(max(1.0 + desync, 0.01), 100.0);
@@ -1661,7 +1662,7 @@ void mpv_player::initial_sync() {
       return;
     }
     double new_speed = 1.0;
-    if (abs(desync) > 0.001 * cfg_max_drift) {
+    if (std::abs(desync) > 0.001 * cfg_max_drift) {
       // aim to correct mpv internal timer by next sync time
       new_speed = min(max(1.0 + desync / (time_before_next_sync), 0.01), 100.0);
     }
