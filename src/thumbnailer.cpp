@@ -11,6 +11,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <deque>
+#include <limits>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -1037,13 +1038,21 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
 
   void cache_put(metadb_handle_ptr metadb, album_art_data_ptr data) {
     if (query_put) {
+      const size_t blob_size = data->get_size();
+      if (blob_size >
+          static_cast<size_t>((std::numeric_limits<int>::max)())) {
+        FB2K_console_formatter()
+            << "mpv: Thumbnail too large for SQLite cache: "
+            << metadb->get_path();
+        return;
+      }
       try {
         {
           std::lock_guard<std::mutex> lock(db_mutex);
           query_put->reset();
           query_put->bind(1, metadb->get_path());
           query_put->bind(2, metadb->get_subsong_index());
-          query_put->bind(3, data->get_ptr(), data->get_size());
+          query_put->bind(3, data->get_ptr(), static_cast<int>(blob_size));
           query_put->exec();
         }
 
@@ -1053,7 +1062,7 @@ class thumbnail_extractor : public album_art_extractor_instance_v2 {
               << metadb->get_subsong_index() << "]";
         }
 
-        trim_db(data->get_size());
+        trim_db(blob_size);
       } catch (SQLite::Exception e) {
         FB2K_console_formatter() << "mpv: Error writing " << metadb->get_path()
                                  << "[" << metadb->get_subsong_index() << "]"

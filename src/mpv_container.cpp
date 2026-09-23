@@ -27,15 +27,13 @@ bool mpv_container::owns_player() {
 }
 
 static int64_t container_metric(const mpv_container& container) {
-  switch (cfg_panel_metric) {
-    case 0:
-      return static_cast<int64_t>(container.cx) * container.cy;
+  switch (config_choice_or_default(cfg_panel_metric, 3, 0)) {
     case 1:
       return container.cx;
     case 2:
       return container.cy;
     default:
-      uBugCheck();
+      return static_cast<int64_t>(container.cx) * container.cy;
   }
 }
 
@@ -56,7 +54,9 @@ mpv_container* mpv_container::get_main_container() {
 
 bool mpv_container::is_pinned() { return pinned_container == this; }
 
-t_ui_color mpv_container::get_bg() { return cfg_bg_color; }
+t_ui_color mpv_container::get_bg() {
+  return background_color_from_config(cfg_bg_color);
+}
 
 void mpv_container::unpin() {
   pinned_container = NULL;

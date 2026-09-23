@@ -5,6 +5,22 @@
 #include <cstdint>
 
 namespace mpv {
+constexpr int config_choice_or_default(std::int64_t value, int count,
+                                       int fallback) {
+  return value >= 0 && value < count ? static_cast<int>(value) : fallback;
+}
+
+constexpr int config_slider_position(std::int64_t value, int minimum,
+                                     int maximum) {
+  return value < minimum ? minimum
+         : value > maximum ? maximum
+                           : static_cast<int>(value);
+}
+
+constexpr COLORREF background_color_from_config(std::int64_t value) {
+  return value >= 0 && value <= 0x00ffffff ? static_cast<COLORREF>(value) : 0;
+}
+
 enum class thumbnail_format : unsigned { Jpeg = 0, Png = 1 };
 
 constexpr thumbnail_format thumbnail_format_from_config(std::int64_t value) {

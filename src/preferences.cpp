@@ -2,6 +2,7 @@
 // PCH ^
 
 #include <list>
+#include <limits>
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -546,7 +547,7 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   uSetDlgItemText(m_hWnd, IDC_EDIT_VIDEO_PATTERN,
                   cfg_video_pattern.get().c_str());
 
-  bg_col = cfg_bg_color.get_value();
+  bg_col = background_color_from_config(cfg_bg_color.get_value());
   set_button_brush(bg_col);
 
   CheckDlgButton(IDC_CHECK_VIDEO_FILTER, cfg_video_filter);
@@ -562,7 +563,8 @@ BOOL CMpvPlayerPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_panelmetric.AddString(L"Area");
   combo_panelmetric.AddString(L"Width");
   combo_panelmetric.AddString(L"Height");
-  combo_panelmetric.SetCurSel(cfg_panel_metric);
+  combo_panelmetric.SetCurSel(
+      config_choice_or_default(cfg_panel_metric, combo_panelmetric.GetCount(), 0));
 
   m_list.CreateInDialog(*this, IDC_LIST1);
   m_dark.AddDialogWithControls(*this);
@@ -684,8 +686,10 @@ void CMpvPlayerPreferences::apply() {
     }
   }
 
-  cfg_panel_metric =
-      ((CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC)).GetCurSel();
+  CComboBox combo_panelmetric =
+      (CComboBox)uGetDlgItem(IDC_COMBO_PANELMETRIC);
+  cfg_panel_metric = config_choice_or_default(
+      combo_panelmetric.GetCurSel(), combo_panelmetric.GetCount(), 0);
 
   mpv_container::invalidate_all_containers();
   mpv_player::restart();
@@ -780,7 +784,8 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_covertype.AddString(L"Disc");
   combo_covertype.AddString(L"Artist");
   combo_covertype.AddString(L"All");
-  combo_covertype.SetCurSel(cfg_thumb_cover_type);
+  combo_covertype.SetCurSel(
+      config_choice_or_default(cfg_thumb_cover_type, combo_covertype.GetCount(), 0));
 
   CComboBox combo_thumbsize = (CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE);
   combo_thumbsize.AddString(L"200px");
@@ -788,7 +793,8 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_thumbsize.AddString(L"600px");
   combo_thumbsize.AddString(L"1000px");
   combo_thumbsize.AddString(L"Original");
-  combo_thumbsize.SetCurSel(cfg_thumb_size);
+  combo_thumbsize.SetCurSel(
+      config_choice_or_default(cfg_thumb_size, combo_thumbsize.GetCount(), 2));
 
   CComboBox combo_cachesize = (CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE);
   combo_cachesize.AddString(L"200MB");
@@ -796,7 +802,8 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   combo_cachesize.AddString(L"1GB");
   combo_cachesize.AddString(L"2GB");
   combo_cachesize.AddString(L"Unlimited");
-  combo_cachesize.SetCurSel(cfg_thumb_cache_size);
+  combo_cachesize.SetCurSel(config_choice_or_default(
+      cfg_thumb_cache_size, combo_cachesize.GetCount(), 0));
 
   CComboBox combo_cacheformat = (CComboBox)uGetDlgItem(IDC_COMBO_FORMAT);
   combo_cacheformat.AddString(L"JPEG");
@@ -807,7 +814,7 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK);
   slider_seek.SetRangeMin(1);
   slider_seek.SetRangeMax(90);
-  slider_seek.SetPos(cfg_thumb_seek);
+  slider_seek.SetPos(config_slider_position(cfg_thumb_seek, 1, 90));
 
   m_dark.AddDialogWithControls(*this);
   set_controls_enabled();
@@ -876,11 +883,15 @@ void CMpvThumbnailPreferences::apply() {
   cfg_thumb_group_longest = IsDlgButtonChecked(IDC_RADIO_LONGESTINGROUP);
   cfg_thumb_group_override = IsDlgButtonChecked(IDC_CHECK_GROUPOVERRIDE);
 
-  cfg_thumb_cover_type =
-      ((CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE)).GetCurSel();
-  cfg_thumb_size = ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).GetCurSel();
-  cfg_thumb_cache_size =
-      ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).GetCurSel();
+  CComboBox combo_cover = (CComboBox)uGetDlgItem(IDC_COMBO_COVERTYPE);
+  cfg_thumb_cover_type = config_choice_or_default(
+      combo_cover.GetCurSel(), combo_cover.GetCount(), 0);
+  CComboBox combo_size = (CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE);
+  cfg_thumb_size =
+      config_choice_or_default(combo_size.GetCurSel(), combo_size.GetCount(), 2);
+  CComboBox combo_cache_size = (CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE);
+  cfg_thumb_cache_size = config_choice_or_default(
+      combo_cache_size.GetCurSel(), combo_cache_size.GetCount(), 0);
   const int selected_format =
       ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).GetCurSel();
   cfg_thumb_cache_format =
@@ -980,44 +991,45 @@ BOOL CMpvOscPreferences::OnInitDialog(CWindow, LPARAM) {
   combo.AddString(L"Top bar");
   combo.AddString(L"Box");
   combo.AddString(L"Slim box");
-  combo.SetCurSel(cfg_osc_layout);
+  combo.SetCurSel(config_choice_or_default(cfg_osc_layout, combo.GetCount(), 0));
 
   combo = (CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE);
   combo.AddString(L"Bar");
   combo.AddString(L"Diamond");
   combo.AddString(L"Knob");
-  combo.SetCurSel(cfg_osc_seekbarstyle);
+  combo.SetCurSel(
+      config_choice_or_default(cfg_osc_seekbarstyle, combo.GetCount(), 0));
 
   CTrackBarCtrl slider =
       (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY);
   slider.SetRangeMin(0);
   slider.SetRangeMax(100);
-  slider.SetPos(cfg_osc_transparency);
+  slider.SetPos(config_slider_position(cfg_osc_transparency, 0, 100));
 
   slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_WINDOW);
   slider.SetRangeMin(0);
   slider.SetRangeMax(300);
-  slider.SetPos(cfg_osc_scalewindowed);
+  slider.SetPos(config_slider_position(cfg_osc_scalewindowed, 0, 300));
 
   slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_SCALE_FULLSCREEN);
   slider.SetRangeMin(0);
   slider.SetRangeMax(300);
-  slider.SetPos(cfg_osc_scalefullscreen);
+  slider.SetPos(config_slider_position(cfg_osc_scalefullscreen, 0, 300));
 
   slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TIMEOUT);
   slider.SetRangeMin(0);
   slider.SetRangeMax(5000);
-  slider.SetPos(cfg_osc_timeout);
+  slider.SetPos(config_slider_position(cfg_osc_timeout, 0, 5000));
 
   slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_FADE);
   slider.SetRangeMin(0);
   slider.SetRangeMax(1000);
-  slider.SetPos(cfg_osc_fadeduration);
+  slider.SetPos(config_slider_position(cfg_osc_fadeduration, 0, 1000));
 
   slider = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_DEADZONE);
   slider.SetRangeMin(0);
   slider.SetRangeMax(100);
-  slider.SetPos(cfg_osc_deadzone);
+  slider.SetPos(config_slider_position(cfg_osc_deadzone, 0, 100));
 
   m_dark.AddDialogWithControls(*this);
   dirty = false;
@@ -1065,9 +1077,13 @@ void CMpvOscPreferences::apply() {
 
   cfg_osc_scalewithvideo = IsDlgButtonChecked(IDC_CHECK_OSC_SCALEWITHVIDEO);
 
-  cfg_osc_seekbarstyle =
-      ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE)).GetCurSel();
-  cfg_osc_layout = ((CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT)).GetCurSel();
+  CComboBox combo_seekbar =
+      (CComboBox)uGetDlgItem(IDC_COMBO_OSC_SEEKBARSTYLE);
+  cfg_osc_seekbarstyle = config_choice_or_default(
+      combo_seekbar.GetCurSel(), combo_seekbar.GetCount(), 0);
+  CComboBox combo_layout = (CComboBox)uGetDlgItem(IDC_COMBO_OSC_LAYOUT);
+  cfg_osc_layout = config_choice_or_default(
+      combo_layout.GetCurSel(), combo_layout.GetCount(), 0);
 
   cfg_osc_transparency =
       ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_OSC_TRANSPARENCY)).GetPos();
@@ -1261,11 +1277,13 @@ class CMpvMenuChooser : public CDialogImpl<CMpvMenuChooser> {
   }
 
   void OnAccept(UINT, int, CWindow) {
-    if (m_list.GetSelectedCount() > 0) {
-      EndDialog(m_list.GetFirstSelected());
-    } else {
+    const size_t selected = m_list.GetFirstSelected();
+    if (m_list.GetSelectedCount() == 0 || selected >= items.size() ||
+        selected > static_cast<size_t>((std::numeric_limits<int>::max)())) {
       EndDialog(-1);
+      return;
     }
+    EndDialog(static_cast<int>(selected));
   }
   void OnCancel(UINT, int, CWindow) { EndDialog(-1); }
 };

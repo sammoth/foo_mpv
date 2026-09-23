@@ -340,7 +340,8 @@ BOOL mpv_player::on_erase_bg(CDCHandle dc) {
   CRect rc;
   WIN32_OP_D(GetClientRect(&rc));
   CBrush brush;
-  WIN32_OP_D(brush.CreateSolidBrush(cfg_bg_color) != NULL);
+  WIN32_OP_D(brush.CreateSolidBrush(
+                 background_color_from_config(cfg_bg_color)) != NULL);
   WIN32_OP_D(dc.FillRect(&rc, brush));
   return TRUE;
 }
@@ -568,8 +569,9 @@ void mpv_player::update_title() {
 std::string mpv_player::get_background_color() {
   std::stringstream colorstrings;
   colorstrings << "#";
-  t_uint32 bgcolor =
-      container->is_fullscreen() && cfg_black_fullscreen ? 0 : cfg_bg_color;
+  const COLORREF bgcolor = container->is_fullscreen() && cfg_black_fullscreen
+                               ? 0
+                               : background_color_from_config(cfg_bg_color);
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
                << (unsigned)GetRValue(bgcolor);
   colorstrings << std::setfill('0') << std::setw(2) << std::hex
@@ -675,7 +677,7 @@ bool mpv_player::mpv_init() {
     // apply OSC settings
     std::stringstream opts;
     opts << "osc-layout=";
-    switch (cfg_osc_layout) {
+    switch (config_choice_or_default(cfg_osc_layout, 4, 0)) {
       case 0:
         opts << "bottombar";
         break;
@@ -691,7 +693,7 @@ bool mpv_player::mpv_init() {
     }
 
     opts << ",osc-seekbarstyle=";
-    switch (cfg_osc_seekbarstyle) {
+    switch (config_choice_or_default(cfg_osc_seekbarstyle, 3, 0)) {
       case 0:
         opts << "bar";
         break;
