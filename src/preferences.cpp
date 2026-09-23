@@ -801,7 +801,8 @@ BOOL CMpvThumbnailPreferences::OnInitDialog(CWindow, LPARAM) {
   CComboBox combo_cacheformat = (CComboBox)uGetDlgItem(IDC_COMBO_FORMAT);
   combo_cacheformat.AddString(L"JPEG");
   combo_cacheformat.AddString(L"PNG");
-  combo_cacheformat.SetCurSel(cfg_thumb_cache_format);
+  combo_cacheformat.SetCurSel(
+      static_cast<int>(thumbnail_format_from_config(cfg_thumb_cache_format)));
 
   CTrackBarCtrl slider_seek = (CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK);
   slider_seek.SetRangeMin(1);
@@ -880,8 +881,12 @@ void CMpvThumbnailPreferences::apply() {
   cfg_thumb_size = ((CComboBox)uGetDlgItem(IDC_COMBO_THUMBSIZE)).GetCurSel();
   cfg_thumb_cache_size =
       ((CComboBox)uGetDlgItem(IDC_COMBO_CACHESIZE)).GetCurSel();
-  cfg_thumb_cache_format =
+  const int selected_format =
       ((CComboBox)uGetDlgItem(IDC_COMBO_FORMAT)).GetCurSel();
+  cfg_thumb_cache_format =
+      selected_format == static_cast<int>(thumbnail_format::Png)
+          ? static_cast<unsigned>(thumbnail_format::Png)
+          : static_cast<unsigned>(thumbnail_format::Jpeg);
 
   cfg_thumb_seek = ((CTrackBarCtrl)uGetDlgItem(IDC_SLIDER_SEEK)).GetPos();
 

@@ -528,7 +528,8 @@ void thumbnailer::load_stream() {
   output_frame = av_frame_alloc();
   require_ffmpeg_object(output_packet, "output packet");
   require_ffmpeg_object(output_frame, "output frame");
-  if (cfg_thumb_cache_format == 0) {
+  switch (thumbnail_format_from_config(cfg_thumb_cache_format)) {
+  case thumbnail_format::Jpeg:
     output_frame->format = AV_PIX_FMT_YUVJ444P;
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_MJPEG);
     require_ffmpeg_object(output_encoder, "MJPEG encoder");
@@ -537,16 +538,14 @@ void thumbnailer::load_stream() {
     output_codeccontext->flags |= AV_CODEC_FLAG_QSCALE;
     output_codeccontext->global_quality = FF_QP2LAMBDA;
     output_frame->quality = output_codeccontext->global_quality;
-  } else if (cfg_thumb_cache_format == 1) {
+    break;
+  case thumbnail_format::Png:
     output_frame->format = AV_PIX_FMT_RGB24;
     output_encoder = avcodec_find_encoder(AV_CODEC_ID_PNG);
     require_ffmpeg_object(output_encoder, "PNG encoder");
     output_codeccontext = avcodec_alloc_context3(output_encoder);
     require_ffmpeg_object(output_codeccontext, "PNG encoder context");
-  } else {
-    FB2K_console_formatter()
-        << "mpv: Could not determine target thumbnail format";
-    throw exception_album_art_not_found();
+    break;
   }
 }
 
