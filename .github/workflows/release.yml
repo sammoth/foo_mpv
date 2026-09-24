@@ -37,10 +37,12 @@ jobs:
           rustup target add "$RUST_TARGET"
           sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ccache g++-mingw-w64 gcc-multilib glslc python3-pip nasm ninja-build pkgconf ${{ matrix.wine }} wine
+          sudo apt-get install --no-install-recommends -y ccache g++-mingw-w64 gcc-multilib glslang-tools python3-pip nasm ninja-build pkgconf ${{ matrix.wine }} wine
           python -m pip install meson
-          command -v glslc
-          glslc --version
+          command -v glslangValidator
+          glslangValidator --version
+          printf '#version 460\n#pragma shader_stage(compute)\n#extension GL_KHR_shader_subgroup_basic : require\nlayout(local_size_x = 1) in;\nvoid main() { bool elected = subgroupElect(); }\n' > /tmp/foo-mpv-shader.comp.glsl
+          glslangValidator -V --target-env spirv1.6 --glsl-version 460 -o /tmp/foo-mpv-shader.spv /tmp/foo-mpv-shader.comp.glsl
 
       - name: Install upstream Meson wraps
         working-directory: mpv
