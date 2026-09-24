@@ -177,7 +177,7 @@ mpv_player::mpv_player()
           run_command(task.arguments);
           break;
         case task_type::Sync:
-          sync(task.time, task.flag);
+          sync(task.time, task.flag, task.sampled_at);
           break;
         case task_type::HideCursorForMenu:
           cursor_autohide_before_menu = get_string("cursor-autohide");
@@ -251,6 +251,14 @@ bool mpv_player::check_queue_time_change_locking() {
 void mpv_player::queue_task(task t) {
   {
     std::lock_guard<std::mutex> lock(mutex);
+    if (t.type == task_type::Sync) {
+      for (auto it = task_queue.begin(); it != task_queue.end();) {
+        if (it->type == task_type::Sync)
+          it = task_queue.erase(it);
+        else
+          ++it;
+      }
+    }
     task_queue.push_back(t);
   }
   control_thread_cv.notify_all();
@@ -1054,12 +1062,13 @@ void mpv_player::on_playback_pause(bool p_state) {
   t.flag = p_state;
   queue_task(t);
 }
-void mpv_player::on_playback_time(double p_time) {
+void mpv_player::on_playback_time(double) {
   update_title();
   update();
   task t;
   t.type = task_type::Sync;
-  t.time = p_time;
+  t.time = playback_control::get()->playback_get_position();
+  t.sampled_at = std::chrono::steady_clock::now();
   t.flag = playback_control::get()->is_paused();
   queue_task(std::move(t));
 }
@@ -1338,13 +1347,15 @@ void mpv_player::seek(double time, bool is_hard_sync) {
   }
 }
 
-void mpv_player::sync(double debug_time, bool paused) {
-  last_sync_time = std::lround(debug_time);
+void mpv_player::sync(
+    double fb_time, bool paused,
+    std::chrono::steady_clock::time_point sampled_at) {
+  last_sync_time = std::lround(fb_time);
 
   if (!get_bool("seekable") && mpv_state == state::Active) {
     if (cfg_logging) {
       FB2K_console_formatter()
-          << "mpv: Ignoring sync at " << debug_time << " - file not seekable";
+          << "mpv: Ignoring sync at " << fb_time << " - file not seekable";
     }
     return;
   }
@@ -1355,14 +1366,19 @@ void mpv_player::sync(double debug_time, bool paused) {
     return;
   }
 
-  double fb_time = playback_control::get()->playback_get_position();
+  const double sample_age = std::chrono::duration<double>(
+                                std::chrono::steady_clock::now() - sampled_at)
+                                .count();
+  if (sample_age > 1.0) return;
+  fb_time += sample_age;
+
   double desync = time_base + fb_time - mpv_time;
   double new_speed = 1.0;
 
   if (running_ffs) {
     if (cfg_logging) {
       FB2K_console_formatter()
-          << "mpv: Skipping regular sync at " << debug_time;
+          << "mpv: Skipping regular sync at " << fb_time;
     }
     return;
   }
@@ -1370,17 +1386,19 @@ void mpv_player::sync(double debug_time, bool paused) {
   if (std::abs(desync) > 0.001 * cfg_hard_sync_threshold &&
       (fb_time - last_hard_sync) > cfg_hard_sync_interval) {
     // hard sync
-    timing_info::refresh(false);
-    {
+    std::weak_ptr<void> lifetime(lifetime_token);
+    fb2k::inMainThread([this, lifetime]() {
+      if (lifetime.expired()) return;
+      timing_info::refresh(false);
       task t;
       t.type = task_type::Seek;
-      t.time = fb_time;
+      t.time = playback_control::get()->playback_get_position();
       t.flag = true;
       queue_task(t);
-    }
+    });
     if (cfg_logging) {
       FB2K_console_formatter()
-          << "mpv: Hard a/v sync at " << debug_time << ", offset " << desync;
+          << "mpv: Hard a/v sync at " << fb_time << ", offset " << desync;
     }
   } else {
     // soft sync
@@ -1392,7 +1410,7 @@ void mpv_player::sync(double debug_time, bool paused) {
 
     if (cfg_logging) {
       FB2K_console_formatter()
-          << "mpv: Sync at " << debug_time << " video offset " << desync
+          << "mpv: Sync at " << fb_time << " video offset " << desync
           << "; setting mpv speed to " << new_speed;
     }
 

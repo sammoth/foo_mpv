@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <map>
@@ -78,6 +79,7 @@ class mpv_player : play_callback_impl_base,
     metadb_handle_ptr play_file;
     double time = 0.0;
     bool flag = false;
+    std::chrono::steady_clock::time_point sampled_at;
     std::vector<std::string> arguments;
   };
   std::thread control_thread;
@@ -96,7 +98,8 @@ class mpv_player : play_callback_impl_base,
   void stop();
   void pause(bool p_state);
   void seek(double time, bool is_hard_sync);
-  void sync(double debug_time, bool paused);
+  void sync(double fb_time, bool paused,
+            std::chrono::steady_clock::time_point sampled_at);
   void initial_sync();
   void load_artwork();
 
