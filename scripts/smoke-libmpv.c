@@ -7,7 +7,18 @@ int main(int argc, char **argv)
     if (argc != 2)
         return 2;
 
-    HMODULE dll = LoadLibraryExA(argv[1], NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+    char dll_path[MAX_PATH];
+    DWORD path_length = GetFullPathNameA(argv[1], MAX_PATH, dll_path, NULL);
+    if (path_length == 0) {
+        fprintf(stderr, "Could not resolve the libmpv path: %lu\n", GetLastError());
+        return 1;
+    }
+    if (path_length >= MAX_PATH) {
+        fprintf(stderr, "The libmpv path is too long\n");
+        return 1;
+    }
+
+    HMODULE dll = LoadLibraryExA(dll_path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
     if (!dll) {
         fprintf(stderr, "LoadLibraryEx failed: %lu\n", GetLastError());
         return 1;
