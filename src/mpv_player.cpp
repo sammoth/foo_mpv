@@ -282,8 +282,15 @@ void mpv_player::run_command(const std::vector<std::string>& arguments) {
     command_arguments.push_back(argument.c_str());
   }
   command_arguments.push_back(nullptr);
-  if (command(command_arguments.data()) < 0 && cfg_logging) {
-    FB2K_console_formatter() << "mpv: Error running queued command";
+  const int result = command(command_arguments.data());
+  if (result < 0 && cfg_logging) {
+    pfc::string_formatter description;
+    for (const auto& argument : arguments) {
+      if (!description.is_empty()) description << " ";
+      description << argument.c_str();
+    }
+    FB2K_console_formatter() << "mpv: Queued command failed (" << result
+                            << "): " << description;
   }
 }
 
@@ -591,7 +598,7 @@ std::string mpv_player::get_background_color() {
 
 void mpv_player::set_background() {
   if (mpv_loaded)
-    queue_command({"set", "background", get_background_color()});
+    queue_command({"set", "background-color", get_background_color()});
 }
 
 bool mpv_player::mpv_init() {
@@ -622,7 +629,8 @@ bool mpv_player::mpv_init() {
     set_option_string("alpha", "blend");
 
     const std::string background = get_background_color();
-    set_option_string("background", background.c_str());
+    set_option_string("background", "color");
+    set_option_string("background-color", background.c_str());
 
     if (cfg_mpv_logfile) {
       path.add_filename("mpv.log");
