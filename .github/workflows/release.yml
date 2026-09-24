@@ -81,10 +81,17 @@ jobs:
           if-no-files-found: error
           path: mpv/artifact/*.dll
 
-  release:
-    name: Build and package Windows component
+  component:
+    name: Build ${{ matrix.platform }} Windows component
     runs-on: windows-2025-vs2026
-    needs: libmpv
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Win32
+            triplet: x86-mpv
+          - platform: x64
+            triplet: x64-mpv
 
     steps:
       - name: Checkout
@@ -99,6 +106,59 @@ jobs:
           vs-version: '[18.0,19.0)'
           msbuild-architecture: x64
 
+      - name: Configure vcpkg cache
+        uses: lukka/run-vcpkg@v11.6
+        with:
+          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: .\scripts\install-dependencies.ps1 -Triplet '${{ matrix.triplet }}'
+
+      - name: Set release version
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', '' -replace '-', ' '
+          $versionDefinition = '#define VERSION_NO "{0}"' -f $version
+          (Get-Content .\src\main.cpp) `
+            -replace '#define VERSION_NO.*$', $versionDefinition |
+            Set-Content .\src\main.cpp
+
+      - name: Build Release
+        run: >-
+          msbuild .\src\foo_mpv.sln /m /t:Build
+          /p:Configuration=Release /p:Platform=${{ matrix.platform }} /v:minimal
+
+      - name: Upload component binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: component-${{ matrix.platform }}
+          if-no-files-found: error
+          path: |
+            src/build/${{ matrix.platform }}/Release/foo_mpv/foo_mpv.dll
+            src/build/${{ matrix.platform }}/Release/foo_mpv/foo_mpv.pdb
+
+  release:
+    name: Package Windows component
+    runs-on: windows-2025-vs2026
+    needs: [libmpv, component]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download Win32 component
+        uses: actions/download-artifact@v8
+        with:
+          name: component-Win32
+          path: artifacts/component/Win32
+
+      - name: Download x64 component
+        uses: actions/download-artifact@v8
+        with:
+          name: component-x64
+          path: artifacts/component/x64
+
       - name: Download Win32 libmpv runtime
         uses: actions/download-artifact@v8
         with:
@@ -111,44 +171,12 @@ jobs:
           name: libmpv-x64
           path: artifacts/runtime/x64
 
-      - name: Configure vcpkg cache
-        uses: lukka/run-vcpkg@v11.6
-        with:
-          vcpkgDirectory: '${{ github.workspace }}/vcpkg'
-
-      - name: Install Win32 dependencies
-        shell: pwsh
-        run: .\scripts\install-dependencies.ps1 -Triplet x86-mpv
-
-      - name: Install x64 dependencies
-        shell: pwsh
-        run: .\scripts\install-dependencies.ps1 -Triplet x64-mpv
-
-      - name: Set release version
-        shell: pwsh
-        run: |
-          $version = $env:GITHUB_REF_NAME -replace '^v', '' -replace '-', ' '
-          $versionDefinition = '#define VERSION_NO "{0}"' -f $version
-          (Get-Content .\src\main.cpp) `
-            -replace '#define VERSION_NO.*$', $versionDefinition |
-            Set-Content .\src\main.cpp
-
-      - name: Build Win32 Release
-        run: >-
-          msbuild .\src\foo_mpv.sln /m /t:Build
-          /p:Configuration=Release /p:Platform=Win32 /v:minimal
-
-      - name: Build x64 Release
-        run: >-
-          msbuild .\src\foo_mpv.sln /m /t:Build
-          /p:Configuration=Release /p:Platform=x64 /v:minimal
-
       - name: Package component
         shell: pwsh
         run: |
           .\scripts\package-component.ps1 `
-            -Win32Dll .\src\build\Win32\Release\foo_mpv\foo_mpv.dll `
-            -X64Dll .\src\build\x64\Release\foo_mpv\foo_mpv.dll `
+            -Win32Dll .\artifacts\component\Win32\foo_mpv.dll `
+            -X64Dll .\artifacts\component\x64\foo_mpv.dll `
             -Win32Libmpv .\artifacts\runtime\Win32\mpv-2.dll `
             -X64Libmpv .\artifacts\runtime\x64\mpv-2.dll
           7z l .\artifacts\foo_mpv.fb2k-component
