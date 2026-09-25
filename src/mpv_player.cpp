@@ -878,8 +878,13 @@ bool mpv_player::mpv_init() {
                   new_state = state::Preload;
                 }
 
-                if (mpv_state != new_state) {
-                  if (new_state == state::Idle && mpv_state != state::Artwork) {
+                const state previous_state = mpv_state;
+                if (previous_state != new_state) {
+                  // Publish Idle before scheduling the main-thread callback:
+                  // it may run immediately and checks the current state.
+                  set_state(new_state);
+                  if (new_state == state::Idle &&
+                      previous_state != state::Artwork) {
                     std::weak_ptr<void> lifetime(lifetime_token);
                     fb2k::inMainThread([lifetime]() {
                       if (lifetime.expired() || !g_player ||
@@ -889,7 +894,6 @@ bool mpv_player::mpv_init() {
                     });
                   }
 
-                  set_state(new_state);
                   if (new_state == state::Active) {
                     task refresh;
                     refresh.type = task_type::RefreshMediaInfo;
@@ -1430,24 +1434,21 @@ void mpv_player::sync(
 }
 
 void mpv_player::on_new_artwork() {
-  if (g_player) {
+  if (g_player && (g_player->mpv_state == state::Artwork ||
+                   g_player->mpv_state == state::Idle ||
+                   g_player->mpv_state == state::Unloaded)) {
     task t;
     t.type = task_type::LoadArtwork;
     g_player->queue_task(t);
+  } else if (cfg_logging) {
+    FB2K_console_formatter() << "mpv: Ignoring loaded artwork";
   }
 }
 
 void mpv_player::load_artwork() {
   if (!mpv_handle && !mpv_init()) return;
 
-  // mpv can briefly report a non-idle state after stop. The artwork request
-  // may finish during that transition, so use the current file instead of a
-  // state snapshot to decide whether loading it would replace a video.
-  const state current_state = mpv_state;
-  const pfc::string8 current_path = get_string("path");
-  if (current_state != state::Preload && current_state != state::Loading &&
-      current_state != state::Shutdown &&
-      (current_path.is_empty() || current_path.equals("artwork://"))) {
+  if (mpv_state == state::Idle || mpv_state == state::Artwork) {
     if (artwork_loaded()) {
       const char* cmd_profile[] = {"apply-profile", "albumart", NULL};
       if (command(cmd_profile) < 0 && cfg_logging) {
