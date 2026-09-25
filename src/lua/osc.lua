@@ -3001,7 +3001,9 @@ tick = function()
 
     if not state.enabled then return end
 
-    if state.idle_active then
+    if state.path == "artwork://" then
+        render_wipe(state.osd)
+    elseif state.idle_active then
         -- Hide main OSC but keep window controls functional
         if state.osc_visible then
             osc_visible(false)
@@ -3141,6 +3143,7 @@ observe_cached("border", request_init_resize)
 observe_cached("title-bar", request_init_resize)
 observe_cached("window-maximized", request_init_resize)
 observe_cached("idle-active", request_tick)
+observe_cached("path", request_tick)
 
 mp.register_event("file-loaded", function()
     state.file_loaded = true
