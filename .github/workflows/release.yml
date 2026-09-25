@@ -51,11 +51,18 @@ jobs:
           meson wrap install mujs
           meson subprojects download
 
+      - name: Enable subtitle charset detection in mpv recipe
+        run: |
+          git -C mpv apply --check ../patches/mpv-mingw-uchardet.patch
+          git -C mpv apply ../patches/mpv-mingw-uchardet.patch
+
       - name: Build with upstream MinGW recipe
         working-directory: mpv
         run: |
           ./ci/build-mingw64.sh
           ./ci/build-mingw64.sh meson pack
+          grep -q '^#define HAVE_UCHARDET 1$' mingw_build/config.h
+          test -f artifact/libuchardet.dll
 
       - name: Print mpv Meson log
         if: failure()

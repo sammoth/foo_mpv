@@ -1,0 +1,45 @@
+diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
+--- a/ci/build-mingw64.sh
++++ b/ci/build-mingw64.sh
+@@ -157,6 +157,17 @@ _iconv () {
+ }
+ _iconv_mark=lib/libiconv.dll.a
+ 
++_uchardet () {
++    local ver=0.0.8
++    gettar "https://www.freedesktop.org/software/uchardet/releases/uchardet-${ver}.tar.xz"
++    builddir uchardet-${ver}
++    cmake .. "${cmake_args[@]}" \
++        -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_BINARY=OFF -DBUILD_STATIC=OFF
++    makeplusinstall
++    popd
++}
++_uchardet_mark=lib/libuchardet.dll.a
++
+ _zlib_ng () {
+     local ver=2.3.3
+     gettar "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/${ver}.tar.gz" zlib-ng-${ver}
+@@ -350,7 +361,7 @@ _curl () {
+ }
+ _curl_mark=lib/libcurl.dll.a
+ 
+-for x in iconv zlib-ng shaderc spirv-cross amf-headers nv-headers dav1d lcms2; do
++for x in iconv uchardet zlib-ng shaderc spirv-cross amf-headers nv-headers dav1d lcms2; do
+     build_if_missing $x
+ done
+ if [[ "$TARGET" != "i686-"* ]]; then
+@@ -384,6 +395,7 @@ mpv_args=(
+     -Dmujs:werror=false
+     -Dmujs:default_library=static
+     -Dlua=luajit
++    -Duchardet=enabled
+     -D{amf,shaderc,spirv-cross,d3d11,javascript,libcurl}=enabled
+ )
+ meson setup $build "${mpv_args[@]}"
+@@ -410,5 +422,6 @@ if [ "$2" = pack ]; then
+         av*.dll sw*.dll postproc-[0-9]*.dll
+         # everything else
+         subrandr-[0-9]*.dll lib{ass,freetype,fribidi,harfbuzz,iconv,placebo}-[0-9]*.dll
++        libuchardet.dll
+         lib{curl,shaderc_shared,spirv-cross-c-shared,dav1d,lcms2,zlib1}.dll
+     )
