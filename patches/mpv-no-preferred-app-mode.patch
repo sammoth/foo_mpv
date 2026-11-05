@@ -1,0 +1,32 @@
+diff --git a/video/out/w32_common.c b/video/out/w32_common.c
+index ba4f382..915a074 100644
+--- a/video/out/w32_common.c
++++ b/video/out/w32_common.c
+@@ -80,7 +80,6 @@ EXTERN_C IMAGE_DOS_HEADER __ImageBase;
+ 
+ struct w32_api {
+     BOOLEAN (WINAPI *pShouldAppsUseDarkMode)(void);
+-    DWORD (WINAPI *pSetPreferredAppMode)(DWORD mode);
+ };
+ 
+ struct vo_w32_state {
+@@ -1174,8 +1173,8 @@ static void update_corners_pref(const struct vo_w32_state *w32)
+ // but it just doesn't work as documented.
+ static void update_dark_mode(const struct vo_w32_state *w32)
+ {
+-    if (w32->api.pSetPreferredAppMode)
+-        w32->api.pSetPreferredAppMode(1); // allow dark mode
++    // foo_mpv: do not call SetPreferredAppMode here. It is process-wide and
++    // overrides the host application's menu dark mode setting.
+ 
+     // if pShouldAppsUseDarkMode is not available, just assume it to be true
+     const BOOL use_dark_mode = !is_high_contrast() && (!w32->api.pShouldAppsUseDarkMode ||
+@@ -2030,8 +2029,6 @@ static void w32_api_load(struct vo_w32_state *w32)
+                 GetModuleHandle(L"uxtheme.dll");
+     w32->api.pShouldAppsUseDarkMode = !uxtheme_dll ? NULL :
+                 (void *)GetProcAddress(uxtheme_dll, MAKEINTRESOURCEA(132));
+-    w32->api.pSetPreferredAppMode = !uxtheme_dll ? NULL :
+-                (void *)GetProcAddress(uxtheme_dll, MAKEINTRESOURCEA(135));
+ }
+ 
+ static BOOL CALLBACK EnumWindowsProc(HWND hwnd, LPARAM lparam)

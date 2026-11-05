@@ -56,6 +56,11 @@ jobs:
           git -C mpv apply --check ../patches/mpv-mingw-uchardet.patch
           git -C mpv apply ../patches/mpv-mingw-uchardet.patch
 
+      - name: Stop mpv overriding host app dark mode
+        run: |
+          git -C mpv apply --check ../patches/mpv-no-preferred-app-mode.patch
+          git -C mpv apply ../patches/mpv-no-preferred-app-mode.patch
+
       - name: Build with upstream MinGW recipe
         working-directory: mpv
         run: |
