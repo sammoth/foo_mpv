@@ -12,7 +12,12 @@ permissions:
 jobs:
   libmpv:
     name: Build ${{ matrix.platform }} libmpv
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.10
+      options: --security-opt seccomp=unconfined
+      env:
+        WINEPREFIX: /tmp/wine
     strategy:
       fail-fast: false
       matrix:
@@ -27,22 +32,25 @@ jobs:
       TARGET: ${{ matrix.arch }}-w64-mingw32
       RUST_TARGET: ${{ matrix.arch }}-pc-windows-gnu
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
       - name: Install upstream build tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install --no-install-recommends -y ca-certificates ccache cmake g++-mingw-w64 gcc-multilib git glslang-tools make meson nasm ninja-build pkgconf rustup wget xz-utils ${{ matrix.wine }} wine
+          rustup default stable
           rustup target add "$RUST_TARGET"
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y ccache g++-mingw-w64 gcc-multilib glslang-tools python3-pip nasm ninja-build pkgconf ${{ matrix.wine }} wine
-          python -m pip install meson
+          git config --global --add safe.directory '*'
           command -v glslangValidator
           glslangValidator --version
           printf '#version 460\n#pragma shader_stage(compute)\n#extension GL_KHR_shader_subgroup_basic : require\nlayout(local_size_x = 1) in;\nvoid main() { bool elected = subgroupElect(); }\n' > /tmp/foo-mpv-shader.comp.glsl
           glslangValidator -V --target-env spirv1.6 --glsl-version 460 -o /tmp/foo-mpv-shader.spv /tmp/foo-mpv-shader.comp.glsl
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Install upstream Meson wraps
         working-directory: mpv
