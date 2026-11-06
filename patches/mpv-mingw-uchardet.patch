@@ -1,7 +1,7 @@
 diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
 --- a/ci/build-mingw64.sh
 +++ b/ci/build-mingw64.sh
-@@ -157,6 +157,17 @@ _iconv () {
+@@ -157,6 +157,18 @@ _iconv () {
  }
  _iconv_mark=lib/libiconv.dll.a
  
@@ -10,7 +10,8 @@ diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
 +    gettar "https://www.freedesktop.org/software/uchardet/releases/uchardet-${ver}.tar.xz"
 +    builddir uchardet-${ver}
 +    cmake .. "${cmake_args[@]}" \
-+        -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_BINARY=OFF -DBUILD_STATIC=OFF
++        -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_BINARY=OFF -DBUILD_STATIC=OFF \
++        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 +    makeplusinstall
 +    popd
 +}
@@ -19,7 +20,7 @@ diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
  _zlib_ng () {
      local ver=2.3.3
      gettar "https://github.com/zlib-ng/zlib-ng/archive/refs/tags/${ver}.tar.gz" zlib-ng-${ver}
-@@ -350,7 +361,7 @@ _curl () {
+@@ -350,7 +362,7 @@ _curl () {
  }
  _curl_mark=lib/libcurl.dll.a
  
@@ -28,7 +29,7 @@ diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
      build_if_missing $x
  done
  if [[ "$TARGET" != "i686-"* ]]; then
-@@ -374,5 +385,6 @@
+@@ -374,5 +386,6 @@
  CFLAGS+=" -I'$prefix_dir/include'"
 +CXXFLAGS+=" -I'$prefix_dir/include'"
  LDFLAGS+=" -L'$prefix_dir/lib'"
@@ -36,7 +37,7 @@ diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
 +export CFLAGS CXXFLAGS LDFLAGS
  build=mingw_build
  rm -rf $build
-@@ -384,6 +396,7 @@ mpv_args=(
+@@ -384,6 +397,7 @@ mpv_args=(
      -Dmujs:werror=false
      -Dmujs:default_library=static
      -Dlua=luajit
@@ -44,7 +45,7 @@ diff --git a/ci/build-mingw64.sh b/ci/build-mingw64.sh
      -D{amf,shaderc,spirv-cross,d3d11,javascript,libcurl}=enabled
  )
  meson setup $build "${mpv_args[@]}"
-@@ -410,5 +423,6 @@ if [ "$2" = pack ]; then
+@@ -410,5 +424,6 @@ if [ "$2" = pack ]; then
          av*.dll sw*.dll postproc-[0-9]*.dll
          # everything else
          subrandr-[0-9]*.dll lib{ass,freetype,fribidi,harfbuzz,iconv,placebo}-[0-9]*.dll
