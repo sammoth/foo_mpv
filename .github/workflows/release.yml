@@ -89,6 +89,9 @@ jobs:
         run: |
           test -f mpv/mingw_build/libmpv-2.dll
           cp mpv/mingw_build/libmpv-2.dll mpv/artifact/mpv-2.dll
+          # Upstream's test recipe builds debugoptimized and leaves DWARF and
+          # COFF symbols in; strip them like upstream's release recipe does.
+          "$TARGET-strip" --strip-unneeded mpv/artifact/*.dll
           "$TARGET-gcc-posix" -I mpv/include scripts/smoke-libmpv.c -o mpv/artifact/smoke-libmpv.exe
           cd mpv/artifact
           wine ./smoke-libmpv.exe ./mpv-2.dll
@@ -162,6 +165,10 @@ jobs:
     name: Package Windows component
     runs-on: windows-2025-vs2026
     needs: [libmpv, component]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Checkout
@@ -200,6 +207,14 @@ jobs:
             -Win32Libmpv .\artifacts\runtime\Win32\mpv-2.dll `
             -X64Libmpv .\artifacts\runtime\x64\mpv-2.dll
           7z l .\artifacts\foo_mpv.fb2k-component
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            artifacts/foo_mpv.fb2k-component
+            artifacts/component/*/foo_mpv.dll
+            artifacts/runtime/*/*.dll
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v7
